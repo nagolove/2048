@@ -6,7 +6,8 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define field_size 4
+#include "genann.h"
+#include "modelbox.h"
 
 const int screen_width = 1920;
 const int screen_height = 1080;
