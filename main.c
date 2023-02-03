@@ -227,7 +227,8 @@ Color get_color(int value) {
 }
 
 void draw_numbers() {
-    const int fontsize = 60;
+    int fontsize = 90;
+    float spacing = 2.;
     const int field_width = field_size * quad_width;
     Vector2 start = {
         .x = (screen_width - field_width) / 2.,
@@ -241,7 +242,13 @@ void draw_numbers() {
 
             char msg[64] = {0};
             sprintf(msg, "%d", field[j][i]);
-            int textw = MeasureText(msg, fontsize);
+            int textw = 0;
+
+            do {
+                textw = MeasureTextEx(GetFontDefault(), msg, fontsize--, spacing).x;
+                printf("fontsize %d\n", fontsize);
+            } while (textw > quad_width);
+
             Vector2 pos = start;
             pos.x += j * quad_width + (quad_width - textw) / 2.;
             pos.y += i * quad_width + (quad_width - fontsize) / 2.;
@@ -298,7 +305,7 @@ void input() {
 
 void draw_over() {
     const char *msg = "GAMEOVER";
-    const int fontsize = 175;
+    const int fontsize = 190;
     float width = MeasureText(msg, fontsize);
     Vector2 pos = {
         .x = (screen_width - width) / 2.,
