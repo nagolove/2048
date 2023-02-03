@@ -170,19 +170,21 @@ static void update(struct ModelBox *mb, enum Direction dir) {
         mb->gameover = true;
 }
 
+/*
 static void reset(struct ModelBox *mb) {
     assert(mb);
     mb->gameover = false;
     memset(mb->field, 0, sizeof(mb->field[0][0]) * field_size * field_size);
     mb->scores = 0;
 }
+*/
 
 void modelbox_init(struct ModelBox *mb) {
     assert(mb);
     memset(mb, 0, sizeof(*mb));
     put(mb);
     mb->update = update;
-    mb->reset = reset;
+    //mb->reset = reset;
 }
 
 static int cmp(const void *pa, const void *pb) {

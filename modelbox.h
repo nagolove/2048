@@ -18,7 +18,7 @@ struct ModelBox {
     int  scores;
     bool gameover;
     void (*update)(struct ModelBox *mb, enum Direction dir);
-    void (*reset)(struct ModelBox *mb);
+    //void (*reset)(struct ModelBox *mb);
 };
 
 struct ModelView {

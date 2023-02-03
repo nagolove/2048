@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <raylib.h>
 
+#include <math.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdbool.h>
@@ -18,9 +19,10 @@ static bool automode = false;
 static struct genann *trained = NULL;
 static const int screen_width = 1920;
 static const int screen_height = 1080;
+static const char *trained_fname = "trained.binary";
 
 void trained_load() {
-    FILE *file = fopen("trained.binary", "r");
+    FILE *file = fopen(trained_fname, "r");
     if (!file)
         return;
 
@@ -86,13 +88,8 @@ void normalize_inputs(struct ModelBox *mb, double *inputs) {
     }
 }
 
-void auto_play() {
-    assert(trained);
-
-    double inputs[field_size * field_size] = {0};
-    normalize_inputs(&main_model, inputs);
-    const double *outputs = genann_run(trained, inputs);
-
+int out2dir(const double *outputs) {
+    assert(outputs);
     double max = 0.;
     int max_index = 0;
     for (int j = 0; j < 4; j++)
@@ -100,21 +97,110 @@ void auto_play() {
             max = outputs[j];
             max_index = j;
         }
+    return max_index;
+}
 
-    printf("max_index %d\n", max_index);
-    main_model.update(&main_model, max_index);
+void auto_play() {
+    assert(trained);
+
+    double inputs[field_size * field_size] = {0};
+    normalize_inputs(&main_model, inputs);
+    const double *outputs = genann_run(trained, inputs);
+
+    printf("directioni %d\n", out2dir(outputs));
+    main_model.update(&main_model, out2dir(outputs));
+}
+
+const double    ERROR_EPSILON = 0.01;
+const int       STEPS_NUM = 4;
+
+void train() {
+    genann *net = genann_init(
+        field_size * field_size,
+        1, 
+        field_size * field_size, 
+        4
+    );
+
+    double err = 0.;
+    double last_err = 1000.;
+    int count = 0;
+
+    double inputs[field_size * field_size] = {0};
+
+    struct ModelBox mb = {0};
+    modelbox_init(&mb);
+
+    do {
+        count++;
+        if (count % 1000 == 0) {
+            printf("iteration %d\n", count);
+        }
+        if (count % 5000 == 0) {
+            genann_randomize(net);
+            last_err = 1000;
+        }
+
+        genann *save = genann_copy(net);
+
+        /* Take a random guess at the ANN weights. */
+        for (int i = 0; i < net->total_weights; ++i) {
+            net->weight[i] += ((double)rand())/RAND_MAX-0.5;
+        }
+
+        err = 0;
+
+        int scores = mb.scores;
+
+        for (int j = 0; j < STEPS_NUM; j++) {
+            int dir = rand() % 4;
+            mb.update(&mb, dir);
+            normalize_inputs(&mb, inputs);
+            //const double *out = genann_run(net, inputs);
+            genann_run(net, inputs);
+        }
+
+        if (mb.scores > scores) {
+            // Успех
+        }
+
+        /*
+        err += pow(*genann_run(net, input[0]) - output[0], 2.0);
+        err += pow(*genann_run(net, input[1]) - output[1], 2.0);
+        err += pow(*genann_run(net, input[2]) - output[2], 2.0);
+        err += pow(*genann_run(net, input[3]) - output[3], 2.0);
+        */
+
+        /* Keep these weights if they're an improvement. */
+        if (err < last_err) {
+            genann_free(save);
+            last_err = err;
+        } else {
+            genann_free(net);
+            net = save;
+        }
+
+    } while (err > ERROR_EPSILON);
+
+    FILE *file = fopen(trained_fname, "w");
+    if (file) {
+        genann_write(net, file);
+        fclose(file);
+    }
 }
 
 void update() {
     if (IsKeyPressed(KEY_A)) {
         automode = !automode;
+    } else if (IsKeyPressed(KEY_T)) {
+        train();
     }
 
     if (!automode) {
         if (!main_model.gameover)
             input();
-        else if (IsKeyPressed(KEY_SPACE)) {
-            main_model.reset(&main_model);
+        if (IsKeyPressed(KEY_SPACE)) {
+            modelbox_init(&main_model);
         }
     } else {
         auto_play();
