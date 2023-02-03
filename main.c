@@ -9,14 +9,17 @@
 #include "genann.h"
 #include "modelbox.h"
 
+struct ModelBox     main_model;
+struct ModelView    main_view;
+
 const int screen_width = 1920;
 const int screen_height = 1080;
 const int quad_width = 128 + 64;
 
 // x:y
 int field[field_size][field_size] = {0};
-int scores = 0;
-bool gameover = false;
+/*int scores = 0;*/
+/*bool gameover = false;*/
 
 int sorted[field_size * field_size] = {0};
 Color colors[5] = {
@@ -70,6 +73,7 @@ void put() {
         field[x][y] = 4;
 }
 
+/*
 void swipe_horizontal(bool left) {
     printf("swipe_horizontal: left %d\n", (int)left);
     const int field_size_bytes = sizeof(field[0][0]) * field_size * field_size;
@@ -220,9 +224,11 @@ void swipe_vertical(bool up) {
     memmove(field, field_copy, field_size_bytes);
 }
 
+*/
+
 Color get_color(int value) {
     int colors_num = sizeof(colors) / sizeof(colors[0]);
-    /*printf("colors_num %d\n", colors_num);*/
+    //printf("colors_num %d\n", colors_num);
     for (int k = 0; k < colors_num; k++) {
         if (value == sorted[k]) {
             return colors[k];
@@ -287,14 +293,17 @@ void draw_field() {
     }
 }
 
+/*
 void check_over() {
     if (!is_over())
         put();
     else
         gameover = true;
 }
+*/
 
 void input() {
+    /*
     if (IsKeyPressed(KEY_LEFT)) {
         swipe_horizontal(true);
         check_over();
@@ -303,8 +312,20 @@ void input() {
         check_over();
     } else if (IsKeyPressed(KEY_UP)) {
         swipe_vertical(true);
+        check_over();
     } else if (IsKeyPressed(KEY_DOWN)) {
         swipe_vertical(false);
+        check_over();
+    }
+    */
+    if (IsKeyPressed(KEY_LEFT)) {
+        main_model.update(&main_model, DIR_LEFT);
+    } else if (IsKeyPressed(KEY_RIGHT)) {
+        main_model.update(&main_model, DIR_RIGHT);
+    } else if (IsKeyPressed(KEY_UP)) {
+        main_model.update(&main_model, DIR_UP);
+    } else if (IsKeyPressed(KEY_DOWN)) {
+        main_model.update(&main_model, DIR_DOWN);
     }
 }
 
@@ -319,16 +340,18 @@ void draw_over() {
     DrawText(msg, pos.x, pos.y, fontsize, GREEN);
 }
 
+/*
 void reset() {
     gameover = false;
     memset(field, 0, sizeof(field[0][0]) * field_size * field_size);
     scores = 0;
 }
+*/
 
 void draw_scores() {
     char msg[64] = {0};
     const int fontsize = 70;
-    sprintf(msg, "scores: %d", scores);
+    sprintf(msg, "scores: %d", main_model.scores);
     Vector2 pos = {
         .x = (screen_width - MeasureText(msg, fontsize)) / 2.,
         .y = 1.2 * fontsize,
@@ -337,26 +360,30 @@ void draw_scores() {
 }
 
 void update() {
-    if (!gameover)
+    if (!main_model.gameover)
         input();
     else if (IsKeyPressed(KEY_SPACE)) {
-        reset();
+        main_model.reset(&main_model);
     }
 
     sort_numbers();
     BeginDrawing();
     ClearBackground(RAYWHITE);
-    draw_field();
-    draw_numbers();
+    //draw_field();
+    //draw_numbers();
+    main_view.draw(&main_view, &main_model);
     draw_scores();
-    if (gameover)
+    if (main_model.gameover)
         draw_over();
     EndDrawing();
 }
 
 int main(void) {
-
     InitWindow(screen_width, screen_height, "2048");
+
+    modelview_init(&main_view, NULL);
+    modelbox_init(&main_model);
+
     SetTargetFPS(60);
     srand(time(NULL));
 
