@@ -14,7 +14,7 @@ const int quad_width = 128 + 64;
 
 // x:y
 int field[field_size][field_size] = {0};
-int score = 0;
+int scores = 0;
 bool gameover = false;
 
 int sorted[field_size * field_size] = {0};
@@ -115,6 +115,7 @@ void swipe_horizontal(bool left) {
                         case true: {
                             if (j > 0 && field_copy[j - 1][i] == field_copy[j][i]) {
                                 field_copy[j - 1][i] = field_copy[j][i] * 2;
+                                scores += field_copy[j][i];
                                 field_copy[j][i] = 0;
                                 moved = true;
                                 printf("summarized horizontal left\n");
@@ -124,6 +125,7 @@ void swipe_horizontal(bool left) {
                         case false: {
                             if (j + 1 < field_size && field_copy[j + 1][i] == field_copy[j][i]) {
                                 field_copy[j + 1][i] = field_copy[j][i] * 2;
+                                scores += field_copy[j][i];
                                 field_copy[j][i] = 0;
                                 moved = true;
                                 printf("summarized horizontal right\n");
@@ -188,6 +190,7 @@ void swipe_vertical(bool up) {
                         case true: {
                             if (i > 0 && field_copy[j][i - 1] == field_copy[j][i]) {
                                 field_copy[j][i - 1] = field_copy[j][i] * 2;
+                                scores += field_copy[j][i];
                                 field_copy[j][i] = 0;
                                 moved = true;
                                 printf("summarized vertical up\n");
@@ -197,6 +200,7 @@ void swipe_vertical(bool up) {
                         case false: {
                             if (i + 1 < field_size && field_copy[j][i + 1] == field_copy[j][i]) {
                                 field_copy[j][i + 1] = field_copy[j][i] * 2;
+                                scores += field_copy[j][i];
                                 field_copy[j][i] = 0;
                                 moved = true;
                                 printf("summarized vertical down\n");
@@ -246,7 +250,7 @@ void draw_numbers() {
 
             do {
                 textw = MeasureTextEx(GetFontDefault(), msg, fontsize--, spacing).x;
-                printf("fontsize %d\n", fontsize);
+                /*printf("fontsize %d\n", fontsize);*/
             } while (textw > quad_width);
 
             Vector2 pos = start;
@@ -317,6 +321,18 @@ void draw_over() {
 void reset() {
     gameover = false;
     memset(field, 0, sizeof(field[0][0]) * field_size * field_size);
+    scores = 0;
+}
+
+void draw_scores() {
+    char msg[64] = {0};
+    const int fontsize = 70;
+    sprintf(msg, "scores: %d", scores);
+    Vector2 pos = {
+        .x = (screen_width - MeasureText(msg, fontsize)) / 2.,
+        .y = 1.2 * fontsize,
+    };
+    DrawText(msg, pos.x, pos.y, fontsize, BLUE);
 }
 
 void update() {
@@ -331,6 +347,7 @@ void update() {
     ClearBackground(RAYWHITE);
     draw_field();
     draw_numbers();
+    draw_scores();
     if (gameover)
         draw_over();
     EndDrawing();
