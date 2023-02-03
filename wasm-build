@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+
+#warning: Link with `-sLLD_REPORT_UNDEFINED` to get more information on undefined symbols
+#warning: To disable errors for undefined symbols use `-sERROR_ON_UNDEFINED_SYMBOLS=0`
+
+#FLAGS="-Wall -Os -DPLATFORM_WEB "
+FLAGS="-Wall -flto -g3 -DPLATFORM_WEB"
+#FLAGS="-Wall -flto -g3 -DPLATFORM_WEB -sMEMORY64"
+#FLAGS="-Wall -flto -g3 -DPLATFORM_WEB"
+#FLAGS="-Wall -flto -O3 -DPLATFORM_WEB "
+INCLUDES=" \
+-Iraylib/src"
+
+LIBS_PATH=" \
+-Lraylib/
+-L. "
+
+LIBS="-lraylib \
+"
+
+# 314572800 300mb
+# -s TOTAL_STACK=8388608 \ 8mb
+
+#-s TOTAL_MEMORY=367001600 \
+#-s TOTAL_STACK=33554432 \
+#-s TOTAL_MEMORY=4GB \
+
+#-s INITIAL_MEMORY=2202009600 \
+#-s MAXIMUM_MEMORY=4294967296 \
+#-s TOTAL_STACK=2GB \
+# -s ASSERTIONS=1 \
+
+emcc \
+$FLAGS \
+$LIBS_PATH \
+$LIBS \
+$INCLUDES \
+-s USE_GLFW=3  \
+-s MAXIMUM_MEMORY=4294967296 \
+-s ALLOW_MEMORY_GROWTH=1 \
+-s EMULATE_FUNCTION_POINTER_CASTS \
+-s LLD_REPORT_UNDEFINED \
+-o index.html main.c
+
+# --preload-file assets \
+# --shell-file \
+#--shell-file wasm_3rd_party/minshell.html \
+
+#Thus, to allow maximal LTO opportunities with the LLVM wasm backend, build all
+#source files with -flto and also link with flto.
+
+#emcc -sEVAL_CTORS
+#For example, calls to imports stop this optimization, and so if you have a
+#game engine that creates a GL context and then does some pure computation to
+#set up unrelated data structures in memory, then you could reverse that order.
+#Then the pure computation could run first, and be evalled away, and the GL
+#context creation call to an import would not prevent that. 
