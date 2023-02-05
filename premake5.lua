@@ -8,6 +8,7 @@ workspace "ray_example"
         "-ggdb3",
         "-fPIC",
         "-Wall",
+        --"-pedantic",
     }
     links { 
         "m",

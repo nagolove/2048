@@ -16,25 +16,41 @@ static Color colors[5] = {
     GRAY,
 };
 
+static void copy_field(
+    int dest[FIELD_SIZE][FIELD_SIZE], int source[FIELD_SIZE][FIELD_SIZE]
+) {
+    memmove(dest, source, sizeof(dest[0][0]) * FIELD_SIZE * FIELD_SIZE);
+}
+
+static int find_max(struct ModelBox *mb) {
+    int max = 0;
+    for (int i = 0; i < FIELD_SIZE; i++)
+        for (int j = 0; j < FIELD_SIZE; j++)
+            if (mb->field[i][j] > max)
+                max = mb->field[i][j];
+
+    return max;
+}
+
 static bool is_over(struct ModelBox *mb) {
     int num = 0;
-    for (int i = 0; i < field_size; i++)
-        for (int j = 0; j < field_size; j++)
+    for (int i = 0; i < FIELD_SIZE; i++)
+        for (int j = 0; j < FIELD_SIZE; j++)
             if (mb->field[i][j] > 0)
                 num++;
 
-    printf("is_over: %d\n", field_size * field_size == num);
-    return field_size * field_size == num;
+    //printf("is_over: %d\n", FIELD_SIZE * FIELD_SIZE == num);
+    return FIELD_SIZE * FIELD_SIZE == num;
 }
 
 static void put(struct ModelBox *mb) {
     assert(mb);
-    int x = rand() % field_size;
-    int y = rand() % field_size;
+    int x = rand() % FIELD_SIZE;
+    int y = rand() % FIELD_SIZE;
 
     while (mb->field[x][y] != 0) {
-        x = rand() % field_size;
-        y = rand() % field_size;
+        x = rand() % FIELD_SIZE;
+        y = rand() % FIELD_SIZE;
     }
 
     float v = (float)rand() / (float)RAND_MAX;
@@ -46,11 +62,11 @@ static void put(struct ModelBox *mb) {
 
 static void update(struct ModelBox *mb, enum Direction dir) {
     assert(mb);
-    if (mb->gameover)
+    if (mb->state == MS_GAMEOVER)
         return;
 
-    const int field_size_bytes = sizeof(mb->field[0][0]) * field_size * field_size;
-    int field_copy[field_size][field_size] = {0};
+    const int field_size_bytes = sizeof(mb->field[0][0]) * FIELD_SIZE * FIELD_SIZE;
+    int field_copy[FIELD_SIZE][FIELD_SIZE] = {0};
     memmove(field_copy, mb->field, field_size_bytes);
 
     bool moved = false;
@@ -59,8 +75,8 @@ static void update(struct ModelBox *mb, enum Direction dir) {
     do {
         moved = false;
 
-        for (int i = 0; i < field_size; i++) {
-            for (int j = 0; j < field_size; j++) {
+        for (int i = 0; i < FIELD_SIZE; i++) {
+            for (int j = 0; j < FIELD_SIZE; j++) {
                 if (field_copy[j][i] == 0) continue;
 
                 switch (dir) {
@@ -69,16 +85,16 @@ static void update(struct ModelBox *mb, enum Direction dir) {
                             field_copy[j][i - 1] = field_copy[j][i];
                             field_copy[j][i] = 0;
                             moved = true;
-                            printf("moved vertical up\n");
+                            //printf("moved vertical up\n");
                         }
                         break;
                     }
                     case DIR_DOWN: {
-                        if (i + 1 < field_size && field_copy[j][i + 1] == 0) {
+                        if (i + 1 < FIELD_SIZE && field_copy[j][i + 1] == 0) {
                             field_copy[j][i + 1] = field_copy[j][i];
                             field_copy[j][i] = 0;
                             moved = true;
-                            printf("moved vertical down\n");
+                            //printf("moved vertical down\n");
                         }
                         break;
                     }
@@ -87,16 +103,16 @@ static void update(struct ModelBox *mb, enum Direction dir) {
                             field_copy[j - 1][i] = field_copy[j][i];
                             field_copy[j][i] = 0;
                             moved = true;
-                            printf("moved horizontal left\n");
+                            //printf("moved horizontal left\n");
                         }
                         break;
                     }
                     case DIR_RIGHT: {
-                        if (j + 1 < field_size && field_copy[j + 1][i] == 0) {
+                        if (j + 1 < FIELD_SIZE && field_copy[j + 1][i] == 0) {
                             field_copy[j + 1][i] = field_copy[j][i];
                             field_copy[j][i] = 0;
                             moved = true;
-                            printf("moved horizontal right\n");
+                            //printf("moved horizontal right\n");
                         }
                         break;
                     }
@@ -104,8 +120,8 @@ static void update(struct ModelBox *mb, enum Direction dir) {
             }
         }
 
-        for (int i = 0; i < field_size; i++) {
-            for (int j = 0; j < field_size; j++) {
+        for (int i = 0; i < FIELD_SIZE; i++) {
+            for (int j = 0; j < FIELD_SIZE; j++) {
                 if (field_copy[j][i] == 0) 
                     continue;
 
@@ -116,19 +132,19 @@ static void update(struct ModelBox *mb, enum Direction dir) {
                             mb->scores += field_copy[j][i];
                             field_copy[j][i] = 0;
                             moved = true;
-                            printf("summarized vertical up\n");
+                            //printf("summarized vertical up\n");
                         }
                         break;
                     }
                     case DIR_DOWN: {
-                        if (i + 1 < field_size && 
+                        if (i + 1 < FIELD_SIZE && 
                             field_copy[j][i + 1] == field_copy[j][i]) {
 
                             field_copy[j][i + 1] = field_copy[j][i] * 2;
                             mb->scores += field_copy[j][i];
                             field_copy[j][i] = 0;
                             moved = true;
-                            printf("summarized vertical down\n");
+                            //printf("summarized vertical down\n");
                         }
                         break;
                     }
@@ -138,19 +154,19 @@ static void update(struct ModelBox *mb, enum Direction dir) {
                             mb->scores += field_copy[j][i];
                             field_copy[j][i] = 0;
                             moved = true;
-                            printf("summarized horizontal left\n");
+                            //printf("summarized horizontal left\n");
                         }
                         break;
                     }
                     case DIR_RIGHT: {
-                        if (j + 1 < field_size &&
+                        if (j + 1 < FIELD_SIZE &&
                             field_copy[j + 1][i] == field_copy[j][i]) {
 
                             field_copy[j + 1][i] = field_copy[j][i] * 2;
                             mb->scores += field_copy[j][i];
                             field_copy[j][i] = 0;
                             moved = true;
-                            printf("summarized horizontal right\n");
+                            //printf("summarized horizontal right\n");
                         }
                         break;
                     }
@@ -159,7 +175,7 @@ static void update(struct ModelBox *mb, enum Direction dir) {
         }
 
         iter++;
-        printf("iter %d\n", iter);
+        //printf("iter %d\n", iter);
     } while (moved);
 
     memmove(mb->field, field_copy, field_size_bytes);
@@ -167,24 +183,18 @@ static void update(struct ModelBox *mb, enum Direction dir) {
     if (!is_over(mb))
         put(mb);
     else
-        mb->gameover = true;
-}
+        mb->state = MS_GAMEOVER;
 
-/*
-static void reset(struct ModelBox *mb) {
-    assert(mb);
-    mb->gameover = false;
-    memset(mb->field, 0, sizeof(mb->field[0][0]) * field_size * field_size);
-    mb->scores = 0;
+    if (find_max(mb) == WIN_VALUE)
+        mb->state = MS_WIN;
 }
-*/
 
 void modelbox_init(struct ModelBox *mb) {
     assert(mb);
     memset(mb, 0, sizeof(*mb));
     put(mb);
     mb->update = update;
-    //mb->reset = reset;
+    mb->state = MS_PROCESS;
 }
 
 static int cmp(const void *pa, const void *pb) {
@@ -193,23 +203,23 @@ static int cmp(const void *pa, const void *pb) {
 }
 
 static void sort_numbers(struct ModelView *mv, struct ModelBox *mb) {
-    int tmp[field_size * field_size] = {0};
+    int tmp[FIELD_SIZE * FIELD_SIZE] = {0};
     int idx = 0;
-    for (int i = 0; i < field_size; i++)
-        for (int j = 0; j < field_size; j++)
+    for (int i = 0; i < FIELD_SIZE; i++)
+        for (int j = 0; j < FIELD_SIZE; j++)
             tmp[idx++] = mb->field[j][i];
 
-    qsort(tmp, field_size * field_size, sizeof(mb->field[0][0]), cmp);
+    qsort(tmp, FIELD_SIZE * FIELD_SIZE, sizeof(mb->field[0][0]), cmp);
     memmove(mv->sorted, tmp, sizeof(mv->sorted));
 }
 
 static void draw_field(struct ModelView *mv) {
-    const int field_width = field_size * quad_width;
+    const int field_width = FIELD_SIZE * quad_width;
     Vector2 start = mv->pos;
     const float thick = 3.;
 
     Vector2 tmp = start;
-    for (int u = 0; u <= field_size; u++) {
+    for (int u = 0; u <= FIELD_SIZE; u++) {
         Vector2 end = tmp;
         end.y += field_width;
         DrawLineEx(tmp, end, thick, BLACK);
@@ -217,7 +227,7 @@ static void draw_field(struct ModelView *mv) {
     }
 
     tmp = start;
-    for (int u = 0; u <= field_size; u++) {
+    for (int u = 0; u <= FIELD_SIZE; u++) {
         Vector2 end = tmp;
         end.x += field_width;
         DrawLineEx(tmp, end, thick, BLACK);
@@ -241,10 +251,10 @@ static void draw_numbers(struct ModelView *mv, struct ModelBox *mb) {
     assert(mb);
     int fontsize = 90;
     float spacing = 2.;
-    //const int field_width = field_size * quad_width;
+    //const int field_width = FIELD_SIZE * quad_width;
     Vector2 start = mv->pos;
-    for (int i = 0; i < field_size; i++) {
-        for (int j = 0; j < field_size; j++) {
+    for (int i = 0; i < FIELD_SIZE; i++) {
+        for (int j = 0; j < FIELD_SIZE; j++) {
             if (mb->field[j][i] == 0)
                 continue;
 
@@ -274,9 +284,11 @@ static void draw(struct ModelView *mv, struct ModelBox *mb) {
     draw_numbers(mv, mb);
 }
 
-void modelview_init(struct ModelView *mv, Vector2 *pos) {
+void modelview_init(struct ModelView *mv, Vector2 *pos, struct ModelBox *mb) {
     assert(mv);
-    const int field_width = field_size * quad_width;
+    assert(mb);
+    copy_field(mv->field_prev, mb->field);
+    const int field_width = FIELD_SIZE * quad_width;
     if (!pos) {
         mv->pos = (Vector2){
             .x = (GetScreenWidth() - field_width) / 2.,
