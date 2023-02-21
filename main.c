@@ -109,6 +109,7 @@ void write_normalized_inputs(struct ModelBox *mb, double *inputs) {
     //print_inputs(inputs, inputs_num);
 }
 
+// Как протестировать функцию?
 int out2dir(const double *outputs) {
     assert(outputs);
     double max = 0.;
@@ -142,6 +143,7 @@ void ann_shake(genann *net) {
     }
 }
 
+/*
 void train() {
     printf("training\n");
     genann *net = genann_init(
@@ -151,8 +153,6 @@ void train() {
         4
     );
 
-    /*double err = 0.;*/
-    /*double last_err = 1000.;*/
     int count = 0;
 
     double inputs[FIELD_SIZE * FIELD_SIZE] = {0};
@@ -223,6 +223,120 @@ void train() {
     }
 
     genann_free(net);
+}
+*/
+
+struct Set {
+    genann          **nets;
+    struct ModelBox *models;
+    int             num;
+};
+
+struct Set *set_new(int agents_num) {
+    struct Set *s = malloc(sizeof(*s));
+    s->num = agents_num;
+    s->nets = calloc(sizeof(s->nets[0]), agents_num);
+    s->models = calloc(sizeof(s->models[0]), agents_num);
+    for (int i = 0; i < s->num; i++) {
+        s->nets[i] = genann_init(
+            FIELD_SIZE * FIELD_SIZE,
+            1, 
+            FIELD_SIZE * FIELD_SIZE, 
+            4
+        );
+        modelbox_init(&s->models[i]);
+    }
+    return s;
+}
+
+void set_shutdown(struct Set *s) {
+    assert(s);
+    for (int i = 0; i < s->num; ++i) {
+        genann_free(s->nets[i]);
+    }
+    free(s->nets);
+}
+
+void set_remove_one(struct Set *s, int index) {
+    assert(s);
+    assert(index >= 0);
+    assert(index < s->num);
+
+    genann_free(s->nets[index]);
+    s->nets[index] = s->nets[s->num - 1];
+    s->models[index] = s->models[s->num - 1];
+    --s->num;
+}
+
+int set_find_min_index(struct Set *s) {
+    int min_scores = 3000;
+    int min_index = -1;
+    for (int k = 0; k < s->num; k++) {
+        //printf("k %d\n", k);
+        if (s->models[k].scores < min_scores) {
+            min_scores = s->models[k].scores;
+            min_index = k;
+        }
+    }
+    return min_index;
+}
+
+struct Set *set_select(struct Set *s) {
+    assert(s);
+    int num = s->num - 1;
+    printf("set_select: num %d\n", num);
+    assert(num >= 1);
+
+    const int remove_num = 4;
+    for (int i = 0; i < remove_num; i++) {
+        int min_index = set_find_min_index(s);
+        assert(min_index != -1);
+        set_remove_one(s, min_index);
+    }
+
+    struct Set *new = malloc(sizeof(*new));
+    new->num = s->num;
+    new->nets = calloc(sizeof(new->nets[0]), s->num);
+    new->models = calloc(sizeof(new->models[0]), s->num);
+
+    for (int i = 0; i < s->num; ++i) {
+        new->nets[i] = genann_copy(s->nets[i]);
+        new->models[i] = s->models[i];
+    }
+
+    return new;
+}
+
+void set_train(struct Set *s) {
+}
+
+void set_write(struct Set *s) {
+    assert(s);
+    printf("set_write: num %d\n", s->num);
+    for (int j = 0; j < s->num; ++j) {
+        char fname[100] = {0};
+        sprintf(fname, "bin/trained_%.3d.binary", j);
+        FILE *file = fopen(fname, "w");
+        if (file) {
+            genann_write(s->nets[j], file);
+            fclose(file);
+        }
+    }
+}
+
+void train() {
+    printf("training\n");
+    // Стратегия обучения?
+    struct Set *s = set_new(10005);
+    for (int cycles = 0; cycles < 2500; cycles++) {
+        printf("cycles %d\n", cycles);
+        set_train(s);
+        struct Set *new = set_select(s);
+        set_shutdown(s);
+        s = new;
+    }
+    set_write(s);
+    set_shutdown(s);
 }
 
 void update() {
