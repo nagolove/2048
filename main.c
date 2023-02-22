@@ -414,7 +414,8 @@ void update() {
         }
         default: break;
     }
-    genann_view_draw(net_viewer, trained);
+    genann_view_prepare(net_viewer, trained);
+    genann_view_draw(net_viewer);
     EndMode2D();
     EndDrawing();
 }
@@ -425,7 +426,7 @@ int main(void) {
     InitWindow(screen_width, screen_height, "2048");
 
     net_viewer = genann_view_new();
-    net_viewer->position = (Vector2) { 0., -1000. };
+    genann_view_position_set(net_viewer, (Vector2) { 0., -1000. });
 
     modelbox_init(&main_model);
     modelview_init(&main_view, NULL, &main_model);

@@ -3,14 +3,12 @@
 #include "genann.h"
 #include "raylib.h"
 
-struct genann_view {
-    float   neuron_radius;
-    Vector2 position;
-    Color   neuron_color;
-};
+typedef struct genann_view genann_view;
 
-struct genann_view *genann_view_new();
-void genann_view_free(struct genann_view *v);
-void genann_view_draw(struct genann_view *view, genann *net);
+genann_view *genann_view_new();
+void genann_view_free(genann_view *v);
+void genann_view_draw(genann_view *view);
 void genann_print(const genann *net);
+void genann_view_position_set(struct genann_view *view, Vector2 p);
+void genann_view_prepare(struct genann_view *view, const genann *net);
 

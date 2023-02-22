@@ -3,6 +3,9 @@ workspace "ray_example"
 
     defines{"GRAPHICS_API_OPENGL_43"}
     includedirs { 
+        "Chipmunk2d/include/",
+        "Chipmunk2d/include/include",
+        "/home/nagolove/proekt80/src"
     }
     buildoptions { 
         "-ggdb3",
@@ -13,8 +16,11 @@ workspace "ray_example"
     links { 
         "m",
         "raylib",
+        "chipmunk",
+        "/home/nagolove/proekt80/obj/Debug/t80/table.o",
     }
     libdirs { 
+        "Chipmunk2d/src/",
     }
     language "C"
     kind "ConsoleApp"
@@ -29,6 +35,7 @@ workspace "ray_example"
         files { 
             "./*.h", 
             "./*.c",
+            "/home/nagolove/proekt80/src/table.c",
         }
         linkoptions {
             "-fsanitize=address",
