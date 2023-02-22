@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stddef.h>
 #include <raylib.h>
+#include "raymath.h"
 
 #include <math.h>
 #include <string.h>
@@ -9,6 +10,7 @@
 #include <stdlib.h>
 #include <time.h>
 
+#include "genann_view.h"
 #include "genann.h"
 #include "modelbox.h"
 
@@ -17,9 +19,12 @@ static struct ModelView    main_view;
 
 static bool automode = false;
 static struct genann *trained = NULL;
+static struct genann_view *net_viewer = NULL;
 static const int screen_width = 1920;
 static const int screen_height = 1080;
 static const char *trained_fname = "trained.binary";
+
+static Camera2D camera = { 0 };
 
 genann *load() {
     FILE *file = fopen(trained_fname, "r");
@@ -336,10 +341,45 @@ void train() {
         s = new;
     }
     set_write(s);
+
+    genann_print(s->nets[0]);
+
     set_shutdown(s);
 }
 
+void camera_process() {
+    if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT))
+    {
+        Vector2 delta = GetMouseDelta();
+        delta = Vector2Scale(delta, -1.0f/camera.zoom);
+
+        camera.target = Vector2Add(camera.target, delta);
+    }
+
+    // Zoom based on mouse wheel
+    float wheel = GetMouseWheelMove();
+    if (wheel != 0)
+    {
+        // Get the world point that is under the mouse
+        Vector2 mouseWorldPos = GetScreenToWorld2D(GetMousePosition(), camera);
+
+        // Set the offset to where the mouse is
+        camera.offset = GetMousePosition();
+
+        // Set the target to match, so that the camera maps the world space point 
+        // under the cursor to the screen space point under the cursor at any zoom
+        camera.target = mouseWorldPos;
+
+        // Zoom increment
+        const float zoomIncrement = 0.125f;
+
+        camera.zoom += (wheel*zoomIncrement);
+        if (camera.zoom < zoomIncrement) camera.zoom = zoomIncrement;
+    }
+}
+
 void update() {
+    camera_process();
     if (IsKeyPressed(KEY_A)) {
         automode = !automode;
     } else if (IsKeyPressed(KEY_T)) {
@@ -359,6 +399,7 @@ void update() {
     }
 
     BeginDrawing();
+    BeginMode2D(camera);
     ClearBackground(RAYWHITE);
     main_view.draw(&main_view, &main_model);
     draw_scores();
@@ -373,12 +414,18 @@ void update() {
         }
         default: break;
     }
+    genann_view_draw(net_viewer, trained);
+    EndMode2D();
     EndDrawing();
 }
 
 int main(void) {
+    camera.zoom = 1.0f;
     srand(time(NULL));
     InitWindow(screen_width, screen_height, "2048");
+
+    net_viewer = genann_view_new();
+    net_viewer->position = (Vector2) { 0., -1000. };
 
     modelbox_init(&main_model);
     modelview_init(&main_view, NULL, &main_model);
@@ -391,6 +438,7 @@ int main(void) {
     }
 
     CloseWindow();
+    genann_view_free(net_viewer);
     trained_free();
 
     return 0;
