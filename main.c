@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "genann_view.h"
 #include "genann.h"
@@ -378,6 +379,19 @@ void camera_process() {
     }
 }
 
+static genann_view *view_test = NULL;
+
+genann_view *printing_test() {
+    genann *ann = genann_init(5, 3, 5, 4);
+    //genann *ann = genann_init(4, 2, 7, 3);
+    genann_print(ann);
+    genann_print_run(ann);
+    genann_view *view = genann_view_new();
+    genann_view_prepare(view, ann);
+    genann_free(ann);
+    return view;
+}
+
 void update() {
     camera_process();
     if (IsKeyPressed(KEY_A)) {
@@ -414,10 +428,18 @@ void update() {
         }
         default: break;
     }
-    genann_view_prepare(net_viewer, trained);
-    genann_view_draw(net_viewer);
+
+    //genann_view_prepare(net_viewer, trained);
+    //genann_view_draw(net_viewer);
+
+    Vector2 mouse_point = GetScreenToWorld2D(GetMousePosition(), camera);
+    genann_view_draw(view_test);
+    genann_view_update(view_test, mouse_point);
+
     EndMode2D();
     EndDrawing();
+
+    //usleep(10000);
 }
 
 int main(void) {
@@ -430,7 +452,12 @@ int main(void) {
 
     modelbox_init(&main_model);
     modelview_init(&main_view, NULL, &main_model);
+
     trained = load();
+    genann_print(trained);
+    genann_print_run(trained);
+
+    view_test = printing_test();
 
     SetTargetFPS(60);
 
@@ -441,6 +468,8 @@ int main(void) {
     CloseWindow();
     genann_view_free(net_viewer);
     trained_free();
+
+    genann_view_free(view_test);
 
     return 0;
 }

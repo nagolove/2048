@@ -17,11 +17,16 @@ workspace "ray_example"
         "m",
         "raylib",
         "chipmunk",
-        "/home/nagolove/proekt80/obj/Debug/t80/table.o",
+        "caustic",
+        "lua",
+        "utf8proc",
     }
     libdirs { 
         "Chipmunk2d/src/",
+        "utf8proc",
+        "/home/nagolove/proekt80",
     }
+
     language "C"
     kind "ConsoleApp"
     targetprefix ""
@@ -35,7 +40,6 @@ workspace "ray_example"
         files { 
             "./*.h", 
             "./*.c",
-            "/home/nagolove/proekt80/src/table.c",
         }
         linkoptions {
             "-fsanitize=address",
