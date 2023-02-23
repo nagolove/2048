@@ -1,3 +1,5 @@
+local sanit = false
+
 workspace "ray_example"
     configurations { "Debug", "Release" }
 
@@ -41,14 +43,16 @@ workspace "ray_example"
             "./*.h", 
             "./*.c",
         }
-        linkoptions {
-            "-fsanitize=address",
-            "-fsanitize-recover=address",
-        }
-        buildoptions { 
-            "-fsanitize=address",
-            "-fsanitize-recover=address",
-        }
+        if sanit then
+            linkoptions {
+                "-fsanitize=address",
+                "-fsanitize-recover=address",
+            }
+            buildoptions { 
+                "-fsanitize=address",
+                "-fsanitize-recover=address",
+            }
+        end
 
     
     filter "configurations:Debug"

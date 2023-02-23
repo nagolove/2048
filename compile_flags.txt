@@ -1,0 +1,4 @@
+-IChipmunk2d/include
+-IChipmunk2d/include/chipmunk
+-I/home/nagolove/proekt80/src
+
