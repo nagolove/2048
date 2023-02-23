@@ -18,7 +18,7 @@
 struct NeuronInfo {
     char   name[50];
     cpBody *body;
-    int    layer;
+    int    layer, index;
 };
 
 struct NeuronLinks {
@@ -120,7 +120,7 @@ void genann_view_free(struct genann_view *v) {
 }
 
 static void *add_neuron_info(
-    struct genann_view *view, Vector2 place, char *key, int layer
+    struct genann_view *view, Vector2 place, char *key, int layer, int index
 ) {
     assert(view);
     float mass = 100.;
@@ -140,6 +140,7 @@ static void *add_neuron_info(
     strcpy(ni->name, key);
     ni->body = body;
     ni->layer = layer;
+    ni->index = index;
 
     body->userData = ni;
     cpBodySetPosition(body, from_Vector2(place));
@@ -325,7 +326,7 @@ void make_chipmunk_objects(struct genann_view *view, const genann *net) {
         //DrawCircleV(corner, view->neuron_radius, view->neuron_color);
 
         sprintf(key, "input[%d]", i);
-        add_neuron_info(view, corner, key, layer);
+        add_neuron_info(view, corner, key, layer, i);
 
         corner.y += view->neuron_radius * 3.;
         /*char text[128] = {0};*/
@@ -344,7 +345,7 @@ void make_chipmunk_objects(struct genann_view *view, const genann *net) {
             //DrawCircleV(corner, view->neuron_radius, view->neuron_color);
 
             sprintf(key, "hidden[%d,%d]", i, j);
-            add_neuron_info(view, corner, key, layer);
+            add_neuron_info(view, corner, key, layer, j);
 
             corner.y += view->neuron_radius * 3.;
         }
@@ -356,7 +357,7 @@ void make_chipmunk_objects(struct genann_view *view, const genann *net) {
         //DrawCircleV(corner, view->neuron_radius, view->neuron_color);
 
         sprintf(key, "output[%d]", i);
-        add_neuron_info(view, corner, key, layer);
+        add_neuron_info(view, corner, key, layer, i);
 
         corner.y += view->neuron_radius * 3.;
     }
@@ -373,16 +374,45 @@ void genann_view_prepare(struct genann_view *view, const genann *net) {
     genann_viewer_fill_hash(view, net);
 }
 
+void draw_links(struct genann_view *view, int layer) {
+    //struct NeuronInfo *ni = view->current_neuron;
+
+    /*
+    char key[60] = {0};
+    sprintf(key, "[%d,%d]", ni->layer + 1, j);
+    struct NeuronLinks *nl = htable_get(
+        view->h_name2weight, ni->name, strlen(ni->name) + 1, NULL
+    );
+
+    if (!nl) {
+        return;
+    }
+
+    for (int j = 0; j < nl->num; j++) {
+        char name[50] = {0};
+        sprintf(name, "[0,%d]", j);
+        cpBody **body = htable_get(
+            view->h_name2physobj,
+            name, strlen(name) + 1, NULL
+        );
+        if (body && *body) {
+            Vector2 a = from_Vect(ni->body->p);
+            Vector2 b = from_Vect((*body)->p);
+            DrawLineV(a, b, BLACK);
+        }
+    }
+    */
+}
+
 void genann_view_draw(struct genann_view *view) {
     assert(view);
     space_debug_draw(view->space, view->neuron_color);
-    struct NeuronInfo *info = NULL;
+    //struct NeuronInfo *info = NULL;
 
     if (!view->current_neuron) {
         return;
     }
     struct NeuronInfo *ni = view->current_neuron;
-    //printf("ni %s\n", ni->name);
 
     DrawText(
         ni->name,
@@ -392,52 +422,8 @@ void genann_view_draw(struct genann_view *view) {
         BLACK
     );
 
-    struct NeuronLinks *nl = htable_get(
-        view->h_name2weight, ni->name, strlen(ni->name) + 1, NULL
-    );
-
-    if (!nl) {
-        return;
-    }
-
-    if (strstr(ni->name, "input")) {
-        for (int j = 0; j < nl->num; j++) {
-            char name[50] = {0};
-            sprintf(name, "hidden[0,%d]", j);
-            cpBody **body = htable_get(
-                view->h_name2physobj,
-                name, strlen(name) + 1, NULL
-            );
-            if (body && *body) {
-                Vector2 a = from_Vect(ni->body->p);
-                Vector2 b = from_Vect((*body)->p);
-                DrawLineV(a, b, BLACK);
-            }
-        }
-    } else if (strstr(ni->name, "hidden")) {
-        for (int j = 0; j < nl->num; j++) {
-            char name[50] = {0};
-            sprintf(name, "hidden[%d,%d]", ni->layer + 1, j);
-            //sprintf(name, "%s", ni->name);
-            //printf("name %s\n", name);
-            cpBody **body = htable_get(
-                view->h_name2physobj,
-                name, strlen(name) + 1, NULL
-            );
-            if (body && *body) {
-                //printf("found\n");
-                Vector2 a = from_Vect(ni->body->p);
-                Vector2 b = from_Vect((*body)->p);
-                DrawLineV(a, b, BLACK);
-            }
-        }
-    } else if (strstr(ni->name, "output")) {
-    }
-
-    for (int i = 0; i < nl->num; i++) {
-        //printf("%f ", nl->weights[i]);
-    }
-    //printf("\n");
+    draw_links(view, ni->layer - 1);
+    draw_links(view, ni->layer + 1);
 }
 
 void genann_print(const genann *net) {
