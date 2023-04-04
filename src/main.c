@@ -1,19 +1,17 @@
-#include <assert.h>
-#include <stddef.h>
-#include <raylib.h>
-#include "raymath.h"
-
-#include <math.h>
-#include <string.h>
-#include <stdio.h>
-#include <stdbool.h>
-#include <stdlib.h>
-#include <time.h>
-#include <unistd.h>
-
-#include "genann_view.h"
 #include "genann.h"
+#include "genann_view.h"
 #include "modelbox.h"
+#include "raylib.h"
+#include "raymath.h"
+#include <assert.h>
+#include <math.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+/*#include <unistd.h>*/
 
 static struct ModelBox     main_model;
 static struct ModelView    main_view;
@@ -448,7 +446,7 @@ int main(void) {
     srand(time(NULL));
     InitWindow(screen_width, screen_height, "2048");
 
-    net_viewer = genann_view_new();
+    net_viewer = genann_view_new("viewer");
     genann_view_position_set(net_viewer, (Vector2) { 0., -1000. });
 
     modelbox_init(&main_model);

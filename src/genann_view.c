@@ -119,7 +119,12 @@ void genann_view_free(struct genann_view *v) {
             v->space, (cpSpaceBodyIteratorFunc)PostBodyFree, 
             v->space
     );
-    space_shutdown(v->space);
+    space_shutdown((struct SpaceShutdownCtx){
+        .space = v->space,
+        .free_bodies = true,
+        .free_shapes = true,
+        .free_constraints = true,
+    });
     cpSpaceFree(v->space);
     if (v->ann)
         genann_free(v->ann);

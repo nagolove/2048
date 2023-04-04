@@ -1,4 +1,7 @@
 local sanit = false
+local inspect = require 'inspect'
+local caustic = loadfile("../caustic/caustic.lua")()
+--print('caustic', inspect(caustic))
 
 workspace "ray_example"
     configurations { "Debug", "Release" }
@@ -7,26 +10,13 @@ workspace "ray_example"
     includedirs { 
         "Chipmunk2d/include/",
         "Chipmunk2d/include/include",
-        "/home/nagolove/proekt80/src"
+        "../caustic/src",
     }
     buildoptions { 
         "-ggdb3",
         "-fPIC",
         "-Wall",
         --"-pedantic",
-    }
-    links { 
-        "m",
-        "raylib",
-        "chipmunk",
-        "caustic",
-        "lua",
-        "utf8proc",
-    }
-    libdirs { 
-        "Chipmunk2d/src/",
-        "utf8proc",
-        "/home/nagolove/proekt80",
     }
 
     language "C"
@@ -43,6 +33,12 @@ workspace "ray_example"
             "./*.h", 
             "./*.c",
         }
+        print(inspect((caustic.links)))
+        links(caustic.links)
+        links('caustic:static')
+        libdirs(caustic.libdirs)
+        print(inspect(caustic.libdirs))
+        --libdirs { "Chipmunk2d/src/", "../caustic/", }
         if sanit then
             linkoptions {
                 "-fsanitize=address",
