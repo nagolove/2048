@@ -1,23 +1,26 @@
 #include "modelbox.h"
 
-#include <raylib.h>
+#include "raylib.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
+#include "koh_logger.h"
 
 static const int quad_width = 128 + 64;
 
-static Color colors[5] = {
+static Color colors[] = {
     RED,
     ORANGE,
     GOLD,
     GREEN,
+    BLUE, 
     GRAY,
 };
 
 static void copy_field(
-    int dest[FIELD_SIZE][FIELD_SIZE], int source[FIELD_SIZE][FIELD_SIZE]
+    struct Cell dest[FIELD_SIZE][FIELD_SIZE], 
+    struct Cell source[FIELD_SIZE][FIELD_SIZE]
 ) {
     memmove(dest, source, sizeof(dest[0][0]) * FIELD_SIZE * FIELD_SIZE);
 }
@@ -26,8 +29,8 @@ static int find_max(struct ModelBox *mb) {
     int max = 0;
     for (int i = 0; i < FIELD_SIZE; i++)
         for (int j = 0; j < FIELD_SIZE; j++)
-            if (mb->field[i][j] > max)
-                max = mb->field[i][j];
+            if (mb->field[i][j].value > max)
+                max = mb->field[i][j].value;
 
     return max;
 }
@@ -36,7 +39,7 @@ static bool is_over(struct ModelBox *mb) {
     int num = 0;
     for (int i = 0; i < FIELD_SIZE; i++)
         for (int j = 0; j < FIELD_SIZE; j++)
-            if (mb->field[i][j] > 0)
+            if (mb->field[i][j].value > 0)
                 num++;
 
     //printf("is_over: %d\n", FIELD_SIZE * FIELD_SIZE == num);
@@ -48,25 +51,224 @@ static void put(struct ModelBox *mb) {
     int x = rand() % FIELD_SIZE;
     int y = rand() % FIELD_SIZE;
 
-    while (mb->field[x][y] != 0) {
+    while (mb->field[x][y].value != 0) {
         x = rand() % FIELD_SIZE;
         y = rand() % FIELD_SIZE;
     }
 
     float v = (float)rand() / (float)RAND_MAX;
     if (v >= 0. && v < 0.9)
-        mb->field[x][y] = 2;
+        mb->field[x][y].value = 2;
     else 
-        mb->field[x][y] = 4;
+        mb->field[x][y].value = 4;
 }
+
+/*
+static void sum_sub(
+    enum Direction dir,
+    struct Cell field_copy[FIELD_SIZE][FIELD_SIZE],
+    int i, int j,
+    int newi, int newj,
+    bool *moved,
+    struct ModelBox *mb
+) {
+    if (i > 0 && field_copy[newj][newi].value == field_copy[j][i].value) {
+        field_copy[newj][newi].value = field_copy[j][i].value * 2;
+        mb->scores += field_copy[j][i].value;
+        field_copy[j][i].value = 0;
+        *moved = true;
+        //printf("summarized vertical up\n");
+    }
+}
+*/
+
+static void sum(
+        enum Direction dir,
+        struct Cell field_copy[FIELD_SIZE][FIELD_SIZE],
+        int i, int j,
+        bool *moved,
+        struct ModelBox *mb
+) {
+    switch (dir) {
+        case DIR_UP: {
+            if (i > 0 && field_copy[j][i - 1].value == field_copy[j][i].value) {
+                
+                struct Cell *cur = &mb->queue[mb->queue_size++];
+                cur->from_i = i;
+                cur->from_j = j;
+                cur->to_i = i - 1;
+                cur->to_j = j;
+                cur->action = CA_SUM;
+
+                field_copy[j][i - 1].value = field_copy[j][i].value * 2;
+                mb->scores += field_copy[j][i].value;
+                field_copy[j][i].value = 0;
+                *moved = true;
+                //printf("summarized vertical up\n");
+            }
+            break;
+        }
+        case DIR_DOWN: {
+            if (i + 1 < FIELD_SIZE && 
+                field_copy[j][i + 1].value == field_copy[j][i].value) {
+
+
+                struct Cell *cur = &mb->queue[mb->queue_size++];
+                cur->from_i = i;
+                cur->from_j = j;
+                cur->to_i = i + 1;
+                cur->to_j = j;
+                cur->action = CA_SUM;
+
+                field_copy[j][i + 1].value = field_copy[j][i].value * 2;
+                mb->scores += field_copy[j][i].value;
+                field_copy[j][i].value = 0;
+                *moved = true;
+                //printf("summarized vertical down\n");
+            }
+            break;
+        }
+        case DIR_LEFT: {
+            if (j > 0 && field_copy[j - 1][i].value == field_copy[j][i].value) {
+
+
+                struct Cell *cur = &mb->queue[mb->queue_size++];
+                cur->from_i = i;
+                cur->from_j = j;
+                cur->to_i = i;
+                cur->to_j = j - 1;
+                cur->action = CA_SUM;
+
+                field_copy[j - 1][i].value = field_copy[j][i].value * 2;
+                mb->scores += field_copy[j][i].value;
+                field_copy[j][i].value = 0;
+                *moved = true;
+                //printf("summarized horizontal left\n");
+            }
+            break;
+        }
+        case DIR_RIGHT: {
+            if (j + 1 < FIELD_SIZE &&
+                field_copy[j + 1][i].value == field_copy[j][i].value) {
+
+                struct Cell *cur = &mb->queue[mb->queue_size++];
+                cur->from_i = i;
+                cur->from_j = j;
+                cur->to_i = i - 1;
+                cur->to_j = j + 1;
+                cur->action = CA_SUM;
+
+                field_copy[j + 1][i].value = field_copy[j][i].value * 2;
+                mb->scores += field_copy[j][i].value;
+                field_copy[j][i].value = 0;
+                *moved = true;
+                //printf("summarized horizontal right\n");
+            }
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+static void move(
+        struct ModelBox *mb,
+        enum Direction dir,
+        struct Cell field_copy[FIELD_SIZE][FIELD_SIZE],
+        int i, int j,
+        bool *moved
+) {
+    switch (dir) {
+        case DIR_UP: {
+            if (i > 0 && field_copy[j][i - 1].value == 0) {
+
+                struct Cell *cur = &mb->queue[mb->queue_size++];
+                cur->value = field_copy[j][i].value;
+                cur->from_i = i;
+                cur->from_j = j;
+                cur->to_i = i - 1;
+                cur->to_j = j;
+                cur->action = CA_MOVE;
+
+                field_copy[j][i - 1] = field_copy[j][i];
+                field_copy[j][i].value = 0;
+                *moved = true;
+                //printf("moved vertical up\n");
+            }
+            break;
+        }
+        case DIR_DOWN: {
+            if (i + 1 < FIELD_SIZE && field_copy[j][i + 1].value == 0) {
+
+
+                struct Cell *cur = &mb->queue[mb->queue_size++];
+                cur->value = field_copy[j][i].value;
+                cur->from_i = i;
+                cur->from_j = j;
+                cur->to_i = i + 1;
+                cur->to_j = j;
+                cur->action = CA_MOVE;
+
+                field_copy[j][i + 1] = field_copy[j][i];
+                field_copy[j][i].value = 0;
+                *moved = true;
+                //printf("moved vertical down\n");
+            }
+            break;
+        }
+        case DIR_LEFT: {
+            if (j > 0 && field_copy[j - 1][i].value == 0) {
+
+                struct Cell *cur = &mb->queue[mb->queue_size++];
+                cur->value = field_copy[j][i].value;
+                cur->from_i = i;
+                cur->from_j = j;
+                cur->to_i = i;
+                cur->to_j = j - 1;
+                cur->action = CA_MOVE;
+
+                field_copy[j - 1][i] = field_copy[j][i];
+                field_copy[j][i].value = 0;
+                *moved = true;
+                //printf("moved horizontal left\n");
+            }
+            break;
+        }
+        case DIR_RIGHT: {
+            if (j + 1 < FIELD_SIZE && field_copy[j + 1][i].value == 0) {
+
+
+                struct Cell *cur = &mb->queue[mb->queue_size++];
+                cur->value = field_copy[j][i].value;
+                cur->from_i = i;
+                cur->from_j = j;
+                cur->to_i = i;
+                cur->to_j = j + 1;
+                cur->action = CA_MOVE;
+
+                field_copy[j + 1][i] = field_copy[j][i];
+                field_copy[j][i].value = 0;
+                *moved = true;
+                //printf("moved horizontal right\n");
+            }
+            break;
+        default:
+            break;
+        }
+    }
+}
+
 
 static void update(struct ModelBox *mb, enum Direction dir) {
     assert(mb);
-    if (mb->state == MS_GAMEOVER)
+    if (mb->state == MBS_GAMEOVER)
         return;
 
+    mb->last_dir = dir;
+    mb->queue_size = 0;
+
     const int field_size_bytes = sizeof(mb->field[0][0]) * FIELD_SIZE * FIELD_SIZE;
-    int field_copy[FIELD_SIZE][FIELD_SIZE] = {0};
+    struct Cell field_copy[FIELD_SIZE][FIELD_SIZE] = {0};
     memmove(field_copy, mb->field, field_size_bytes);
 
     bool moved = false;
@@ -77,100 +279,16 @@ static void update(struct ModelBox *mb, enum Direction dir) {
 
         for (int i = 0; i < FIELD_SIZE; i++) {
             for (int j = 0; j < FIELD_SIZE; j++) {
-                if (field_copy[j][i] == 0) continue;
-
-                switch (dir) {
-                    case DIR_UP: {
-                        if (i > 0 && field_copy[j][i - 1] == 0) {
-                            field_copy[j][i - 1] = field_copy[j][i];
-                            field_copy[j][i] = 0;
-                            moved = true;
-                            //printf("moved vertical up\n");
-                        }
-                        break;
-                    }
-                    case DIR_DOWN: {
-                        if (i + 1 < FIELD_SIZE && field_copy[j][i + 1] == 0) {
-                            field_copy[j][i + 1] = field_copy[j][i];
-                            field_copy[j][i] = 0;
-                            moved = true;
-                            //printf("moved vertical down\n");
-                        }
-                        break;
-                    }
-                    case DIR_LEFT: {
-                        if (j > 0 && field_copy[j - 1][i] == 0) {
-                            field_copy[j - 1][i] = field_copy[j][i];
-                            field_copy[j][i] = 0;
-                            moved = true;
-                            //printf("moved horizontal left\n");
-                        }
-                        break;
-                    }
-                    case DIR_RIGHT: {
-                        if (j + 1 < FIELD_SIZE && field_copy[j + 1][i] == 0) {
-                            field_copy[j + 1][i] = field_copy[j][i];
-                            field_copy[j][i] = 0;
-                            moved = true;
-                            //printf("moved horizontal right\n");
-                        }
-                        break;
-                    }
-                }
+                if (field_copy[j][i].value == 0) continue;
+                move(mb, dir, field_copy, i, j, &moved);
             }
         }
 
         for (int i = 0; i < FIELD_SIZE; i++) {
             for (int j = 0; j < FIELD_SIZE; j++) {
-                if (field_copy[j][i] == 0) 
+                if (field_copy[j][i].value == 0) 
                     continue;
-
-                switch (dir) {
-                    case DIR_UP: {
-                        if (i > 0 && field_copy[j][i - 1] == field_copy[j][i]) {
-                            field_copy[j][i - 1] = field_copy[j][i] * 2;
-                            mb->scores += field_copy[j][i];
-                            field_copy[j][i] = 0;
-                            moved = true;
-                            //printf("summarized vertical up\n");
-                        }
-                        break;
-                    }
-                    case DIR_DOWN: {
-                        if (i + 1 < FIELD_SIZE && 
-                            field_copy[j][i + 1] == field_copy[j][i]) {
-
-                            field_copy[j][i + 1] = field_copy[j][i] * 2;
-                            mb->scores += field_copy[j][i];
-                            field_copy[j][i] = 0;
-                            moved = true;
-                            //printf("summarized vertical down\n");
-                        }
-                        break;
-                    }
-                    case DIR_LEFT: {
-                        if (j > 0 && field_copy[j - 1][i] == field_copy[j][i]) {
-                            field_copy[j - 1][i] = field_copy[j][i] * 2;
-                            mb->scores += field_copy[j][i];
-                            field_copy[j][i] = 0;
-                            moved = true;
-                            //printf("summarized horizontal left\n");
-                        }
-                        break;
-                    }
-                    case DIR_RIGHT: {
-                        if (j + 1 < FIELD_SIZE &&
-                            field_copy[j + 1][i] == field_copy[j][i]) {
-
-                            field_copy[j + 1][i] = field_copy[j][i] * 2;
-                            mb->scores += field_copy[j][i];
-                            field_copy[j][i] = 0;
-                            moved = true;
-                            //printf("summarized horizontal right\n");
-                        }
-                        break;
-                    }
-                }
+                sum(dir, field_copy, i, j, &moved, mb);
             }
         }
 
@@ -183,18 +301,21 @@ static void update(struct ModelBox *mb, enum Direction dir) {
     if (!is_over(mb))
         put(mb);
     else
-        mb->state = MS_GAMEOVER;
+        mb->state = MBS_GAMEOVER;
 
     if (find_max(mb) == WIN_VALUE)
-        mb->state = MS_WIN;
+        mb->state = MBS_WIN;
 }
 
 void modelbox_init(struct ModelBox *mb) {
     assert(mb);
     memset(mb, 0, sizeof(*mb));
     put(mb);
+    mb->last_dir = DIR_NONE;
     mb->update = update;
-    mb->state = MS_PROCESS;
+    mb->state = MBS_PROCESS;
+    mb->queue_cap = FIELD_SIZE * FIELD_SIZE;
+    mb->queue_size = 0;
 }
 
 static int cmp(const void *pa, const void *pb) {
@@ -203,11 +324,11 @@ static int cmp(const void *pa, const void *pb) {
 }
 
 static void sort_numbers(struct ModelView *mv, struct ModelBox *mb) {
-    int tmp[FIELD_SIZE * FIELD_SIZE] = {0};
+    struct Cell tmp[FIELD_SIZE * FIELD_SIZE] = {0};
     int idx = 0;
     for (int i = 0; i < FIELD_SIZE; i++)
         for (int j = 0; j < FIELD_SIZE; j++)
-            tmp[idx++] = mb->field[j][i];
+            tmp[idx++].value = mb->field[j][i].value;
 
     qsort(tmp, FIELD_SIZE * FIELD_SIZE, sizeof(mb->field[0][0]), cmp);
     memmove(mv->sorted, tmp, sizeof(mv->sorted));
@@ -239,11 +360,52 @@ static Color get_color(struct ModelView *mv, int value) {
     int colors_num = sizeof(colors) / sizeof(colors[0]);
     /*printf("colors_num %d\n", colors_num);*/
     for (int k = 0; k < colors_num; k++) {
-        if (value == mv->sorted[k]) {
+        if (value == mv->sorted[k].value) {
             return colors[k];
         }
     }
     return colors[colors_num - 1];
+}
+
+static void draw_cell(struct ModelView *mv, struct ModelBox *mb, int index) {
+    assert(mv);
+    assert(mb);
+    int fontsize = 90 / 2.;
+    float spacing = 2.;
+    //const int field_width = FIELD_SIZE * quad_width;
+    Vector2 start = mv->pos;
+
+    assert(index >= 0);
+    assert(index < mb->queue_cap);
+
+    struct Cell *cell = &mb->queue[index];
+    if (cell->action != CA_SUM)
+        return;
+
+    trace("draw_cell: value %d\n", cell->value);
+    trace("draw_cell: from_j %d, from_i %d\n", cell->from_j, cell->from_j);
+    trace("draw_cell: to_j %d, to_i %d\n", cell->to_j, cell->to_j);
+    trace("\n");
+
+    assert(cell);
+    //if (!cell) return;
+
+    char msg[64] = {0};
+    sprintf(msg, "%d", cell->value);
+    int textw = 0;
+
+    do {
+        Font f = GetFontDefault();
+        textw = MeasureTextEx(f, msg, fontsize--, spacing).x;
+        /*printf("fontsize %d\n", fontsize);*/
+    } while (textw > quad_width);
+
+    Vector2 pos = start;
+    pos.x += cell->to_j * quad_width + (quad_width - textw) / 2.;
+    pos.y += cell->to_i * quad_width + (quad_width - fontsize) / 2.;
+    //Color color = get_color(mv, cell->value);
+    Color color = DARKBLUE;
+    DrawTextEx(GetFontDefault(), msg, pos, fontsize, 0, color);
 }
 
 static void draw_numbers(struct ModelView *mv, struct ModelBox *mb) {
@@ -255,33 +417,53 @@ static void draw_numbers(struct ModelView *mv, struct ModelBox *mb) {
     Vector2 start = mv->pos;
     for (int i = 0; i < FIELD_SIZE; i++) {
         for (int j = 0; j < FIELD_SIZE; j++) {
-            if (mb->field[j][i] == 0)
+            if (mb->field[j][i].value == 0)
                 continue;
 
             char msg[64] = {0};
-            sprintf(msg, "%d", mb->field[j][i]);
+            sprintf(msg, "%d", mb->field[j][i].value);
             int textw = 0;
 
             do {
-                textw = MeasureTextEx(GetFontDefault(), msg, fontsize--, spacing).x;
+                Font f = GetFontDefault();
+                textw = MeasureTextEx(f, msg, fontsize--, spacing).x;
                 /*printf("fontsize %d\n", fontsize);*/
             } while (textw > quad_width);
 
             Vector2 pos = start;
             pos.x += j * quad_width + (quad_width - textw) / 2.;
             pos.y += i * quad_width + (quad_width - fontsize) / 2.;
-            Color color = get_color(mv, mb->field[j][i]);
+            Color color = get_color(mv, mb->field[j][i].value);
             DrawTextEx(GetFontDefault(), msg, pos, fontsize, 0, color);
         }
     }
 }
+
+#define TMR_BLOCK_TIME  1.5
 
 static void draw(struct ModelView *mv, struct ModelBox *mb) {
     assert(mv);
     assert(mb);
     sort_numbers(mv, mb);
     draw_field(mv);
+
+    /*
+    if (mv->state == MVS_READY) {
+        mv->tmr_block = GetTime();
+        mv->state = MVS_ANIMATION;
+    } else if (mv->state == MVS_ANIMATION) {
+        double now = GetTime();
+        if (now - mv->tmr_block >= TMR_BLOCK_TIME) {
+            mv->state = MVS_READY;
+        } else {
+            DrawCircle(GetScreenWidth() / 2., GetScreenHeight() / 2., 40, BLUE);
+        }
+    }
+    */
+
     draw_numbers(mv, mb);
+    for (int i = 0; i < mb->queue_size; i++)
+        draw_cell(mv, mb, i);
 }
 
 void modelview_init(struct ModelView *mv, Vector2 *pos, struct ModelBox *mb) {
@@ -296,6 +478,8 @@ void modelview_init(struct ModelView *mv, Vector2 *pos, struct ModelBox *mb) {
         };
     } else 
         mv->pos = *pos;
+    mv->state = MVS_READY;
     mv->draw = draw;
+    mv->tmr_block = GetTime();
 }
 

@@ -448,8 +448,10 @@ int main(void) {
     srand(time(NULL));
     InitWindow(screen_width, screen_height, "2048");
 
-    net_viewer = genann_view_new();
+    /*
+    net_viewer = genann_view_new("dd");
     genann_view_position_set(net_viewer, (Vector2) { 0., -1000. });
+    */
 
     modelbox_init(&main_model);
     modelview_init(&main_view, NULL, &main_model);

@@ -1,5 +1,6 @@
 #include "genann.h"
 #include "genann_view.h"
+#include "koh_logger.h"
 #include "modelbox.h"
 #include "raylib.h"
 #include "raymath.h"
@@ -24,6 +25,7 @@ static const int screen_height = 1080;
 static const char *trained_fname = "trained.binary";
 
 static Camera2D camera = { 0 };
+static const double MAX_VALUE = 2048;
 
 genann *load() {
     FILE *file = fopen(trained_fname, "r");
@@ -44,6 +46,9 @@ void trained_free() {
 }
 
 void input() {
+    if (main_view.state != MVS_READY)
+        return;
+
     if (IsKeyPressed(KEY_LEFT)) {
         main_model.update(&main_model, DIR_LEFT);
     } else if (IsKeyPressed(KEY_RIGHT)) {
@@ -86,8 +91,6 @@ void draw_scores() {
     DrawText(msg, pos.x, pos.y, fontsize, BLUE);
 }
 
-const double MAX_VALUE = 2048;
-
 void print_inputs(const double *inputs, int inputs_num) {
     printf("print_inputs: ");
     for (int i = 0; i < inputs_num; i++) {
@@ -104,7 +107,7 @@ void write_normalized_inputs(struct ModelBox *mb, double *inputs) {
     int idx = 0;
     for (int i = 0; i < FIELD_SIZE; i++)
         for (int j = 0; j < FIELD_SIZE; j++) 
-            inputs[idx++] = mb->field[j][i];
+            inputs[idx++] = mb->field[j][i].value;
 
     for (int i = 0; i < inputs_num; i++) {
         inputs[i] = inputs[i] / MAX_VALUE;
@@ -392,15 +395,17 @@ genann_view *printing_test() {
 }
 
 void update() {
-    camera_process();
+    /*camera_process();*/
+    /*
     if (IsKeyPressed(KEY_A)) {
         automode = !automode;
     } else if (IsKeyPressed(KEY_T)) {
         train();
     }
+    */
 
     if (!automode) {
-        if (main_model.state != MS_GAMEOVER)
+        if (main_model.state != MBS_GAMEOVER)
             input();
     } else {
         auto_play();
@@ -417,11 +422,11 @@ void update() {
     main_view.draw(&main_view, &main_model);
     draw_scores();
     switch (main_model.state) {
-        case MS_GAMEOVER: {
+        case MBS_GAMEOVER: {
             draw_over();
             break;
         }
-        case MS_WIN: {
+        case MBS_WIN: {
             draw_win();
             break;
         }
@@ -431,9 +436,11 @@ void update() {
     //genann_view_prepare(net_viewer, trained);
     //genann_view_draw(net_viewer);
 
+    /*
     Vector2 mouse_point = GetScreenToWorld2D(GetMousePosition(), camera);
     genann_view_draw(view_test);
     genann_view_update(view_test, mouse_point);
+    */
 
     EndMode2D();
     EndDrawing();
@@ -456,6 +463,8 @@ int main(void) {
     genann_print(trained);
     genann_print_run(trained);
 
+    logger_init();
+
     view_test = printing_test();
 
     SetTargetFPS(60);
@@ -465,10 +474,14 @@ int main(void) {
     }
 
     CloseWindow();
+
+    /*
     genann_view_free(net_viewer);
     trained_free();
 
     genann_view_free(view_test);
+    */
+    logger_shutdown();
 
     return 0;
 }

@@ -11,26 +11,49 @@ enum Direction {
     DIR_RIGHT,
     DIR_DOWN,
     DIR_UP,
+    DIR_NONE,
 };
 
-enum ModelState {
-    MS_PROCESS,
-    MS_WIN,
-    MS_GAMEOVER,
+enum ModelBoxState {
+    MBS_PROCESS,
+    MBS_WIN,
+    MBS_GAMEOVER,
+};
+
+enum CellAction {
+    CA_MOVE,
+    CA_SUM,
+};
+
+struct Cell {
+    int value;
+    //void (*on_move)(struct Cell *cell, int fromj, int fromi, int toj, int toi);
+    int from_j, from_i, to_j, to_i;
+    enum CellAction action;
 };
 
 struct ModelBox {
     // x:y
-    int  field[FIELD_SIZE][FIELD_SIZE];
     int  scores;
-    enum ModelState state;
+    struct Cell         field[FIELD_SIZE][FIELD_SIZE];
+    struct Cell         queue[FIELD_SIZE * FIELD_SIZE];
+    int                 queue_cap, queue_size;
+    enum ModelBoxState  state;
+    enum Direction      last_dir;
     void (*update)(struct ModelBox *mb, enum Direction dir);
 };
 
+enum ModelViewState {
+    MVS_ANIMATION,
+    MVS_READY,
+};
+
 struct ModelView {
-    int     field_prev[FIELD_SIZE][FIELD_SIZE];
-    int     sorted[FIELD_SIZE * FIELD_SIZE];
+    struct Cell         sorted[FIELD_SIZE * FIELD_SIZE];
     Vector2 pos;
+    enum ModelViewState state;
+    struct Cell         field_prev[FIELD_SIZE][FIELD_SIZE];
+    double              tmr_block;
     void    (*draw)(struct ModelView *mv, struct ModelBox *mb);
 };
 
