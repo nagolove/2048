@@ -1,5 +1,5 @@
-#include "genann.h"
-#include "genann_view.h"
+//#include "genann.h"
+//#include "genann_view.h"
 #include "koh_logger.h"
 #include "modelbox.h"
 #include "raylib.h"
@@ -27,6 +27,7 @@ static const char *trained_fname = "trained.binary";
 static Camera2D camera = { 0 };
 static const double MAX_VALUE = 2048;
 
+/*
 genann *load() {
     FILE *file = fopen(trained_fname, "r");
     genann *ret = NULL;
@@ -37,25 +38,42 @@ genann *load() {
     fclose(file);
     return ret;
 }
+*/
 
+/*
 void trained_free() {
     if (trained) {
         genann_free(trained);
         trained = NULL;
     }
 }
+*/
 
 void input() {
+    if (IsKeyPressed(KEY_R)) {
+        modelbox_shutdown(&main_model);
+        modelview_shutdown(&main_view);
+        modelbox_init(&main_model);
+        modelview_init(&main_view, NULL, &main_model);
+    }
+
+
+    main_model.queue_size = 0;
+
     if (main_view.state != MVS_READY)
         return;
 
     if (IsKeyPressed(KEY_LEFT)) {
+        main_view.expired_cells_num = 0;
         main_model.update(&main_model, DIR_LEFT);
     } else if (IsKeyPressed(KEY_RIGHT)) {
+        main_view.expired_cells_num = 0;
         main_model.update(&main_model, DIR_RIGHT);
     } else if (IsKeyPressed(KEY_UP)) {
+        main_view.expired_cells_num = 0;
         main_model.update(&main_model, DIR_UP);
     } else if (IsKeyPressed(KEY_DOWN)) {
+        main_view.expired_cells_num = 0;
         main_model.update(&main_model, DIR_DOWN);
     }
 }
@@ -129,6 +147,7 @@ int out2dir(const double *outputs) {
     return max_index;
 }
 
+/*
 void auto_play() {
     assert(trained);
 
@@ -144,11 +163,12 @@ const double    ERROR_EPSILON = 0.01;
 const int       STEPS_NUM = 4;
 
 void ann_shake(genann *net) {
-    /* Take a random guess at the ANN weights. */
+     //Take a random guess at the ANN weights. 
     for (int i = 0; i < net->total_weights; ++i) {
         net->weight[i] += ((double)rand())/RAND_MAX-0.5;
     }
 }
+*/
 
 /*
 void train() {
@@ -233,104 +253,7 @@ void train() {
 }
 */
 
-struct Set {
-    genann          **nets;
-    struct ModelBox *models;
-    int             num;
-};
-
-struct Set *set_new(int agents_num) {
-    struct Set *s = malloc(sizeof(*s));
-    s->num = agents_num;
-    s->nets = calloc(sizeof(s->nets[0]), agents_num);
-    s->models = calloc(sizeof(s->models[0]), agents_num);
-    for (int i = 0; i < s->num; i++) {
-        s->nets[i] = genann_init(
-            FIELD_SIZE * FIELD_SIZE,
-            1, 
-            FIELD_SIZE * FIELD_SIZE, 
-            4
-        );
-        modelbox_init(&s->models[i]);
-    }
-    return s;
-}
-
-void set_shutdown(struct Set *s) {
-    assert(s);
-    for (int i = 0; i < s->num; ++i) {
-        genann_free(s->nets[i]);
-    }
-    free(s->nets);
-}
-
-void set_remove_one(struct Set *s, int index) {
-    assert(s);
-    assert(index >= 0);
-    assert(index < s->num);
-
-    genann_free(s->nets[index]);
-    s->nets[index] = s->nets[s->num - 1];
-    s->models[index] = s->models[s->num - 1];
-    --s->num;
-}
-
-int set_find_min_index(struct Set *s) {
-    int min_scores = 3000;
-    int min_index = -1;
-    for (int k = 0; k < s->num; k++) {
-        //printf("k %d\n", k);
-        if (s->models[k].scores < min_scores) {
-            min_scores = s->models[k].scores;
-            min_index = k;
-        }
-    }
-    return min_index;
-}
-
-struct Set *set_select(struct Set *s) {
-    assert(s);
-    int num = s->num - 1;
-    printf("set_select: num %d\n", num);
-    assert(num >= 1);
-
-    const int remove_num = 4;
-    for (int i = 0; i < remove_num; i++) {
-        int min_index = set_find_min_index(s);
-        assert(min_index != -1);
-        set_remove_one(s, min_index);
-    }
-
-    struct Set *new = malloc(sizeof(*new));
-    new->num = s->num;
-    new->nets = calloc(sizeof(new->nets[0]), s->num);
-    new->models = calloc(sizeof(new->models[0]), s->num);
-
-    for (int i = 0; i < s->num; ++i) {
-        new->nets[i] = genann_copy(s->nets[i]);
-        new->models[i] = s->models[i];
-    }
-
-    return new;
-}
-
-void set_train(struct Set *s) {
-}
-
-void set_write(struct Set *s) {
-    assert(s);
-    printf("set_write: num %d\n", s->num);
-    for (int j = 0; j < s->num; ++j) {
-        char fname[100] = {0};
-        sprintf(fname, "bin/trained_%.3d.binary", j);
-        FILE *file = fopen(fname, "w");
-        if (file) {
-            genann_write(s->nets[j], file);
-            fclose(file);
-        }
-    }
-}
-
+/*
 void train() {
     printf("training\n");
     // Стратегия обучения?
@@ -348,6 +271,7 @@ void train() {
 
     set_shutdown(s);
 }
+*/
 
 void camera_process() {
     if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT))
@@ -380,6 +304,7 @@ void camera_process() {
     }
 }
 
+/*
 static genann_view *view_test = NULL;
 
 genann_view *printing_test() {
@@ -393,6 +318,7 @@ genann_view *printing_test() {
     genann_free(ann);
     return view;
 }
+*/
 
 void update() {
     /*camera_process();*/
@@ -408,7 +334,7 @@ void update() {
         if (main_model.state != MBS_GAMEOVER)
             input();
     } else {
-        auto_play();
+        //auto_play();
     }
 
     if (IsKeyPressed(KEY_SPACE)) {
@@ -453,19 +379,23 @@ int main(void) {
     srand(time(NULL));
     InitWindow(screen_width, screen_height, "2048");
 
+    /*
     net_viewer = genann_view_new("viewer");
     genann_view_position_set(net_viewer, (Vector2) { 0., -1000. });
+    */
 
     modelbox_init(&main_model);
     modelview_init(&main_view, NULL, &main_model);
 
+    /*
     trained = load();
     genann_print(trained);
     genann_print_run(trained);
+    */
 
     logger_init();
 
-    view_test = printing_test();
+    //view_test = printing_test();
 
     SetTargetFPS(60);
 
@@ -481,6 +411,10 @@ int main(void) {
 
     genann_view_free(view_test);
     */
+
+    modelbox_shutdown(&main_model);
+    modelview_shutdown(&main_view);
+
     logger_shutdown();
 
     return 0;

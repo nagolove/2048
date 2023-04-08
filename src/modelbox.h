@@ -32,6 +32,17 @@ struct Cell {
     enum CellAction action;
 };
 
+struct Timer {
+    double  start, duration;
+    bool    expired;
+    void    *data;
+};
+
+enum ModelViewState {
+    MVS_ANIMATION,
+    MVS_READY,
+};
+
 struct ModelBox {
     // x:y
     int  scores;
@@ -41,22 +52,25 @@ struct ModelBox {
     enum ModelBoxState  state;
     enum Direction      last_dir;
     void (*update)(struct ModelBox *mb, enum Direction dir);
-};
-
-enum ModelViewState {
-    MVS_ANIMATION,
-    MVS_READY,
+    bool                dropped;
 };
 
 struct ModelView {
+    struct Timer        timers[FIELD_SIZE * FIELD_SIZE * 2];
+    int                 timers_cap, timers_size;
+
+    struct Cell         *expired_cells[FIELD_SIZE * FIELD_SIZE];
+    int                 expired_cells_num, expired_cells_cap;
     struct Cell         sorted[FIELD_SIZE * FIELD_SIZE];
     Vector2 pos;
     enum ModelViewState state;
     struct Cell         field_prev[FIELD_SIZE][FIELD_SIZE];
     double              tmr_block;
     void    (*draw)(struct ModelView *mv, struct ModelBox *mb);
+    bool                dropped;
 };
 
 void modelbox_init(struct ModelBox *mb);
 void modelview_init(struct ModelView *mv, Vector2 *pos, struct ModelBox *mb);
-
+void modelbox_shutdown(struct ModelBox *mb);
+void modelview_shutdown(struct ModelView *mv);

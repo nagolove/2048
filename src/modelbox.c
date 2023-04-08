@@ -112,7 +112,6 @@ static void sum(
             if (i + 1 < FIELD_SIZE && 
                 field_copy[j][i + 1].value == field_copy[j][i].value) {
 
-
                 struct Cell *cur = &mb->queue[mb->queue_size++];
                 cur->from_i = i;
                 cur->from_j = j;
@@ -316,6 +315,7 @@ void modelbox_init(struct ModelBox *mb) {
     mb->state = MBS_PROCESS;
     mb->queue_cap = FIELD_SIZE * FIELD_SIZE;
     mb->queue_size = 0;
+    mb->dropped = true;
 }
 
 static int cmp(const void *pa, const void *pb) {
@@ -367,6 +367,68 @@ static Color get_color(struct ModelView *mv, int value) {
     return colors[colors_num - 1];
 }
 
+static const char *action2str(enum CellAction action) {
+    static char str[64] = {0};
+    memset(str, 0, sizeof(str));
+    switch (action) {
+        case CA_SUM: {
+            strcpy(str, "sum");
+        break;
+        }
+        case CA_MOVE: {
+            strcpy(str, "move");
+        break;
+        }
+        default:
+            printf("bad value in action2str()\n");
+            exit(EXIT_FAILURE);
+    }
+    return str;
+}
+
+static void cell_draw(struct ModelView *mv, struct Cell *cell) {
+    assert(mv);
+    int fontsize = 90;
+    float spacing = 2.;
+    //const int field_width = FIELD_SIZE * quad_width;
+    Vector2 start = mv->pos;
+
+    trace("cell_draw: value %d\n", cell->value);
+    trace(
+        "cell_draw: from (%d, %d) to (%d, %d)\n", 
+        cell->from_j, cell->from_i,
+        cell->to_j, cell->to_i
+    );
+    trace("\n");
+
+    assert(cell);
+    //if (!cell) return;
+
+    // Создать таймер для каждого движения в очереди
+    // Обработать события всех таймеров
+    // Удалить закончившиеся таймеры.
+    //
+    // Таймеры для фиксированнного значения fps, длятся duration секунд.
+
+    char msg[64] = {0};
+    //sprintf(msg, "%d [%s]", cell->value, action2str(cell->action));
+    sprintf(msg, "%d", cell->value);
+    int textw = 0;
+
+    do {
+        Font f = GetFontDefault();
+        textw = MeasureTextEx(f, msg, fontsize--, spacing).x;
+        /*printf("fontsize %d\n", fontsize);*/
+    } while (textw > quad_width);
+
+    Vector2 pos = start;
+    pos.x += cell->to_j * quad_width + (quad_width - textw) / 2.;
+    pos.y += cell->to_i * quad_width + (quad_width - fontsize) / 2.;
+    Color color = get_color(mv, cell->value);
+    //Color color = DARKBLUE;
+    DrawTextEx(GetFontDefault(), msg, pos, fontsize, 0, color);
+}
+
 static void draw_cell(struct ModelView *mv, struct ModelBox *mb, int index) {
     assert(mv);
     assert(mb);
@@ -379,8 +441,8 @@ static void draw_cell(struct ModelView *mv, struct ModelBox *mb, int index) {
     assert(index < mb->queue_cap);
 
     struct Cell *cell = &mb->queue[index];
-    if (cell->action != CA_SUM)
-        return;
+    //if (cell->action != CA_SUM)
+        //return;
 
     trace("draw_cell: value %d\n", cell->value);
     trace("draw_cell: from_j %d, from_i %d\n", cell->from_j, cell->from_j);
@@ -390,8 +452,14 @@ static void draw_cell(struct ModelView *mv, struct ModelBox *mb, int index) {
     assert(cell);
     //if (!cell) return;
 
+    // Создать таймер для каждого движения в очереди
+    // Обработать события всех таймеров
+    // Удалить закончившиеся таймеры.
+    //
+    // Таймеры для фиксированнного значения fps, длятся duration секунд.
+
     char msg[64] = {0};
-    sprintf(msg, "%d", cell->value);
+    sprintf(msg, "%d [%s]", cell->value, action2str(cell->action));
     int textw = 0;
 
     do {
@@ -441,6 +509,67 @@ static void draw_numbers(struct ModelView *mv, struct ModelBox *mb) {
 
 #define TMR_BLOCK_TIME  1.5
 
+static void timer_add(struct ModelView *mv, void *udata, size_t sz) {
+    trace(
+        "timer_add: timer_size %d, timers_cap %d\n",
+        mv->timers_size, 
+        mv->timers_cap
+    );
+    assert(mv->timers_size + 1 < mv->timers_cap);
+    struct Timer *tmr = &mv->timers[mv->timers_size++];
+    tmr->start = GetTime();
+    tmr->duration = 0.5;
+    tmr->expired = false;
+    tmr->data = malloc(sz);
+    memmove(tmr->data, udata, sz);
+}
+
+static void tmr_update(struct Timer *t, void *udata) {
+    struct Cell *cell = t->data;
+    struct ModelView *mv = udata;
+    trace("tmr_update: udata %p\n", udata);
+    cell_draw(mv, cell);
+}
+
+static void timers_remove_expired(
+    struct ModelView *mv,
+    struct Cell **expired_cells,
+    int *expired_cells_num
+) {
+    assert(expired_cells_num);
+    assert(expired_cells);
+
+    //*expired_cells_num = 0;
+
+    struct Timer tmp[mv->timers_cap];
+    memset(tmp, 0, sizeof(tmp));
+    int tmp_size = 0;
+    for (int i = 0; i < mv->timers_size; i++) {
+        if (!mv->timers[i].expired) {
+            tmp[tmp_size++] = mv->timers[i];
+        } else {
+            // Не осбобожнать память, а возвращать в виде массива
+            if (mv->timers[i].data) {
+                //free(mv->timers[i].data);
+                struct Cell *cell = (struct Cell*)mv->timers[i].data;
+                expired_cells[(*expired_cells_num)++] = cell;
+            }
+        }
+    }
+    memmove(mv->timers, tmp, sizeof(tmp[0]) * tmp_size);
+    mv->timers_size = tmp_size;
+}
+
+static void timers_update(struct ModelView *mv) {
+    for (int i = 0; i < mv->timers_size; i++) {
+        double now = GetTime();
+        if (now - mv->timers[i].start >= mv->timers[i].duration) {
+            tmr_update(&mv->timers[i], mv);
+            mv->timers[i].expired = true;
+        }
+    }
+}
+
 static void draw(struct ModelView *mv, struct ModelBox *mb) {
     assert(mv);
     assert(mb);
@@ -461,14 +590,35 @@ static void draw(struct ModelView *mv, struct ModelBox *mb) {
     }
     */
 
-    draw_numbers(mv, mb);
-    for (int i = 0; i < mb->queue_size; i++)
-        draw_cell(mv, mb, i);
+    //draw_numbers(mv, mb);
+    //trace("draw: mb->queue_size %d\n", mb->queue_size);
+    for (int i = 0; i < mb->queue_size; i++) {
+        //draw_cell(mv, mb, i);
+        timer_add(mv, &mb->queue[i], sizeof(mb->queue[0]));
+    }
+    timers_update(mv);
+
+    //struct Cell *expired_cells[FIELD_SIZE * FIELD_SIZE] = {0};
+    //int expired_cells_num = 0;
+    timers_remove_expired(mv, mv->expired_cells, &mv->expired_cells_num);
+
+    if (mv->timers_size == 0)
+        mv->state = MVS_READY;
+    else mv->state = MVS_ANIMATION;
+    trace("draw: mv->timers_size %d\n", mv->timers_size);
+
+
+    // Рисовать фигуры оставшиеся после просроченных таймеров
+    // Как удалять избыток фигур?
+    for (int j = 0; j < mv->expired_cells_num; j++) {
+        cell_draw(mv, mv->expired_cells[j]);
+    }
 }
 
 void modelview_init(struct ModelView *mv, Vector2 *pos, struct ModelBox *mb) {
     assert(mv);
     assert(mb);
+    //memset(mv, 0, sizeof(*mv));
     copy_field(mv->field_prev, mb->field);
     const int field_width = FIELD_SIZE * quad_width;
     if (!pos) {
@@ -478,8 +628,25 @@ void modelview_init(struct ModelView *mv, Vector2 *pos, struct ModelBox *mb) {
         };
     } else 
         mv->pos = *pos;
+    mv->timers_cap = FIELD_SIZE * FIELD_SIZE * 2;
+    mv->timers_size = 0;
     mv->state = MVS_READY;
     mv->draw = draw;
     mv->tmr_block = GetTime();
+    mv->expired_cells_cap = FIELD_SIZE * FIELD_SIZE;
+    mv->dropped = false;
 }
+
+void modelbox_shutdown(struct ModelBox *mb) {
+    assert(mb);
+    memset(mb, 0, sizeof(mb));
+    mb->dropped = true;
+}
+
+void modelview_shutdown(struct ModelView *mv) {
+    assert(mv);
+    memset(mv, 0, sizeof(*mv));
+    mv->dropped = true;
+}
+
 
