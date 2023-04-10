@@ -6,6 +6,10 @@
 #include <assert.h>
 #include <string.h>
 #include "koh_logger.h"
+#include "koh_console.h"
+#include "koh_common.h"
+#include "koh_routine.h"
+#include "raymath.h"
 
 static const int quad_width = 128 + 64;
 
@@ -386,13 +390,33 @@ static const char *action2str(enum CellAction action) {
     return str;
 }
 
-static void cell_draw(struct ModelView *mv, struct Cell *cell) {
+struct DrawOpts {
+    int     fontsize;
+    Vector2 offset_coef; // 1. is default value
+    bool    custom_color;
+    Color   color;
+    double  amount;
+};
+
+static const struct DrawOpts dflt_draw_opts = {
+    .offset_coef = {
+        1.,
+        1.,
+    },
+    .fontsize = 90,
+    .custom_color = false,
+};
+
+static void cell_draw(
+    struct ModelView *mv, struct Cell *cell, struct DrawOpts opts
+) {
     assert(mv);
-    int fontsize = 90;
+    int fontsize = opts.fontsize;
     float spacing = 2.;
     //const int field_width = FIELD_SIZE * quad_width;
     Vector2 start = mv->pos;
 
+    /*
     trace("cell_draw: value %d\n", cell->value);
     trace(
         "cell_draw: from (%d, %d) to (%d, %d)\n", 
@@ -400,6 +424,7 @@ static void cell_draw(struct ModelView *mv, struct Cell *cell) {
         cell->to_j, cell->to_i
     );
     trace("\n");
+    */
 
     assert(cell);
     //if (!cell) return;
@@ -422,11 +447,48 @@ static void cell_draw(struct ModelView *mv, struct Cell *cell) {
     } while (textw > quad_width);
 
     Vector2 pos = start;
-    pos.x += cell->to_j * quad_width + (quad_width - textw) / 2.;
-    pos.y += cell->to_i * quad_width + (quad_width - fontsize) / 2.;
-    Color color = get_color(mv, cell->value);
+    // TODO: Как сделать offset_coef рабочим в диапазоне -1..1
+    // Значение по умолчанию - 0
+    // -1 - смещение влево
+    /*
+    
+    // 1 - смещение вправо
+    Vector2 offset = {
+        (quad_width - textw) / 2.,
+        opts.offset_coef.x * (quad_width - fontsize) / 2.,
+    };
+    pos.x += cell->to_j * quad_width + offset.x;
+    pos.y += cell->to_i * quad_width + offset.y;
+
+    */
+
+    Vector2 offset = {
+        opts.offset_coef.x * (quad_width - textw) / 2.,
+        opts.offset_coef.x * (quad_width - fontsize) / 2.,
+    };
+
+    assert(opts.amount >= 0 && opts.amount <= 1.);
+    Vector2 base_pos = {
+        Lerp(cell->from_j, cell->to_j, opts.amount),
+        Lerp(cell->from_i, cell->to_i, opts.amount),
+    };
+
+    trace("cell_draw: opts.amount %f\n", opts.amount);
+    trace("cell_draw: cell %p, base_pos %s\n", cell, Vector2_tostr(base_pos));
+
+    /*
+    pos.x += base_pos * quad_width + offset.x;
+    pos.y += base_pos * quad_width + offset.y;
+    */
+
+    Vector2 disp = Vector2Add(Vector2Scale(base_pos, quad_width), offset);
+    pos = Vector2Add(pos, disp);
+
+    Color color = opts.custom_color ? opts.color : get_color(mv, cell->value);
     //Color color = DARKBLUE;
     DrawTextEx(GetFontDefault(), msg, pos, fontsize, 0, color);
+
+    // text_draw_in_rect((Rectangle), ALIGN_LEFT, pos, font, fontsize);
 }
 
 static void draw_cell(struct ModelView *mv, struct ModelBox *mb, int index) {
@@ -476,20 +538,20 @@ static void draw_cell(struct ModelView *mv, struct ModelBox *mb, int index) {
     DrawTextEx(GetFontDefault(), msg, pos, fontsize, 0, color);
 }
 
-static void draw_numbers(struct ModelView *mv, struct ModelBox *mb) {
+static void draw_numbers(struct ModelView *mv, Field field) {
     assert(mv);
-    assert(mb);
+    assert(field);
     int fontsize = 90;
     float spacing = 2.;
     //const int field_width = FIELD_SIZE * quad_width;
     Vector2 start = mv->pos;
     for (int i = 0; i < FIELD_SIZE; i++) {
         for (int j = 0; j < FIELD_SIZE; j++) {
-            if (mb->field[j][i].value == 0)
+            if (field[j][i].value == 0)
                 continue;
 
             char msg[64] = {0};
-            sprintf(msg, "%d", mb->field[j][i].value);
+            sprintf(msg, "%d", field[j][i].value);
             int textw = 0;
 
             do {
@@ -501,7 +563,7 @@ static void draw_numbers(struct ModelView *mv, struct ModelBox *mb) {
             Vector2 pos = start;
             pos.x += j * quad_width + (quad_width - textw) / 2.;
             pos.y += i * quad_width + (quad_width - fontsize) / 2.;
-            Color color = get_color(mv, mb->field[j][i].value);
+            Color color = get_color(mv, field[j][i].value);
             DrawTextEx(GetFontDefault(), msg, pos, fontsize, 0, color);
         }
     }
@@ -517,18 +579,27 @@ static void timer_add(struct ModelView *mv, void *udata, size_t sz) {
     );
     assert(mv->timers_size + 1 < mv->timers_cap);
     struct Timer *tmr = &mv->timers[mv->timers_size++];
-    tmr->start = GetTime();
+    tmr->start_time = GetTime();
     tmr->duration = 0.5;
     tmr->expired = false;
     tmr->data = malloc(sz);
     memmove(tmr->data, udata, sz);
 }
 
+static const struct DrawOpts special_draw_opts = {
+    .color = BLUE,
+    .custom_color = true,
+    .fontsize = 40,
+    .offset_coef = { 0., 0., },
+};
+
 static void tmr_update(struct Timer *t, void *udata) {
     struct Cell *cell = t->data;
     struct ModelView *mv = udata;
-    trace("tmr_update: udata %p\n", udata);
-    cell_draw(mv, cell);
+    /*trace("tmr_update: udata %p\n", udata);*/
+    struct DrawOpts opts = special_draw_opts;
+    opts.amount = t->amount;
+    cell_draw(mv, cell, opts);
 }
 
 static void timers_remove_expired(
@@ -548,7 +619,6 @@ static void timers_remove_expired(
         if (!mv->timers[i].expired) {
             tmp[tmp_size++] = mv->timers[i];
         } else {
-            // Не осбобожнать память, а возвращать в виде массива
             if (mv->timers[i].data) {
                 //free(mv->timers[i].data);
                 struct Cell *cell = (struct Cell*)mv->timers[i].data;
@@ -563,12 +633,29 @@ static void timers_remove_expired(
 static void timers_update(struct ModelView *mv) {
     for (int i = 0; i < mv->timers_size; i++) {
         double now = GetTime();
-        if (now - mv->timers[i].start >= mv->timers[i].duration) {
-            tmr_update(&mv->timers[i], mv);
-            mv->timers[i].expired = true;
+        struct Timer *timer = &mv->timers[i];
+        timer->amount = (now - timer->start_time) / timer->duration;
+        if (now - timer->start_time >= timer->duration) {
+            timer->expired = true;
+        } else {
+            trace(
+                "timers_update: timer %p, amount %f\n", timer, timer->amount
+            );
+            tmr_update(timer, mv);
         }
     }
 }
+const char *dir2str(enum Direction dir) {
+    static char buf[32] = {0};
+    switch (dir) {
+        case DIR_LEFT: sprintf(buf, "%s", "LEFT"); break;
+        case DIR_RIGHT: sprintf(buf, "%s", "RIGHT"); break;
+        case DIR_DOWN: sprintf(buf, "%s", "DOWN"); break;
+        case DIR_UP: sprintf(buf, "%s", "UP"); break;
+        case DIR_NONE: sprintf(buf, "%s", "NONE"); break;
+    }
+    return buf;
+};
 
 static void draw(struct ModelView *mv, struct ModelBox *mb) {
     assert(mv);
@@ -590,32 +677,58 @@ static void draw(struct ModelView *mv, struct ModelBox *mb) {
     }
     */
 
-    //draw_numbers(mv, mb);
+    draw_numbers(mv, mb->field);
+
+    console_write("timers num: %d\n", mv->timers_size);
+    console_write("last dir: %s\n", dir2str(mb->last_dir));
+
     //trace("draw: mb->queue_size %d\n", mb->queue_size);
     for (int i = 0; i < mb->queue_size; i++) {
-        //draw_cell(mv, mb, i);
         timer_add(mv, &mb->queue[i], sizeof(mb->queue[0]));
     }
     timers_update(mv);
 
-    //struct Cell *expired_cells[FIELD_SIZE * FIELD_SIZE] = {0};
-    //int expired_cells_num = 0;
-    timers_remove_expired(mv, mv->expired_cells, &mv->expired_cells_num);
+    struct Cell *tmp_cells[FIELD_SIZE * FIELD_SIZE] = {0};
+    int tmp_cells_num = 0;
+    timers_remove_expired(mv, tmp_cells, &tmp_cells_num);
 
     if (mv->timers_size == 0)
         mv->state = MVS_READY;
     else mv->state = MVS_ANIMATION;
-    trace("draw: mv->timers_size %d\n", mv->timers_size);
 
+    /*trace("draw: mv->timers_size %d\n", mv->timers_size);*/
+
+    // Копии ячеек уже стоящих на местах не попадают в финальный массив для
+    // отображения
+    for (int i = 0; i < tmp_cells_num; i++) {
+        struct Cell *tmp_cell = tmp_cells[i];
+        bool found = false;
+        for (int k = 0; k < mv->expired_cells_num; k++) {
+            struct Cell *expired_cell = mv->expired_cells[k];
+            if (tmp_cell->from_i == expired_cell->from_i &&
+                tmp_cell->to_i == expired_cell->to_i &&
+                tmp_cell->from_j == expired_cell->from_j &&
+                tmp_cell->to_j == expired_cell->to_j) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            mv->expired_cells[mv->expired_cells_num++] = tmp_cell;
+        }
+    }
 
     // Рисовать фигуры оставшиеся после просроченных таймеров
-    // Как удалять избыток фигур?
     for (int j = 0; j < mv->expired_cells_num; j++) {
-        cell_draw(mv, mv->expired_cells[j]);
+        cell_draw(mv, mv->expired_cells[j], dflt_draw_opts);
     }
+    // */
+
 }
 
-void modelview_init(struct ModelView *mv, Vector2 *pos, struct ModelBox *mb) {
+void modelview_init(
+    struct ModelView *mv, const Vector2 *pos, struct ModelBox *mb
+) {
     assert(mv);
     assert(mb);
     //memset(mv, 0, sizeof(*mv));

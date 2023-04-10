@@ -1,5 +1,3 @@
-//#include "genann.h"
-//#include "genann_view.h"
 #include "koh_logger.h"
 #include "modelbox.h"
 #include "raylib.h"
@@ -12,7 +10,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-/*#include <unistd.h>*/
+#include "koh_console.h"
+#include "koh_hotkey.h"
 
 static struct ModelBox     main_model;
 static struct ModelView    main_view;
@@ -342,6 +341,8 @@ void update() {
         automode = false;
     }
 
+    console_check_editor_mode();
+
     BeginDrawing();
     BeginMode2D(camera);
     ClearBackground(RAYWHITE);
@@ -368,11 +369,15 @@ void update() {
     genann_view_update(view_test, mouse_point);
     */
 
+    console_update();
+
     EndMode2D();
     EndDrawing();
 
     //usleep(10000);
 }
+
+static HotkeyStorage hk = {0};
 
 int main(void) {
     camera.zoom = 1.0f;
@@ -394,6 +399,17 @@ int main(void) {
     */
 
     logger_init();
+    hotkey_init(&hk);
+    console_init(&hk, &(struct ConsoleSetup) {
+        .on_enable = NULL,
+        .on_disable = NULL,
+        .udata = NULL,
+        .color_cursor = BLUE,
+        .color_text = BLACK,
+        .fnt_path = "assets/djv.ttf",
+        .fnt_size = 50,
+    });
+    console_immediate_buffer_enable(true);
 
     //view_test = printing_test();
 
@@ -415,6 +431,7 @@ int main(void) {
     modelbox_shutdown(&main_model);
     modelview_shutdown(&main_view);
 
+    hotkey_shutdown(&hk);
     logger_shutdown();
 
     return 0;
