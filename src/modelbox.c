@@ -499,6 +499,7 @@ static void cell_draw(
     // text_draw_in_rect((Rectangle), ALIGN_LEFT, pos, font, fontsize);
 }
 
+/*
 static void draw_cell(struct ModelView *mv, struct ModelBox *mb, int index) {
     assert(mv);
     assert(mb);
@@ -535,7 +536,7 @@ static void draw_cell(struct ModelView *mv, struct ModelBox *mb, int index) {
     do {
         Font f = GetFontDefault();
         textw = MeasureTextEx(f, msg, fontsize--, spacing).x;
-        /*printf("fontsize %d\n", fontsize);*/
+        //printf("fontsize %d\n", fontsize);
     } while (textw > quad_width);
 
     Vector2 pos = start;
@@ -545,6 +546,7 @@ static void draw_cell(struct ModelView *mv, struct ModelBox *mb, int index) {
     Color color = DARKBLUE;
     DrawTextEx(GetFontDefault(), msg, pos, fontsize, 0, color);
 }
+*/
 
 static void draw_numbers(struct ModelView *mv, Field field) {
     assert(mv);
@@ -682,6 +684,60 @@ static const char *cell2str(const struct Cell cell) {
     return buf;
 }
 
+struct CellArr {
+    struct Cell arr[32];
+    int num;
+};
+
+static void divide_paths(
+    struct Cell *queue, int queue_size, struct CellArr *arr, int *num
+) {
+    assert(queue);
+    assert(arr);
+    assert(num);
+
+    *num = 0;
+
+    for (int j = 0; j < queue_size; ++j) {
+        struct Cell cur = queue[j];
+
+        int found = -1;
+        struct CellArr *ca = NULL;
+        //search_index();
+        for (int k = 0; k < *num; ++k) {
+            ca = &arr[k];
+            struct Cell *top = NULL;
+            if (ca->num > 0) {
+                top = &ca->arr[ca->num - 1];
+                if (cur.to_j == top->from_j && cur.to_i == top->from_i) {
+                    found = k;
+                    break;
+                }
+            }
+        }
+
+        if (found != -1) {
+            ca->arr[ca->num++] = cur;
+        } else {
+            struct CellArr *ca = &arr[(*num)++];
+            ca->arr[ca->num++] = cur;
+        }
+    }
+}
+
+static void print_paths(struct CellArr *arr, int num) {
+    trace("print_paths:\n");
+    for (int i = 0; i < num; i++) {
+        struct CellArr *ca = &arr[i];
+        for (int j = 0; j < ca->num; j++) {
+            trace("%s\n", cell2str(ca->arr[j]));
+        }
+        trace("\n");
+        trace("\n");
+    }
+    trace("\n");
+}
+
 static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     assert(mv);
     assert(mb);
@@ -722,6 +778,9 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     up
     down
      */
+
+    struct CellArr arr[32] = {0};
+    int arr_num = 0;
     
     // TODO: Добавлять не все таймеры, а только те, что должны быть запущены
     // в данный момент
@@ -732,6 +791,9 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
         timer_add(mv, &mb->queue[i], sizeof(mb->queue[0]));
     }
     if (traced) trace("\n");
+
+    divide_paths(mb->queue, mb->queue_size, arr, &arr_num);
+    print_paths(arr, arr_num);
 
     timers_update(mv);
 

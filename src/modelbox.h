@@ -45,10 +45,10 @@ enum ModelViewState {
     MVS_READY,
 };
 
+// x:y
 typedef struct Cell Field[FIELD_SIZE][FIELD_SIZE];
 
 struct ModelBox {
-    // x:y
     int  scores;
     Field               field;
     struct Cell         queue[FIELD_SIZE * FIELD_SIZE];
