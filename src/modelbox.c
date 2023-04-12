@@ -569,7 +569,7 @@ static void draw_numbers(struct ModelView *mv, Field field) {
     }
 }
 
-#define TMR_BLOCK_TIME  1.5
+#define TMR_BLOCK_TIME  .5
 
 static void timer_add(struct ModelView *mv, void *udata, size_t sz) {
     trace(
@@ -580,7 +580,7 @@ static void timer_add(struct ModelView *mv, void *udata, size_t sz) {
     assert(mv->timers_size + 1 < mv->timers_cap);
     struct Timer *tmr = &mv->timers[mv->timers_size++];
     tmr->start_time = GetTime();
-    tmr->duration = 0.5;
+    tmr->duration = TMR_BLOCK_TIME;
     tmr->expired = false;
     tmr->data = malloc(sz);
     memmove(tmr->data, udata, sz);
@@ -683,6 +683,8 @@ static void draw(struct ModelView *mv, struct ModelBox *mb) {
     console_write("last dir: %s\n", dir2str(mb->last_dir));
 
     //trace("draw: mb->queue_size %d\n", mb->queue_size);
+    // TODO: таймеры запускаются параллельно, а не последовательно
+    /*
     for (int i = 0; i < mb->queue_size; i++) {
         timer_add(mv, &mb->queue[i], sizeof(mb->queue[0]));
     }
@@ -696,7 +698,7 @@ static void draw(struct ModelView *mv, struct ModelBox *mb) {
         mv->state = MVS_READY;
     else mv->state = MVS_ANIMATION;
 
-    /*trace("draw: mv->timers_size %d\n", mv->timers_size);*/
+    //trace("draw: mv->timers_size %d\n", mv->timers_size);
 
     // Копии ячеек уже стоящих на местах не попадают в финальный массив для
     // отображения
