@@ -63,6 +63,9 @@ struct ModelView {
     struct Timer        timers[FIELD_SIZE * FIELD_SIZE * 2];
     int                 timers_cap, timers_size;
 
+    struct Cell         queue[FIELD_SIZE * FIELD_SIZE];
+    int                 queue_cap, queue_size;
+
     struct Cell         *expired_cells[FIELD_SIZE * FIELD_SIZE];
     int                 expired_cells_num, expired_cells_cap;
     struct Cell         sorted[FIELD_SIZE * FIELD_SIZE];

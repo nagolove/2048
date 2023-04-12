@@ -1,4 +1,7 @@
+#include "koh_console.h"
+#include "koh_hotkey.h"
 #include "koh_logger.h"
+#include "koh_script.h"
 #include "modelbox.h"
 #include "raylib.h"
 #include "raymath.h"
@@ -10,8 +13,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include "koh_console.h"
-#include "koh_hotkey.h"
 
 static struct ModelBox     main_model;
 static struct ModelView    main_view;
@@ -25,6 +26,9 @@ static const char *trained_fname = "trained.binary";
 
 static Camera2D camera = { 0 };
 static const double MAX_VALUE = 2048;
+
+static HotkeyStorage hk = {0};
+
 
 /*
 genann *load() {
@@ -341,6 +345,7 @@ void update() {
         automode = false;
     }
 
+    hotkey_process(&hk);
     console_check_editor_mode();
 
     BeginDrawing();
@@ -377,8 +382,6 @@ void update() {
     //usleep(10000);
 }
 
-static HotkeyStorage hk = {0};
-
 int main(void) {
     camera.zoom = 1.0f;
     srand(time(NULL));
@@ -399,6 +402,10 @@ int main(void) {
     */
 
     logger_init();
+    sc_init();
+    logger_register_functions();
+    sc_init_script();
+
     hotkey_init(&hk);
     console_init(&hk, &(struct ConsoleSetup) {
         .on_enable = NULL,
@@ -432,6 +439,7 @@ int main(void) {
     modelview_shutdown(&main_view);
 
     hotkey_shutdown(&hk);
+    sc_shutdown();
     logger_shutdown();
 
     return 0;

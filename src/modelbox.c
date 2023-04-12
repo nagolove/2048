@@ -103,6 +103,7 @@ static void sum(
                 cur->to_i = i - 1;
                 cur->to_j = j;
                 cur->action = CA_SUM;
+                cur->value = field_copy[j][i].value * 2;
 
                 field_copy[j][i - 1].value = field_copy[j][i].value * 2;
                 mb->scores += field_copy[j][i].value;
@@ -122,6 +123,7 @@ static void sum(
                 cur->to_i = i + 1;
                 cur->to_j = j;
                 cur->action = CA_SUM;
+                cur->value = field_copy[j][i].value * 2;
 
                 field_copy[j][i + 1].value = field_copy[j][i].value * 2;
                 mb->scores += field_copy[j][i].value;
@@ -141,6 +143,7 @@ static void sum(
                 cur->to_i = i;
                 cur->to_j = j - 1;
                 cur->action = CA_SUM;
+                cur->value = field_copy[j][i].value * 2;
 
                 field_copy[j - 1][i].value = field_copy[j][i].value * 2;
                 mb->scores += field_copy[j][i].value;
@@ -157,9 +160,10 @@ static void sum(
                 struct Cell *cur = &mb->queue[mb->queue_size++];
                 cur->from_i = i;
                 cur->from_j = j;
-                cur->to_i = i - 1;
+                cur->to_i = i;
                 cur->to_j = j + 1;
                 cur->action = CA_SUM;
+                cur->value = field_copy[j][i].value * 2;
 
                 field_copy[j + 1][i].value = field_copy[j][i].value * 2;
                 mb->scores += field_copy[j][i].value;
@@ -192,6 +196,7 @@ static void move(
                 cur->to_i = i - 1;
                 cur->to_j = j;
                 cur->action = CA_MOVE;
+                cur->value = field_copy[j][i].value;
 
                 field_copy[j][i - 1] = field_copy[j][i];
                 field_copy[j][i].value = 0;
@@ -211,6 +216,7 @@ static void move(
                 cur->to_i = i + 1;
                 cur->to_j = j;
                 cur->action = CA_MOVE;
+                cur->value = field_copy[j][i].value;
 
                 field_copy[j][i + 1] = field_copy[j][i];
                 field_copy[j][i].value = 0;
@@ -229,6 +235,7 @@ static void move(
                 cur->to_i = i;
                 cur->to_j = j - 1;
                 cur->action = CA_MOVE;
+                cur->value = field_copy[j][i].value;
 
                 field_copy[j - 1][i] = field_copy[j][i];
                 field_copy[j][i].value = 0;
@@ -248,6 +255,7 @@ static void move(
                 cur->to_i = i;
                 cur->to_j = j + 1;
                 cur->action = CA_MOVE;
+                cur->value = field_copy[j][i].value;
 
                 field_copy[j + 1][i] = field_copy[j][i];
                 field_copy[j][i].value = 0;
@@ -565,6 +573,10 @@ static void draw_numbers(struct ModelView *mv, Field field) {
             pos.y += i * quad_width + (quad_width - fontsize) / 2.;
             Color color = get_color(mv, field[j][i].value);
             DrawTextEx(GetFontDefault(), msg, pos, fontsize, 0, color);
+
+            color = BLACK;
+            sprintf(msg, "[%d, %d]", j, i);
+            DrawTextEx(GetFontDefault(), msg, pos, fontsize / 3., 0, color);
         }
     }
 }
@@ -641,7 +653,7 @@ static void timers_update(struct ModelView *mv) {
             trace(
                 "timers_update: timer %p, amount %f\n", timer, timer->amount
             );
-            tmr_update(timer, mv);
+            //tmr_update(timer, mv);
         }
     }
 }
@@ -657,7 +669,20 @@ const char *dir2str(enum Direction dir) {
     return buf;
 };
 
-static void draw(struct ModelView *mv, struct ModelBox *mb) {
+static const char *cell2str(const struct Cell cell) {
+    static char buf[128] = {0};
+    sprintf(buf, "from (%d, %d) to (%d, %d), value %d, action %s", 
+        cell.from_j,
+        cell.from_i,
+        cell.to_j,
+        cell.to_i,
+        cell.value,
+        action2str(cell.action)
+    );
+    return buf;
+}
+
+static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     assert(mv);
     assert(mb);
     sort_numbers(mv, mb);
@@ -681,19 +706,41 @@ static void draw(struct ModelView *mv, struct ModelBox *mb) {
 
     console_write("timers num: %d\n", mv->timers_size);
     console_write("last dir: %s\n", dir2str(mb->last_dir));
+    console_write("queue size: %d\n", mb->queue_size);
 
     //trace("draw: mb->queue_size %d\n", mb->queue_size);
     // TODO: таймеры запускаются параллельно, а не последовательно
+
+    if (mv->state == MVS_READY) {
+        memmove(mv->queue, mb->queue, sizeof(mb->queue[0]) * mb->queue_size);
+        mv->queue_size = mb->queue_size;
+    }
+
     /*
+    left        
+    right
+    up
+    down
+     */
+    
+    // TODO: Добавлять не все таймеры, а только те, что должны быть запущены
+    // в данный момент
+    bool traced = false;
     for (int i = 0; i < mb->queue_size; i++) {
+        traced = true;
+        trace("draw: mb->queue[%d] = %s\n", i, cell2str(mb->queue[i]));
         timer_add(mv, &mb->queue[i], sizeof(mb->queue[0]));
     }
+    if (traced) trace("\n");
+
     timers_update(mv);
 
     struct Cell *tmp_cells[FIELD_SIZE * FIELD_SIZE] = {0};
     int tmp_cells_num = 0;
     timers_remove_expired(mv, tmp_cells, &tmp_cells_num);
 
+    // TODO: Отказаться от блокировки ввода что-бы можно было играть на 
+    // скорости выше скорости анимации, то есть до 60 герц.
     if (mv->timers_size == 0)
         mv->state = MVS_READY;
     else mv->state = MVS_ANIMATION;
@@ -722,7 +769,7 @@ static void draw(struct ModelView *mv, struct ModelBox *mb) {
 
     // Рисовать фигуры оставшиеся после просроченных таймеров
     for (int j = 0; j < mv->expired_cells_num; j++) {
-        cell_draw(mv, mv->expired_cells[j], dflt_draw_opts);
+        //cell_draw(mv, mv->expired_cells[j], dflt_draw_opts);
     }
     // */
 
@@ -746,7 +793,7 @@ void modelview_init(
     mv->timers_cap = FIELD_SIZE * FIELD_SIZE * 2;
     mv->timers_size = 0;
     mv->state = MVS_READY;
-    mv->draw = draw;
+    mv->draw = model_draw;
     mv->tmr_block = GetTime();
     mv->expired_cells_cap = FIELD_SIZE * FIELD_SIZE;
     mv->dropped = false;
