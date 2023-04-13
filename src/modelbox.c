@@ -741,7 +741,10 @@ static void print_paths(struct CellArr *arr, int num) {
 static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     assert(mv);
     assert(mb);
+
+    // FIXME: Рисовка разным цветом не всегда работает
     sort_numbers(mv, mb);
+
     draw_field(mv);
 
     /*
