@@ -14,6 +14,10 @@
 #include <string.h>
 #include <time.h>
 
+#if defined(PLATFORM_WEB)
+#include <emscripten.h>
+#endif
+
 static struct ModelBox     main_model;
 static struct ModelView    main_view;
 
@@ -323,7 +327,7 @@ genann_view *printing_test() {
 }
 */
 
-void update() {
+static void update(void *arg) {
     /*camera_process();*/
     /*
     if (IsKeyPressed(KEY_A)) {
@@ -419,12 +423,14 @@ int main(void) {
     console_immediate_buffer_enable(true);
 
     //view_test = printing_test();
-
-    SetTargetFPS(60);
-
+#if defined(PLATFORM_WEB)
+    emscripten_set_main_loop_arg(update, NULL, 60, 1);
+#else
+    SetTargetFPS(60); 
     while (!WindowShouldClose()) {
-        update();
+        update(NULL);
     }
+#endif
 
     CloseWindow();
 
