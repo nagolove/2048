@@ -1,3 +1,4 @@
+// vim: fdm=marker
 #include "modelbox.h"
 
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
@@ -14,6 +15,16 @@
 #include "raymath.h"
 #include "cimgui.h"
 #include "cimgui_impl.h"
+
+struct CellArr {
+    struct Cell arr[32];
+    int num;
+};
+
+struct TimerData {
+    struct CellArr      slides;
+    struct ModelView    *mv;
+};
 
 static const int quad_width = 128 + 64;
 
@@ -109,6 +120,7 @@ static void sum(
         bool *moved,
         struct ModelBox *mb
 ) {
+    // {{{
     switch (dir) {
         case DIR_UP: {
             if (i > 0 && field_copy[j][i - 1].value == field_copy[j][i].value) {
@@ -192,6 +204,7 @@ static void sum(
             break;
         }
     }
+    // }}}
 }
 
 // Двигает плитки в определенном направлении.
@@ -203,6 +216,7 @@ static void move(
         int i, int j,
         bool *moved
 ) {
+    // {{{
     switch (dir) {
         case DIR_UP: {
             if (i > 0 && field_copy[j][i - 1].value == 0) {
@@ -285,6 +299,7 @@ static void move(
             break;
         }
     }
+    // }}}
 }
 
 
@@ -436,7 +451,6 @@ static const struct DrawOpts dflt_draw_opts = {
 };
 */
 
-/*
 static void cell_draw(
     struct ModelView *mv, struct Cell *cell, struct DrawOpts opts
 ) {
@@ -494,7 +508,6 @@ static void cell_draw(
 
     // text_draw_in_rect((Rectangle), ALIGN_LEFT, pos, font, fontsize);
 }
-*/
 
 /*
 static void draw_cell(struct ModelView *mv, struct ModelBox *mb, int index) {
@@ -580,7 +593,7 @@ static void draw_numbers(struct ModelView *mv, Field field) {
     }
 }
 
-#define TMR_BLOCK_TIME  .5
+#define TMR_BLOCK_TIME  1.5
 
 static void timer_add(struct ModelView *mv, void *udata, size_t sz) {
     trace(
@@ -597,25 +610,25 @@ static void timer_add(struct ModelView *mv, void *udata, size_t sz) {
     memmove(tmr->data, udata, sz);
 }
 
-/*
 static const struct DrawOpts special_draw_opts = {
     .color = BLUE,
     .custom_color = true,
     .fontsize = 40,
-    .offset_coef = { 0., 0., },
+    //.offset_coef = { 0., 0., },
+    .offset_coef = { 1., 1., },
 };
-*/
 
-/*
-static void tmr_update(struct Timer *t, void *udata) {
-    struct Cell *cell = t->data;
-    struct ModelView *mv = udata;
+static void tmr_update(struct Timer *t) {
+    struct TimerData *timer_data = t->data;
+    struct ModelView *mv = timer_data->mv;
+    int index = floor(t->amount * timer_data->slides.num);
+    struct Cell *cell = &timer_data->slides.arr[index];
     //trace("tmr_update: udata %p\n", udata);
     struct DrawOpts opts = special_draw_opts;
     opts.amount = t->amount;
+    opts.fontsize = 90;
     cell_draw(mv, cell, opts);
 }
-*/
 
 static void timers_remove_expired(
     struct ModelView *mv,
@@ -653,10 +666,10 @@ static void timers_update(struct ModelView *mv) {
         if (now - timer->start_time >= timer->duration) {
             timer->expired = true;
         } else {
-            trace(
-                "timers_update: timer %p, amount %f\n", timer, timer->amount
-            );
-            //tmr_update(timer, mv);
+            //trace(
+                //"timers_update: timer %p, amount %f\n", timer, timer->amount
+            //);
+            tmr_update(timer);
         }
     }
 }
@@ -685,33 +698,29 @@ static const char *cell2str(const struct Cell cell) {
     return buf;
 }
 
-struct CellArr {
-    struct Cell arr[32];
-    int num;
-};
-
 // XXX: Что делает функция?
 static void divide_slides(
-    struct Cell *queue, int queue_size, struct CellArr *arr, int *num
+    struct Cell *queue, int queue_size, struct CellArr *out_arr, int *out_num
 ) {
     assert(queue);
-    assert(arr);
-    assert(num);
+    assert(out_arr);
+    assert(out_num);
 
-    *num = 0;
+    *out_num = 0;
 
     for (int j = 0; j < queue_size; ++j) {
         struct Cell cur = queue[j];
 
         int found = -1;
         struct CellArr *ca = NULL;
-        //search_index();
-        for (int k = 0; k < *num; ++k) {
-            ca = &arr[k];
+        for (int k = 0; k < *out_num; ++k) {
+            ca = &out_arr[k];
             struct Cell *top = NULL;
             if (ca->num > 0) {
                 top = &ca->arr[ca->num - 1];
-                if (cur.to_j == top->from_j && cur.to_i == top->from_i) {
+                //if (cur.to_j == top->from_j && cur.to_i == top->from_i) {
+                if (cur.from_j == top->to_j && cur.from_i == top->to_i) {
+                    trace("divide_slides: found\n");
                     found = k;
                     break;
                 }
@@ -721,10 +730,74 @@ static void divide_slides(
         if (found != -1) {
             ca->arr[ca->num++] = cur;
         } else {
-            struct CellArr *ca = &arr[(*num)++];
-            ca->arr[ca->num++] = cur;
+            struct CellArr *last = &out_arr[(*out_num)++];
+            last->arr[last->num++] = cur;
         }
     }
+}
+
+void test_divide_slides() {
+// {{{ test_divide_slides
+    struct Cell queue1[] = {
+        {
+            .value = 0,
+            .from_i = 0,
+            .from_j = 0,
+            .to_i = 1,
+            .to_j = 1,
+            .action = CA_MOVE,
+        },
+        {
+            .value = 0,
+            .from_i = 1,
+            .from_j = 1,
+            .to_i = 2,
+            .to_j = 2,
+            .action = CA_MOVE,
+        },
+        {
+            .value = 0,
+            .from_i = 3,
+            .from_j = 3,
+            .to_i = 1,
+            .to_j = 1,
+            .action = CA_MOVE,
+        },
+    };
+
+    struct Cell queue2[] = {
+        {
+            .value = 0,
+            .from_i = 0,
+            .from_j = 0,
+            .to_i = 1,
+            .to_j = 1,
+            .action = CA_MOVE,
+        },
+        {
+            .value = 0,
+            .from_i = 2,
+            .from_j = 2,
+            .to_i = 7,
+            .to_j = 7,
+            .action = CA_MOVE,
+        },
+    };
+
+    struct CellArr arr[64] = {0};
+    int arr_num = 0;
+
+    printf("test_divide_slides:\n");
+
+    memset(arr, 0, sizeof(arr));
+    divide_slides(queue1, sizeof(queue1) / sizeof(queue1[0]), arr, &arr_num);
+    assert(arr_num == 2 && "arr_num == 2");
+
+    memset(arr, 0, sizeof(arr));
+    divide_slides(queue1, sizeof(queue1) / sizeof(queue1[0]), arr, &arr_num);
+    assert(arr_num == 2 && "arr_num == 2");
+
+// }}}
 }
 
 static void print_paths(struct CellArr *arr, int num) {
@@ -771,10 +844,10 @@ static void movements_window() {
             }
             igText(
                     "[%d, %d] -> [%d, %d] %s", 
-                    global_queue[row].from_i,
                     global_queue[row].from_j,
-                    global_queue[row].to_i,
+                    global_queue[row].from_i,
                     global_queue[row].to_j,
+                    global_queue[row].to_i,
                     action
                   );
         }
@@ -813,10 +886,10 @@ static void paths_window() {
                     char desc[64] = {0};
                     sprintf(
                         desc, "[%d, %d] -> [%d, %d];",
-                        cells[j].from_i,
                         cells[j].from_j,
-                        cells[j].to_i,
-                        cells[j].to_j
+                        cells[j].from_i,
+                        cells[j].to_j,
+                        cells[j].to_i
                     );
                     strcat(line, desc);
                 }
@@ -869,9 +942,11 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     // FIXME: Рисовка разным цветом не всегда работает
     sort_numbers(mv, mb);
 
-    draw_field(mv);
-
-    draw_numbers(mv, mb->field);
+    bool debug = !IsKeyDown(KEY_D);
+    if (debug) {
+        draw_field(mv);
+        draw_numbers(mv, mb->field);
+    }
 
     console_write("timers num: %d\n", mv->timers_size);
     console_write("last dir: %s\n", dir2str(mb->last_dir));
@@ -889,44 +964,61 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     down
      */
     
+
+    struct CellArr arr[32] = {0}; 
+    int arr_num = 0;
+    
+    divide_slides(mb->queue, mb->queue_size, arr, &arr_num);
+
+    /*
+    // {{{
+    arr_num = 1;
+
+    arr[0].num = 3;
+
+    arr[0].arr[0].action = CA_NONE;
+    arr[0].arr[0].from_i = -1;
+    arr[0].arr[0].from_j = -1;
+    arr[0].arr[0].to_i = 100;
+    arr[0].arr[0].to_j = 100;
+
+    arr[0].arr[1].action = CA_NONE;
+    arr[0].arr[1].from_i = -2;
+    arr[0].arr[1].from_j = -2;
+    arr[0].arr[1].to_i = 101;
+    arr[0].arr[1].to_j = 101;
+
+    arr[0].arr[2].action = CA_NONE;
+    arr[0].arr[2].from_i = -3;
+    arr[0].arr[2].from_j = -3;
+    arr[0].arr[2].to_i = 102;
+    arr[0].arr[2].to_j = 102;
+    // }}}
+    */
+    //print_paths(arr, arr_num);
+
     // TODO: Добавлять не все таймеры, а только те, что должны быть запущены
     // в данный момент
     bool traced = false;
+    /*
     for (int i = 0; i < mb->queue_size; i++) {
         traced = true;
         trace("draw: mb->queue[%d] = %s\n", i, cell2str(mb->queue[i]));
         timer_add(mv, &mb->queue[i], sizeof(mb->queue[0]));
     }
+    */
+
+    for (int i = 0; i < arr_num; i++) {
+        traced = true;
+        trace("draw: mb->queue[%d] = %s\n", i, cell2str(mb->queue[i]));
+        struct TimerData timer_data = {
+            .slides = arr[i],
+            .mv = mv,
+        };
+        timer_add(mv, &timer_data, sizeof(timer_data));
+    }
+
     if (traced) trace("\n");
-
-    struct CellArr arr[32] = {0}; 
-    int arr_num = 0;
-    
-    //divide_slides(mb->queue, mb->queue_size, arr, &arr_num);
-    arr_num = 1;
-
-    arr[1].num = 3;
-
-    arr[1].arr[0].action = CA_NONE;
-    arr[1].arr[0].from_i = -1;
-    arr[1].arr[0].from_j = -1;
-    arr[1].arr[0].to_i = 100;
-    arr[1].arr[0].to_j = 100;
-
-    arr[1].arr[1].action = CA_NONE;
-    arr[1].arr[1].from_i = -2;
-    arr[1].arr[1].from_j = -2;
-    arr[1].arr[1].to_i = 101;
-    arr[1].arr[1].to_j = 101;
-
-    arr[1].arr[2].action = CA_NONE;
-    arr[1].arr[2].from_i = -3;
-    arr[1].arr[2].from_j = -3;
-    arr[1].arr[2].to_i = 102;
-    arr[1].arr[2].to_j = 102;
-
-    //print_paths(arr, arr_num);
-
     timers_update(mv);
 
     struct Cell *tmp_cells[FIELD_SIZE * FIELD_SIZE] = {0};

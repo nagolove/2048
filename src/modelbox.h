@@ -93,3 +93,5 @@ void modelview_shutdown(struct ModelView *mv);
 
 void model_global_init();
 void model_global_shutdown();
+
+void test_divide_slides();

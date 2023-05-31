@@ -220,6 +220,12 @@ static void update(void *arg) {
 }
 
 int main(void) {
+#if 0
+    printf("test run\n");
+    test_divide_slides();
+    exit(EXIT_FAILURE);
+#endif
+
     camera.zoom = 1.0f;
     srand(time(NULL));
     InitWindow(screen_width, screen_height, "2048");
