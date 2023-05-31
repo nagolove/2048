@@ -1,3 +1,5 @@
+#define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
+
 #include "koh_console.h"
 #include "koh_hotkey.h"
 #include "koh_logger.h"
@@ -13,6 +15,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include "cimgui.h"
+#include "cimgui_impl.h"
 
 #if defined(PLATFORM_WEB)
 #include <emscripten.h>
@@ -22,11 +26,8 @@ static struct ModelBox     main_model;
 static struct ModelView    main_view;
 
 static bool automode = false;
-static struct genann *trained = NULL;
-static struct genann_view *net_viewer = NULL;
 static const int screen_width = 1920;
 static const int screen_height = 1080;
-static const char *trained_fname = "trained.binary";
 
 static Camera2D camera = { 0 };
 static const double MAX_VALUE = 2048;
@@ -34,37 +35,7 @@ static const double MAX_VALUE = 2048;
 static HotkeyStorage hk = {0};
 
 
-/*
-genann *load() {
-    FILE *file = fopen(trained_fname, "r");
-    genann *ret = NULL;
-    if (!file)
-        return NULL;
-
-    ret = genann_read(file);
-    fclose(file);
-    return ret;
-}
-*/
-
-/*
-void trained_free() {
-    if (trained) {
-        genann_free(trained);
-        trained = NULL;
-    }
-}
-*/
-
 void input() {
-    if (IsKeyPressed(KEY_R)) {
-        modelbox_shutdown(&main_model);
-        modelview_shutdown(&main_view);
-        modelbox_init(&main_model);
-        modelview_init(&main_view, NULL, &main_model);
-    }
-
-
     main_model.queue_size = 0;
 
     if (main_view.state != MVS_READY)
@@ -154,132 +125,6 @@ int out2dir(const double *outputs) {
     return max_index;
 }
 
-/*
-void auto_play() {
-    assert(trained);
-
-    double inputs[FIELD_SIZE * FIELD_SIZE] = {0};
-    write_normalized_inputs(&main_model, inputs);
-    const double *outputs = genann_run(trained, inputs);
-
-    //printf("direction i %d\n", out2dir(outputs));
-    main_model.update(&main_model, out2dir(outputs));
-}
-
-const double    ERROR_EPSILON = 0.01;
-const int       STEPS_NUM = 4;
-
-void ann_shake(genann *net) {
-     //Take a random guess at the ANN weights. 
-    for (int i = 0; i < net->total_weights; ++i) {
-        net->weight[i] += ((double)rand())/RAND_MAX-0.5;
-    }
-}
-*/
-
-/*
-void train() {
-    printf("training\n");
-    genann *net = genann_init(
-        FIELD_SIZE * FIELD_SIZE,
-        1, 
-        FIELD_SIZE * FIELD_SIZE, 
-        4
-    );
-
-    int count = 0;
-
-    double inputs[FIELD_SIZE * FIELD_SIZE] = {0};
-
-    struct ModelBox mb = {0};
-
-    modelbox_init(&mb);
-    genann_randomize(net);
-
-    int succ_run = 0;
-    int fail_run = 0;
-    do {
-        count++;
-        if (count % 10000 == 0) {
-            printf("iteration %d\n", count);
-        }
-        if (count % 15000000 == 0) {
-            printf("resetting\n");
-            break;
-        }
-
-        genann *save = genann_copy(net);
-        int scores = mb.scores;
-
-        for (int j = 0; j < STEPS_NUM; j++) {
-            //int dir = rand() % 4;
-            //mb.update(&mb, dir);
-            write_normalized_inputs(&mb, inputs);
-            const double *outs = genann_run(net, inputs);
-            mb.update(&mb, out2dir(outs));
-        }
-
-        if (mb.scores > scores) {
-            // Успех
-            genann_free(save);
-            ann_shake(net);
-            //printf("success %d\n", count);
-            succ_run++;
-            fail_run = 0;
-        } else {
-            genann_free(net);
-            succ_run = 0;
-            fail_run++;
-            net = save;
-        }
-
-        if (succ_run > 250 || mb.state == MS_WIN) {
-            printf("great\n");
-            break;
-        }
-        if (fail_run > 1) {
-            modelbox_init(&mb);
-            genann_randomize(net);
-            succ_run = 0;
-            fail_run = 0;
-        }
-
-    } while (true);
-
-    main_model = mb;
-
-    printf("evolution for %d cycles\n", count);
-
-    FILE *file = fopen(trained_fname, "w");
-    if (file) {
-        genann_write(net, file);
-        fclose(file);
-    }
-
-    genann_free(net);
-}
-*/
-
-/*
-void train() {
-    printf("training\n");
-    // Стратегия обучения?
-    struct Set *s = set_new(10005);
-    for (int cycles = 0; cycles < 2500; cycles++) {
-        printf("cycles %d\n", cycles);
-        set_train(s);
-        struct Set *new = set_select(s);
-        set_shutdown(s);
-        s = new;
-    }
-    set_write(s);
-
-    genann_print(s->nets[0]);
-
-    set_shutdown(s);
-}
-*/
-
 void camera_process() {
     if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT))
     {
@@ -311,32 +156,8 @@ void camera_process() {
     }
 }
 
-/*
-static genann_view *view_test = NULL;
-
-genann_view *printing_test() {
-    genann *ann = genann_init(5, 3, 5, 4);
-    genann_randomize(ann);
-    //genann *ann = genann_init(4, 2, 7, 3);
-    genann_print(ann);
-    genann_print_run(ann);
-    genann_view *view = genann_view_new("randomized[5, 3, 5, 4]");
-    genann_view_prepare(view, ann);
-    genann_free(ann);
-    return view;
-}
-*/
-
 static void update(void *arg) {
     /*camera_process();*/
-    /*
-    if (IsKeyPressed(KEY_A)) {
-        automode = !automode;
-    } else if (IsKeyPressed(KEY_T)) {
-        train();
-    }
-    */
-
     if (!automode) {
         if (main_model.state != MBS_GAMEOVER)
             input();
@@ -344,10 +165,22 @@ static void update(void *arg) {
         //auto_play();
     }
 
+    if (IsKeyPressed(KEY_R)) {
+        modelbox_shutdown(&main_model);
+        modelview_shutdown(&main_view);
+        modelbox_init(&main_model);
+        modelview_init(&main_view, NULL, &main_model);
+
+        model_global_shutdown();
+        model_global_init();
+    }
+
+    /*
     if (IsKeyPressed(KEY_SPACE)) {
         modelbox_init(&main_model);
         automode = false;
     }
+    */
 
     hotkey_process(&hk);
     console_check_editor_mode();
@@ -390,7 +223,13 @@ int main(void) {
     camera.zoom = 1.0f;
     srand(time(NULL));
     InitWindow(screen_width, screen_height, "2048");
+    SetTargetFPS(999);
 
+    rlImGuiSetup(&(struct igSetupOptions) {
+            .dark = false,
+            .font_path = "assets/djv.ttf",
+            .font_size_pixels = 40,
+    });
     /*
     net_viewer = genann_view_new("viewer");
     genann_view_position_set(net_viewer, (Vector2) { 0., -1000. });
@@ -422,6 +261,8 @@ int main(void) {
     });
     console_immediate_buffer_enable(true);
 
+    model_global_init();
+
     //view_test = printing_test();
 #if defined(PLATFORM_WEB)
     emscripten_set_main_loop_arg(update, NULL, 60, 1);
@@ -434,15 +275,12 @@ int main(void) {
 
     CloseWindow();
 
-    /*
-    genann_view_free(net_viewer);
-    trained_free();
-
-    genann_view_free(view_test);
-    */
+    model_global_shutdown();
 
     modelbox_shutdown(&main_model);
     modelview_shutdown(&main_view);
+
+    rlImGuiShutdown();
 
     hotkey_shutdown(&hk);
     sc_shutdown();

@@ -1,5 +1,7 @@
 #include "modelbox.h"
 
+#define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
+
 #include "raylib.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,8 +12,18 @@
 #include "koh_common.h"
 #include "koh_routine.h"
 #include "raymath.h"
+#include "cimgui.h"
+#include "cimgui_impl.h"
 
 static const int quad_width = 128 + 64;
+
+static int global_queue_size = 0;
+static int global_queue_maxsize = 0;
+static struct Cell *global_queue = 0;
+
+static int global_arr_size = 0;
+static int global_arr_maxsize = 0;
+static struct CellArr *global_arr = 0;
 
 static Color colors[] = {
     RED,
@@ -22,12 +34,14 @@ static Color colors[] = {
     GRAY,
 };
 
+/*
 static void copy_field(
     struct Cell dest[FIELD_SIZE][FIELD_SIZE], 
     struct Cell source[FIELD_SIZE][FIELD_SIZE]
 ) {
     memmove(dest, source, sizeof(dest[0][0]) * FIELD_SIZE * FIELD_SIZE);
 }
+*/
 
 static int find_max(struct ModelBox *mb) {
     int max = 0;
@@ -86,6 +100,8 @@ static void sum_sub(
 }
 */
 
+// Складывает значения плиток в определенном направлении.
+// Все действия попадают в очередь действий.
 static void sum(
         enum Direction dir,
         struct Cell field_copy[FIELD_SIZE][FIELD_SIZE],
@@ -178,6 +194,8 @@ static void sum(
     }
 }
 
+// Двигает плитки в определенном направлении.
+// Все действия попадают в очередь действий.
 static void move(
         struct ModelBox *mb,
         enum Direction dir,
@@ -278,7 +296,8 @@ static void update(struct ModelBox *mb, enum Direction dir) {
     mb->last_dir = dir;
     mb->queue_size = 0;
 
-    const int field_size_bytes = sizeof(mb->field[0][0]) * FIELD_SIZE * FIELD_SIZE;
+    const int field_size_bytes = sizeof(mb->field[0][0]) * 
+                                 FIELD_SIZE * FIELD_SIZE;
     struct Cell field_copy[FIELD_SIZE][FIELD_SIZE] = {0};
     memmove(field_copy, mb->field, field_size_bytes);
 
@@ -349,7 +368,7 @@ static void sort_numbers(struct ModelView *mv, struct ModelBox *mb) {
 static void draw_field(struct ModelView *mv) {
     const int field_width = FIELD_SIZE * quad_width;
     Vector2 start = mv->pos;
-    const float thick = 3.;
+    const float thick = 7.;
 
     Vector2 tmp = start;
     for (int u = 0; u <= FIELD_SIZE; u++) {
@@ -406,6 +425,7 @@ struct DrawOpts {
     double  amount;
 };
 
+/*
 static const struct DrawOpts dflt_draw_opts = {
     .offset_coef = {
         1.,
@@ -414,7 +434,9 @@ static const struct DrawOpts dflt_draw_opts = {
     .fontsize = 90,
     .custom_color = false,
 };
+*/
 
+/*
 static void cell_draw(
     struct ModelView *mv, struct Cell *cell, struct DrawOpts opts
 ) {
@@ -423,16 +445,6 @@ static void cell_draw(
     float spacing = 2.;
     //const int field_width = FIELD_SIZE * quad_width;
     Vector2 start = mv->pos;
-
-    /*
-    trace("cell_draw: value %d\n", cell->value);
-    trace(
-        "cell_draw: from (%d, %d) to (%d, %d)\n", 
-        cell->from_j, cell->from_i,
-        cell->to_j, cell->to_i
-    );
-    trace("\n");
-    */
 
     assert(cell);
     //if (!cell) return;
@@ -451,24 +463,13 @@ static void cell_draw(
     do {
         Font f = GetFontDefault();
         textw = MeasureTextEx(f, msg, fontsize--, spacing).x;
-        /*printf("fontsize %d\n", fontsize);*/
+        //printf("fontsize %d\n", fontsize);
     } while (textw > quad_width);
 
     Vector2 pos = start;
     // TODO: Как сделать offset_coef рабочим в диапазоне -1..1
     // Значение по умолчанию - 0
     // -1 - смещение влево
-    /*
-    
-    // 1 - смещение вправо
-    Vector2 offset = {
-        (quad_width - textw) / 2.,
-        opts.offset_coef.x * (quad_width - fontsize) / 2.,
-    };
-    pos.x += cell->to_j * quad_width + offset.x;
-    pos.y += cell->to_i * quad_width + offset.y;
-
-    */
 
     Vector2 offset = {
         opts.offset_coef.x * (quad_width - textw) / 2.,
@@ -484,11 +485,6 @@ static void cell_draw(
     trace("cell_draw: opts.amount %f\n", opts.amount);
     trace("cell_draw: cell %p, base_pos %s\n", cell, Vector2_tostr(base_pos));
 
-    /*
-    pos.x += base_pos * quad_width + offset.x;
-    pos.y += base_pos * quad_width + offset.y;
-    */
-
     Vector2 disp = Vector2Add(Vector2Scale(base_pos, quad_width), offset);
     pos = Vector2Add(pos, disp);
 
@@ -498,6 +494,7 @@ static void cell_draw(
 
     // text_draw_in_rect((Rectangle), ALIGN_LEFT, pos, font, fontsize);
 }
+*/
 
 /*
 static void draw_cell(struct ModelView *mv, struct ModelBox *mb, int index) {
@@ -600,21 +597,25 @@ static void timer_add(struct ModelView *mv, void *udata, size_t sz) {
     memmove(tmr->data, udata, sz);
 }
 
+/*
 static const struct DrawOpts special_draw_opts = {
     .color = BLUE,
     .custom_color = true,
     .fontsize = 40,
     .offset_coef = { 0., 0., },
 };
+*/
 
+/*
 static void tmr_update(struct Timer *t, void *udata) {
     struct Cell *cell = t->data;
     struct ModelView *mv = udata;
-    /*trace("tmr_update: udata %p\n", udata);*/
+    //trace("tmr_update: udata %p\n", udata);
     struct DrawOpts opts = special_draw_opts;
     opts.amount = t->amount;
     cell_draw(mv, cell, opts);
 }
+*/
 
 static void timers_remove_expired(
     struct ModelView *mv,
@@ -689,7 +690,8 @@ struct CellArr {
     int num;
 };
 
-static void divide_paths(
+// XXX: Что делает функция?
+static void divide_slides(
     struct Cell *queue, int queue_size, struct CellArr *arr, int *num
 ) {
     assert(queue);
@@ -738,6 +740,128 @@ static void print_paths(struct CellArr *arr, int num) {
     trace("\n");
 }
 
+static void movements_window() {
+    bool open = true;
+    ImGuiWindowFlags flags = 0;
+    igBegin("movements", &open, flags);
+
+    ImGuiTableFlags table_flags = ImGuiTableFlags_ScrollY |
+        ImGuiTableFlags_RowBg | 
+        ImGuiTableFlags_BordersOuter | 
+        ImGuiTableFlags_BordersV | 
+        ImGuiTableFlags_Resizable | 
+        ImGuiTableFlags_Reorderable | 
+        ImGuiTableFlags_Hideable;
+    const float TEXT_BASE_HEIGHT = igGetTextLineHeightWithSpacing();
+
+    /*ImVec2 outer_size = {0., TEXT_BASE_HEIGHT * 8.};*/
+    ImVec2 outer_size = {0., 0.};
+    if (igBeginTable("movements", 1, table_flags, outer_size, 0.)) {
+        for (int row = 0; row < global_queue_size; ++row) {
+            igTableNextRow(0, 0);
+            igTableSetColumnIndex(0);
+            char *action = NULL;
+            if (global_queue[row].action == CA_SUM)
+                action = "SUM";
+            else if (global_queue[row].action == CA_MOVE)
+                action = "MOVE";
+            else if (global_queue[row].action == CA_NONE) {
+                igText("---------------------------");
+                continue;
+            }
+            igText(
+                    "[%d, %d] -> [%d, %d] %s", 
+                    global_queue[row].from_i,
+                    global_queue[row].from_j,
+                    global_queue[row].to_i,
+                    global_queue[row].to_j,
+                    action
+                  );
+        }
+        if (igGetScrollY() >= igGetScrollMaxY())
+            igSetScrollHereY(1.);
+        igEndTable();
+    }
+    igEnd();
+}
+
+static void paths_window() {
+    bool open = true;
+    ImGuiWindowFlags flags = 0;
+    igBegin("paths", &open, flags);
+
+    ImGuiTableFlags table_flags = ImGuiTableFlags_ScrollY |
+        ImGuiTableFlags_RowBg | 
+        ImGuiTableFlags_BordersOuter | 
+        ImGuiTableFlags_BordersV | 
+        ImGuiTableFlags_Resizable | 
+        ImGuiTableFlags_Reorderable | 
+        ImGuiTableFlags_Hideable;
+
+    ImVec2 outer_size = {0., 0.}; // Размер окошка таблицы
+    if (igBeginTable("paths", 1, table_flags, outer_size, 0.)) {
+        for (int row = 0; row < global_arr_size; ++row) {
+            igTableNextRow(0, 0);
+            igTableSetColumnIndex(0);
+
+            struct Cell *cells = global_arr[row].arr;
+            char line[512] = {0};
+            if (global_arr[row].num == -1)
+                igText(">>>>>>>>>");
+            else {
+                for (int j = 0; j < global_arr[row].num; j++) {
+                    char desc[64] = {0};
+                    sprintf(
+                        desc, "[%d, %d] -> [%d, %d];",
+                        cells[j].from_i,
+                        cells[j].from_j,
+                        cells[j].to_i,
+                        cells[j].to_j
+                    );
+                    strcat(line, desc);
+                }
+                igText(line);
+            }
+        }
+        if (igGetScrollY() >= igGetScrollMaxY())
+            igSetScrollHereY(1.);
+        igEndTable();
+    }
+    igEnd();
+}
+
+static void gui() {
+    rlImGuiBegin(false);
+    movements_window();
+    paths_window();
+    bool open = false;
+    igShowDemoWindow(&open);
+    rlImGuiEnd();
+}
+
+static void fill_global_queue(struct ModelView *mv) {
+    if (global_queue_size + 1 == global_queue_maxsize) {
+        global_queue_size = 0;
+    }
+    for (int row = 0; row < mv->queue_size; ++row) {
+        global_queue[global_queue_size++] = mv->queue[row];
+    }
+    if (mv->queue_size > 0)
+        global_queue[global_queue_size++].action = CA_NONE;
+}
+
+static void fill_global_arr(struct CellArr *arr, int arr_num) {
+    if (global_arr_size + 1 == global_arr_maxsize) {
+        global_arr_size = 0;
+    }
+    for (int i = 0; i < arr_num; ++i) {
+        global_arr[global_arr_size++] = arr[i];
+    }
+    if (arr_num > 0)
+        global_arr[global_arr_size++].num = -1;
+}
+
+
 static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     assert(mv);
     assert(mb);
@@ -747,28 +871,11 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
 
     draw_field(mv);
 
-    /*
-    if (mv->state == MVS_READY) {
-        mv->tmr_block = GetTime();
-        mv->state = MVS_ANIMATION;
-    } else if (mv->state == MVS_ANIMATION) {
-        double now = GetTime();
-        if (now - mv->tmr_block >= TMR_BLOCK_TIME) {
-            mv->state = MVS_READY;
-        } else {
-            DrawCircle(GetScreenWidth() / 2., GetScreenHeight() / 2., 40, BLUE);
-        }
-    }
-    */
-
     draw_numbers(mv, mb->field);
 
     console_write("timers num: %d\n", mv->timers_size);
     console_write("last dir: %s\n", dir2str(mb->last_dir));
     console_write("queue size: %d\n", mb->queue_size);
-
-    //trace("draw: mb->queue_size %d\n", mb->queue_size);
-    // TODO: таймеры запускаются параллельно, а не последовательно
 
     if (mv->state == MVS_READY) {
         memmove(mv->queue, mb->queue, sizeof(mb->queue[0]) * mb->queue_size);
@@ -781,9 +888,6 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     up
     down
      */
-
-    struct CellArr arr[32] = {0};
-    int arr_num = 0;
     
     // TODO: Добавлять не все таймеры, а только те, что должны быть запущены
     // в данный момент
@@ -795,8 +899,33 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     }
     if (traced) trace("\n");
 
-    divide_paths(mb->queue, mb->queue_size, arr, &arr_num);
-    print_paths(arr, arr_num);
+    struct CellArr arr[32] = {0}; 
+    int arr_num = 0;
+    
+    //divide_slides(mb->queue, mb->queue_size, arr, &arr_num);
+    arr_num = 1;
+
+    arr[1].num = 3;
+
+    arr[1].arr[0].action = CA_NONE;
+    arr[1].arr[0].from_i = -1;
+    arr[1].arr[0].from_j = -1;
+    arr[1].arr[0].to_i = 100;
+    arr[1].arr[0].to_j = 100;
+
+    arr[1].arr[1].action = CA_NONE;
+    arr[1].arr[1].from_i = -2;
+    arr[1].arr[1].from_j = -2;
+    arr[1].arr[1].to_i = 101;
+    arr[1].arr[1].to_j = 101;
+
+    arr[1].arr[2].action = CA_NONE;
+    arr[1].arr[2].from_i = -3;
+    arr[1].arr[2].from_j = -3;
+    arr[1].arr[2].to_i = 102;
+    arr[1].arr[2].to_j = 102;
+
+    //print_paths(arr, arr_num);
 
     timers_update(mv);
 
@@ -838,6 +967,10 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     }
     // */
 
+    fill_global_queue(mv);
+    fill_global_arr(arr, arr_num);
+
+    gui();
 }
 
 void modelview_init(
@@ -846,7 +979,7 @@ void modelview_init(
     assert(mv);
     assert(mb);
     //memset(mv, 0, sizeof(*mv));
-    copy_field(mv->field_prev, mb->field);
+    /*copy_field(mv->field_prev, mb->field);*/
     const int field_width = FIELD_SIZE * quad_width;
     if (!pos) {
         mv->pos = (Vector2){
@@ -866,7 +999,7 @@ void modelview_init(
 
 void modelbox_shutdown(struct ModelBox *mb) {
     assert(mb);
-    memset(mb, 0, sizeof(mb));
+    memset(mb, 0, sizeof(*mb));
     mb->dropped = true;
 }
 
@@ -876,4 +1009,18 @@ void modelview_shutdown(struct ModelView *mv) {
     mv->dropped = true;
 }
 
+void model_global_init() {
+    global_queue_maxsize = 100000;
+    global_queue = malloc(sizeof(global_queue[0]) * global_queue_maxsize);
+    assert(global_queue);
 
+    global_arr_maxsize = 100000;
+    global_arr_size = 0;
+    global_arr = malloc(sizeof(global_arr[0]) * global_arr_maxsize);
+    assert(global_arr);
+}
+
+void model_global_shutdown() {
+    free(global_queue);
+    free(global_arr);
+}

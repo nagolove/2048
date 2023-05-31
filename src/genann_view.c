@@ -169,6 +169,7 @@ static void neuron_links_init(struct NeuronLinks *nl, int num) {
     nl->weights = calloc(num, sizeof(double));
 }
 
+/*
 static HTableAction iter_neuron_link(
     const void *key, int key_len, void *value, int value_len,
     void *udata
@@ -177,6 +178,7 @@ static HTableAction iter_neuron_link(
     printf("iter_neuron_link: %s, %d\n", (char*)key, nl->num);
     return HTABLE_ACTION_NEXT;
 }
+*/
 
 static HTableAction iter_neuron_info(
     const void *key, int key_len, void *value, int value_len,

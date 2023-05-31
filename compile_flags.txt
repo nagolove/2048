@@ -8,5 +8,7 @@
 -I../caustic/3rd_party/small-regex/libsmallregex
 -I../caustic/3rd_party/sunvox/sunvox_lib/headers
 -I../caustic/src
+-I../caustic/3rd_party/cimgui/
+-I../caustic/3rd_party/cimgui/generator/output/
 -Isrc
 -I.

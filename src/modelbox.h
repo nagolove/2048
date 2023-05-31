@@ -23,6 +23,7 @@ enum ModelBoxState {
 enum CellAction {
     CA_MOVE,
     CA_SUM,
+    CA_NONE,
 };
 
 struct Cell {
@@ -59,7 +60,11 @@ struct ModelBox {
     bool                dropped;
 };
 
+/*
+Содержимое структуры непонятно спустя 1.5 месяцев от написания
+ */
 struct ModelView {
+    // Таймеры для анимации плиток
     struct Timer        timers[FIELD_SIZE * FIELD_SIZE * 2];
     int                 timers_cap, timers_size;
 
@@ -68,13 +73,15 @@ struct ModelView {
 
     struct Cell         *expired_cells[FIELD_SIZE * FIELD_SIZE];
     int                 expired_cells_num, expired_cells_cap;
+
     struct Cell         sorted[FIELD_SIZE * FIELD_SIZE];
-    Vector2 pos;
+
+    Vector2             pos;
     enum ModelViewState state;
-    Field               field_prev;
-    double              tmr_block;
+    Field               field_prev; //?
+    double              tmr_block;  //?
+    bool                dropped;    //?
     void    (*draw)(struct ModelView *mv, struct ModelBox *mb);
-    bool                dropped;
 };
 
 void modelbox_init(struct ModelBox *mb);
@@ -83,3 +90,6 @@ void modelview_init(
 );
 void modelbox_shutdown(struct ModelBox *mb);
 void modelview_shutdown(struct ModelView *mv);
+
+void model_global_init();
+void model_global_shutdown();
