@@ -16,6 +16,9 @@
 #include "cimgui.h"
 #include "cimgui_impl.h"
 
+#define TMR_BLOCK_TIME  1.5
+//#define TMR_BLOCK_TIME  .1
+
 struct CellArr {
     struct Cell arr[32];
     int num;
@@ -92,46 +95,30 @@ static void put(struct ModelBox *mb) {
         mb->field[x][y].value = 4;
 }
 
-/*
-static void sum_sub(
-    enum Direction dir,
-    struct Cell field_copy[FIELD_SIZE][FIELD_SIZE],
-    int i, int j,
-    int newi, int newj,
-    bool *moved,
-    struct ModelBox *mb
-) {
-    if (i > 0 && field_copy[newj][newi].value == field_copy[j][i].value) {
-        field_copy[newj][newi].value = field_copy[j][i].value * 2;
-        mb->scores += field_copy[j][i].value;
-        field_copy[j][i].value = 0;
-        *moved = true;
-        //printf("summarized vertical up\n");
-    }
-}
-*/
-
 // Складывает значения плиток в определенном направлении.
 // Все действия попадают в очередь действий.
 static void sum(
+        struct ModelBox *mb,
         enum Direction dir,
         struct Cell field_copy[FIELD_SIZE][FIELD_SIZE],
         int i, int j,
         bool *moved,
-        struct ModelBox *mb
+        struct ModelView *mv
 ) {
     // {{{
     switch (dir) {
         case DIR_UP: {
             if (i > 0 && field_copy[j][i - 1].value == field_copy[j][i].value) {
                 
-                struct Cell *cur = &mb->queue[mb->queue_size++];
-                cur->from_i = i;
-                cur->from_j = j;
-                cur->to_i = i - 1;
-                cur->to_j = j;
-                cur->action = CA_SUM;
-                cur->value = field_copy[j][i].value * 2;
+                if (mv) {
+                    struct Cell *cur = &mv->queue[mv->queue_size++];
+                    cur->from_i = i;
+                    cur->from_j = j;
+                    cur->to_i = i - 1;
+                    cur->to_j = j;
+                    cur->action = CA_SUM;
+                    cur->value = field_copy[j][i].value * 2;
+                }
 
                 field_copy[j][i - 1].value = field_copy[j][i].value * 2;
                 mb->scores += field_copy[j][i].value;
@@ -145,13 +132,15 @@ static void sum(
             if (i + 1 < FIELD_SIZE && 
                 field_copy[j][i + 1].value == field_copy[j][i].value) {
 
-                struct Cell *cur = &mb->queue[mb->queue_size++];
-                cur->from_i = i;
-                cur->from_j = j;
-                cur->to_i = i + 1;
-                cur->to_j = j;
-                cur->action = CA_SUM;
-                cur->value = field_copy[j][i].value * 2;
+                if (mv) {
+                    struct Cell *cur = &mv->queue[mv->queue_size++];
+                    cur->from_i = i;
+                    cur->from_j = j;
+                    cur->to_i = i + 1;
+                    cur->to_j = j;
+                    cur->action = CA_SUM;
+                    cur->value = field_copy[j][i].value * 2;
+                }
 
                 field_copy[j][i + 1].value = field_copy[j][i].value * 2;
                 mb->scores += field_copy[j][i].value;
@@ -164,14 +153,15 @@ static void sum(
         case DIR_LEFT: {
             if (j > 0 && field_copy[j - 1][i].value == field_copy[j][i].value) {
 
-
-                struct Cell *cur = &mb->queue[mb->queue_size++];
-                cur->from_i = i;
-                cur->from_j = j;
-                cur->to_i = i;
-                cur->to_j = j - 1;
-                cur->action = CA_SUM;
-                cur->value = field_copy[j][i].value * 2;
+                if (mv) {
+                    struct Cell *cur = &mv->queue[mv->queue_size++];
+                    cur->from_i = i;
+                    cur->from_j = j;
+                    cur->to_i = i;
+                    cur->to_j = j - 1;
+                    cur->action = CA_SUM;
+                    cur->value = field_copy[j][i].value * 2;
+                }
 
                 field_copy[j - 1][i].value = field_copy[j][i].value * 2;
                 mb->scores += field_copy[j][i].value;
@@ -185,13 +175,15 @@ static void sum(
             if (j + 1 < FIELD_SIZE &&
                 field_copy[j + 1][i].value == field_copy[j][i].value) {
 
-                struct Cell *cur = &mb->queue[mb->queue_size++];
-                cur->from_i = i;
-                cur->from_j = j;
-                cur->to_i = i;
-                cur->to_j = j + 1;
-                cur->action = CA_SUM;
-                cur->value = field_copy[j][i].value * 2;
+                if (mv) {
+                    struct Cell *cur = &mv->queue[mv->queue_size++];
+                    cur->from_i = i;
+                    cur->from_j = j;
+                    cur->to_i = i;
+                    cur->to_j = j + 1;
+                    cur->action = CA_SUM;
+                    cur->value = field_copy[j][i].value * 2;
+                }
 
                 field_copy[j + 1][i].value = field_copy[j][i].value * 2;
                 mb->scores += field_copy[j][i].value;
@@ -214,21 +206,24 @@ static void move(
         enum Direction dir,
         struct Cell field_copy[FIELD_SIZE][FIELD_SIZE],
         int i, int j,
-        bool *moved
+        bool *moved,
+        struct ModelView *mv
 ) {
     // {{{
     switch (dir) {
         case DIR_UP: {
             if (i > 0 && field_copy[j][i - 1].value == 0) {
 
-                struct Cell *cur = &mb->queue[mb->queue_size++];
-                cur->value = field_copy[j][i].value;
-                cur->from_i = i;
-                cur->from_j = j;
-                cur->to_i = i - 1;
-                cur->to_j = j;
-                cur->action = CA_MOVE;
-                cur->value = field_copy[j][i].value;
+                if (mv) {
+                    struct Cell *cur = &mv->queue[mv->queue_size++];
+                    cur->value = field_copy[j][i].value;
+                    cur->from_i = i;
+                    cur->from_j = j;
+                    cur->to_i = i - 1;
+                    cur->to_j = j;
+                    cur->action = CA_MOVE;
+                    //cur->value = field_copy[j][i].value;
+                }
 
                 field_copy[j][i - 1] = field_copy[j][i];
                 field_copy[j][i].value = 0;
@@ -241,14 +236,16 @@ static void move(
             if (i + 1 < FIELD_SIZE && field_copy[j][i + 1].value == 0) {
 
 
-                struct Cell *cur = &mb->queue[mb->queue_size++];
-                cur->value = field_copy[j][i].value;
-                cur->from_i = i;
-                cur->from_j = j;
-                cur->to_i = i + 1;
-                cur->to_j = j;
-                cur->action = CA_MOVE;
-                cur->value = field_copy[j][i].value;
+                if (mv) {
+                    struct Cell *cur = &mv->queue[mv->queue_size++];
+                    cur->value = field_copy[j][i].value;
+                    cur->from_i = i;
+                    cur->from_j = j;
+                    cur->to_i = i + 1;
+                    cur->to_j = j;
+                    cur->action = CA_MOVE;
+                    cur->value = field_copy[j][i].value;
+                }
 
                 field_copy[j][i + 1] = field_copy[j][i];
                 field_copy[j][i].value = 0;
@@ -260,14 +257,16 @@ static void move(
         case DIR_LEFT: {
             if (j > 0 && field_copy[j - 1][i].value == 0) {
 
-                struct Cell *cur = &mb->queue[mb->queue_size++];
-                cur->value = field_copy[j][i].value;
-                cur->from_i = i;
-                cur->from_j = j;
-                cur->to_i = i;
-                cur->to_j = j - 1;
-                cur->action = CA_MOVE;
-                cur->value = field_copy[j][i].value;
+                if (mv) {
+                    struct Cell *cur = &mv->queue[mv->queue_size++];
+                    cur->value = field_copy[j][i].value;
+                    cur->from_i = i;
+                    cur->from_j = j;
+                    cur->to_i = i;
+                    cur->to_j = j - 1;
+                    cur->action = CA_MOVE;
+                    cur->value = field_copy[j][i].value;
+                }
 
                 field_copy[j - 1][i] = field_copy[j][i];
                 field_copy[j][i].value = 0;
@@ -280,14 +279,16 @@ static void move(
             if (j + 1 < FIELD_SIZE && field_copy[j + 1][i].value == 0) {
 
 
-                struct Cell *cur = &mb->queue[mb->queue_size++];
-                cur->value = field_copy[j][i].value;
-                cur->from_i = i;
-                cur->from_j = j;
-                cur->to_i = i;
-                cur->to_j = j + 1;
-                cur->action = CA_MOVE;
-                cur->value = field_copy[j][i].value;
+                if (mv) {
+                    struct Cell *cur = &mv->queue[mv->queue_size++];
+                    cur->value = field_copy[j][i].value;
+                    cur->from_i = i;
+                    cur->from_j = j;
+                    cur->to_i = i;
+                    cur->to_j = j + 1;
+                    cur->action = CA_MOVE;
+                    cur->value = field_copy[j][i].value;
+                }
 
                 field_copy[j + 1][i] = field_copy[j][i];
                 field_copy[j][i].value = 0;
@@ -303,13 +304,15 @@ static void move(
 }
 
 
-static void update(struct ModelBox *mb, enum Direction dir) {
+static void update(
+    struct ModelBox *mb, enum Direction dir, struct ModelView *mv
+) {
     assert(mb);
     if (mb->state == MBS_GAMEOVER)
         return;
 
     mb->last_dir = dir;
-    mb->queue_size = 0;
+    mv->queue_size = 0;
 
     const int field_size_bytes = sizeof(mb->field[0][0]) * 
                                  FIELD_SIZE * FIELD_SIZE;
@@ -325,7 +328,7 @@ static void update(struct ModelBox *mb, enum Direction dir) {
         for (int i = 0; i < FIELD_SIZE; i++) {
             for (int j = 0; j < FIELD_SIZE; j++) {
                 if (field_copy[j][i].value == 0) continue;
-                move(mb, dir, field_copy, i, j, &moved);
+                move(mb, dir, field_copy, i, j, &moved, mv);
             }
         }
 
@@ -333,7 +336,7 @@ static void update(struct ModelBox *mb, enum Direction dir) {
             for (int j = 0; j < FIELD_SIZE; j++) {
                 if (field_copy[j][i].value == 0) 
                     continue;
-                sum(dir, field_copy, i, j, &moved, mb);
+                sum(mb, dir, field_copy, i, j, &moved, mv);
             }
         }
 
@@ -342,6 +345,18 @@ static void update(struct ModelBox *mb, enum Direction dir) {
     } while (moved);
 
     memmove(mb->field, field_copy, field_size_bytes);
+
+    if (mv) {
+        mv->fixed_size = 0;
+        for (int q = 0; q < mv->queue_size; ++q) {
+            for (int i = 0; i < FIELD_SIZE; i++)
+                for (int j = 0; j < FIELD_SIZE; j++)
+                    if (mv->queue[q].from_i == mb->field[j][i].from_i &&
+                        mv->queue[q].from_j == mb->field[j][i].from_j) {
+                        mv->fixed[mv->fixed_size++] = mb->field[j][i];
+                    }
+        }
+    }
 
     if (!is_over(mb))
         put(mb);
@@ -359,8 +374,8 @@ void modelbox_init(struct ModelBox *mb) {
     mb->last_dir = DIR_NONE;
     mb->update = update;
     mb->state = MBS_PROCESS;
-    mb->queue_cap = FIELD_SIZE * FIELD_SIZE;
-    mb->queue_size = 0;
+    //mb->queue_cap = FIELD_SIZE * FIELD_SIZE;
+    //mb->queue_size = 0;
     mb->dropped = true;
 }
 
@@ -402,11 +417,11 @@ static void draw_field(struct ModelView *mv) {
     }
 }
 
-static Color get_color(struct ModelView *mv, int value) {
+static Color get_color(struct ModelView *mv, int cell_value) {
     int colors_num = sizeof(colors) / sizeof(colors[0]);
     /*printf("colors_num %d\n", colors_num);*/
     for (int k = 0; k < colors_num; k++) {
-        if (value == mv->sorted[k].value) {
+        if (cell_value == mv->sorted[k].value) {
             return colors[k];
         }
     }
@@ -440,7 +455,6 @@ struct DrawOpts {
     double  amount;
 };
 
-/*
 static const struct DrawOpts dflt_draw_opts = {
     .offset_coef = {
         1.,
@@ -449,7 +463,7 @@ static const struct DrawOpts dflt_draw_opts = {
     .fontsize = 90,
     .custom_color = false,
 };
-*/
+// */
 
 static void cell_draw(
     struct ModelView *mv, struct Cell *cell, struct DrawOpts opts
@@ -586,14 +600,14 @@ static void draw_numbers(struct ModelView *mv, Field field) {
             Color color = get_color(mv, field[j][i].value);
             DrawTextEx(GetFontDefault(), msg, pos, fontsize, 0, color);
 
+            /*
             color = BLACK;
             sprintf(msg, "[%d, %d]", j, i);
             DrawTextEx(GetFontDefault(), msg, pos, fontsize / 3., 0, color);
+            */
         }
     }
 }
-
-#define TMR_BLOCK_TIME  1.5
 
 static void timer_add(struct ModelView *mv, void *udata, size_t sz) {
     trace(
@@ -611,8 +625,8 @@ static void timer_add(struct ModelView *mv, void *udata, size_t sz) {
 }
 
 static const struct DrawOpts special_draw_opts = {
-    .color = BLUE,
-    .custom_color = true,
+    //.color = BLUE,
+    .custom_color = false,
     .fontsize = 40,
     //.offset_coef = { 0., 0., },
     .offset_coef = { 1., 1., },
@@ -640,6 +654,7 @@ static void timers_remove_expired(
 
     //*expired_cells_num = 0;
 
+    // Зачем нужна структура tmp?
     struct Timer tmp[mv->timers_cap];
     memset(tmp, 0, sizeof(tmp));
     int tmp_size = 0;
@@ -649,7 +664,9 @@ static void timers_remove_expired(
         } else {
             if (mv->timers[i].data) {
                 //free(mv->timers[i].data);
-                struct Cell *cell = (struct Cell*)mv->timers[i].data;
+                struct TimerData *timer_data = mv->timers[i].data;
+                int num = timer_data->slides.num;
+                struct Cell *cell = &timer_data->slides.arr[num];
                 expired_cells[(*expired_cells_num)++] = cell;
             }
         }
@@ -736,6 +753,7 @@ static void divide_slides(
     }
 }
 
+/*
 void test_divide_slides() {
 // {{{ test_divide_slides
     struct Cell queue1[] = {
@@ -799,7 +817,9 @@ void test_divide_slides() {
 
 // }}}
 }
+*/
 
+/*
 static void print_paths(struct CellArr *arr, int num) {
     trace("print_paths:\n");
     for (int i = 0; i < num; i++) {
@@ -812,6 +832,7 @@ static void print_paths(struct CellArr *arr, int num) {
     }
     trace("\n");
 }
+*/
 
 static void movements_window() {
     bool open = true;
@@ -825,7 +846,7 @@ static void movements_window() {
         ImGuiTableFlags_Resizable | 
         ImGuiTableFlags_Reorderable | 
         ImGuiTableFlags_Hideable;
-    const float TEXT_BASE_HEIGHT = igGetTextLineHeightWithSpacing();
+    //const float TEXT_BASE_HEIGHT = igGetTextLineHeightWithSpacing();
 
     /*ImVec2 outer_size = {0., TEXT_BASE_HEIGHT * 8.};*/
     ImVec2 outer_size = {0., 0.};
@@ -940,21 +961,21 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     assert(mb);
 
     // FIXME: Рисовка разным цветом не всегда работает
-    sort_numbers(mv, mb);
 
+    draw_field(mv);
     bool debug = !IsKeyDown(KEY_D);
     if (debug) {
-        draw_field(mv);
-        draw_numbers(mv, mb->field);
     }
 
+    /*
     console_write("timers num: %d\n", mv->timers_size);
     console_write("last dir: %s\n", dir2str(mb->last_dir));
-    console_write("queue size: %d\n", mb->queue_size);
+    console_write("queue size: %d\n", mv->queue_size);
+    */
 
     if (mv->state == MVS_READY) {
-        memmove(mv->queue, mb->queue, sizeof(mb->queue[0]) * mb->queue_size);
-        mv->queue_size = mb->queue_size;
+        //memmove(mv->queue, mb->queue, sizeof(mb->queue[0]) * mb->queue_size);
+        //mv->queue_size = mb->queue_size;
     }
 
     /*
@@ -968,7 +989,7 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     struct CellArr arr[32] = {0}; 
     int arr_num = 0;
     
-    divide_slides(mb->queue, mb->queue_size, arr, &arr_num);
+    divide_slides(mv->queue, mv->queue_size, arr, &arr_num);
 
     /*
     // {{{
@@ -1010,7 +1031,7 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
 
     for (int i = 0; i < arr_num; i++) {
         traced = true;
-        trace("draw: mb->queue[%d] = %s\n", i, cell2str(mb->queue[i]));
+        trace("draw: mb->queue[%d] = %s\n", i, cell2str(mv->queue[i]));
         struct TimerData timer_data = {
             .slides = arr[i],
             .mv = mv,
@@ -1021,6 +1042,7 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     if (traced) trace("\n");
     timers_update(mv);
 
+    // XXX: Зачем нужны ячейки tmp_cells?
     struct Cell *tmp_cells[FIELD_SIZE * FIELD_SIZE] = {0};
     int tmp_cells_num = 0;
     timers_remove_expired(mv, tmp_cells, &tmp_cells_num);
@@ -1031,8 +1053,14 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
         mv->state = MVS_READY;
     else mv->state = MVS_ANIMATION;
 
+    if (mv->state == MVS_READY) {
+        sort_numbers(mv, mb);
+        draw_numbers(mv, mb->field);
+    }
+
     //trace("draw: mv->timers_size %d\n", mv->timers_size);
 
+    /*
     // Копии ячеек уже стоящих на местах не попадают в финальный массив для
     // отображения
     for (int i = 0; i < tmp_cells_num; i++) {
@@ -1059,10 +1087,18 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     }
     // */
 
+    /*
+    if (mv->fixed_size)
+        trace("model_draw: mv->fixed_size %d\n", mv->fixed_size);
+    for (int j = 0; j < mv->fixed_size; ++j) {
+        cell_draw(mv, &mv->fixed[j], dflt_draw_opts);
+    }
+    */
+
     fill_global_queue(mv);
     fill_global_arr(arr, arr_num);
 
-    gui();
+    //gui();
 }
 
 void modelview_init(
@@ -1085,8 +1121,10 @@ void modelview_init(
     mv->state = MVS_READY;
     mv->draw = model_draw;
     mv->tmr_block = GetTime();
-    mv->expired_cells_cap = FIELD_SIZE * FIELD_SIZE;
+    //mv->expired_cells_cap = FIELD_SIZE * FIELD_SIZE;
     mv->dropped = false;
+    mv->queue_cap = FIELD_SIZE * FIELD_SIZE;
+    mv->queue_size = 0;
 }
 
 void modelbox_shutdown(struct ModelBox *mb) {

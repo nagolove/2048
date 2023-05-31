@@ -36,23 +36,24 @@ static HotkeyStorage hk = {0};
 
 
 void input() {
-    main_model.queue_size = 0;
+    main_view.queue_size = 0;
 
+    // Закончилась-ли анимация?
     if (main_view.state != MVS_READY)
         return;
 
     if (IsKeyPressed(KEY_LEFT)) {
-        main_view.expired_cells_num = 0;
-        main_model.update(&main_model, DIR_LEFT);
+        //main_view.expired_cells_num = 0;
+        main_model.update(&main_model, DIR_LEFT, &main_view);
     } else if (IsKeyPressed(KEY_RIGHT)) {
-        main_view.expired_cells_num = 0;
-        main_model.update(&main_model, DIR_RIGHT);
+        //main_view.expired_cells_num = 0;
+        main_model.update(&main_model, DIR_RIGHT, &main_view);
     } else if (IsKeyPressed(KEY_UP)) {
-        main_view.expired_cells_num = 0;
-        main_model.update(&main_model, DIR_UP);
+        //main_view.expired_cells_num = 0;
+        main_model.update(&main_model, DIR_UP, &main_view);
     } else if (IsKeyPressed(KEY_DOWN)) {
-        main_view.expired_cells_num = 0;
-        main_model.update(&main_model, DIR_DOWN);
+        //main_view.expired_cells_num = 0;
+        main_model.update(&main_model, DIR_DOWN, &main_view);
     }
 }
 
@@ -188,7 +189,9 @@ static void update(void *arg) {
     BeginDrawing();
     BeginMode2D(camera);
     ClearBackground(RAYWHITE);
+
     main_view.draw(&main_view, &main_model);
+
     draw_scores();
     switch (main_model.state) {
         case MBS_GAMEOVER: {
@@ -229,7 +232,8 @@ int main(void) {
     camera.zoom = 1.0f;
     srand(time(NULL));
     InitWindow(screen_width, screen_height, "2048");
-    SetTargetFPS(999);
+    //SetTargetFPS(999);
+    SetTargetFPS(60);
 
     rlImGuiSetup(&(struct igSetupOptions) {
             .dark = false,

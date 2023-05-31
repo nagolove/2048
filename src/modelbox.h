@@ -49,19 +49,30 @@ enum ModelViewState {
 // x:y
 typedef struct Cell Field[FIELD_SIZE][FIELD_SIZE];
 
+typedef struct ModelBox ModelBox;
+typedef struct ModelView ModelView;
+
+typedef void (*ModelBoxUpdate)(
+    struct ModelBox *mb, enum Direction dir, struct ModelView *mv
+);
+
+/*
+    Текущеее состояние поля. Без анимации и эффектов. Подходит для машинного 
+    обучения тк работает быстро и использует небольшое количество памяти.
+ */
 struct ModelBox {
-    int  scores;
+    int                 scores;
     Field               field;
-    struct Cell         queue[FIELD_SIZE * FIELD_SIZE];
-    int                 queue_cap, queue_size;
+    //struct Cell         queue[FIELD_SIZE * FIELD_SIZE];
+    //int                 queue_cap, queue_size;
     enum ModelBoxState  state;
     enum Direction      last_dir;
-    void (*update)(struct ModelBox *mb, enum Direction dir);
+    ModelBoxUpdate      update;
     bool                dropped;
 };
 
 /*
-Содержимое структуры непонятно спустя 1.5 месяцев от написания
+    Отображение поля. Все, что связано с анимацией.
  */
 struct ModelView {
     // Таймеры для анимации плиток
@@ -71,8 +82,11 @@ struct ModelView {
     struct Cell         queue[FIELD_SIZE * FIELD_SIZE];
     int                 queue_cap, queue_size;
 
-    struct Cell         *expired_cells[FIELD_SIZE * FIELD_SIZE];
-    int                 expired_cells_num, expired_cells_cap;
+    struct Cell         fixed[FIELD_SIZE * FIELD_SIZE];
+    int                 fixed_cap, fixed_size;
+
+    //struct Cell         *expired_cells[FIELD_SIZE * FIELD_SIZE];
+    //int                 expired_cells_num, expired_cells_cap;
 
     struct Cell         sorted[FIELD_SIZE * FIELD_SIZE];
 
