@@ -174,6 +174,8 @@ static void update(void *arg) {
 
         model_global_shutdown();
         model_global_init();
+
+        main_model.start(&main_model, &main_view);
     }
 
     /*
@@ -245,9 +247,6 @@ int main(void) {
     genann_view_position_set(net_viewer, (Vector2) { 0., -1000. });
     */
 
-    modelbox_init(&main_model);
-    modelview_init(&main_view, NULL, &main_model);
-
     /*
     trained = load();
     genann_print(trained);
@@ -258,6 +257,10 @@ int main(void) {
     sc_init();
     logger_register_functions();
     sc_init_script();
+
+    modelbox_init(&main_model);
+    modelview_init(&main_view, NULL, &main_model);
+    main_model.start(&main_model, &main_view);
 
     hotkey_init(&hk);
     console_init(&hk, &(struct ConsoleSetup) {

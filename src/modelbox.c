@@ -29,6 +29,31 @@ struct TimerData {
     struct ModelView    *mv;
 };
 
+struct TimerDataPut {
+    int                 x, y, value;
+    struct ModelView    *mv;
+};
+
+struct DrawOpts {
+    int     fontsize;
+    Vector2 offset_coef; // 1. is default value
+    bool    custom_color;
+    Color   color;
+    double  amount;
+    bool    anim_alpha;
+};
+
+static const struct DrawOpts dflt_draw_opts = {
+    .offset_coef = {
+        1.,
+        1.,
+    },
+    .fontsize = 90,
+    .custom_color = false,
+};
+// */
+
+
 static const int quad_width = 128 + 64;
 
 static int global_queue_size = 0;
@@ -47,6 +72,12 @@ static Color colors[] = {
     BLUE, 
     GRAY,
 };
+
+static void tmr_update_tile(struct Timer *t);
+static void tmr_update_put(struct Timer *t);
+static void timer_add(
+    struct ModelView *mv, void *udata, size_t sz, void (*update)(struct Timer*)
+);
 
 /*
 static void copy_field(
@@ -78,7 +109,7 @@ static bool is_over(struct ModelBox *mb) {
     return FIELD_SIZE * FIELD_SIZE == num;
 }
 
-static void put(struct ModelBox *mb) {
+static void put(struct ModelBox *mb, struct ModelView *mv) {
     assert(mb);
     int x = rand() % FIELD_SIZE;
     int y = rand() % FIELD_SIZE;
@@ -93,6 +124,15 @@ static void put(struct ModelBox *mb) {
         mb->field[x][y].value = 2;
     else 
         mb->field[x][y].value = 4;
+
+    struct TimerDataPut timer_data = {
+        //.slides = arr[i],
+        .x = x,
+        .y = y,
+        .value = v,
+        .mv = mv,
+    };
+    timer_add(mv, &timer_data, sizeof(timer_data), tmr_update_put);
 }
 
 // Складывает значения плиток в определенном направлении.
@@ -121,6 +161,7 @@ static void sum(
                 }
 
                 field_copy[j][i - 1].value = field_copy[j][i].value * 2;
+                field_copy[j][i - 1].action = CA_SUM;
                 mb->scores += field_copy[j][i].value;
                 field_copy[j][i].value = 0;
                 *moved = true;
@@ -143,6 +184,7 @@ static void sum(
                 }
 
                 field_copy[j][i + 1].value = field_copy[j][i].value * 2;
+                field_copy[j][i + 1].action = CA_SUM;
                 mb->scores += field_copy[j][i].value;
                 field_copy[j][i].value = 0;
                 *moved = true;
@@ -164,6 +206,7 @@ static void sum(
                 }
 
                 field_copy[j - 1][i].value = field_copy[j][i].value * 2;
+                field_copy[j - 1][i].action = CA_SUM;
                 mb->scores += field_copy[j][i].value;
                 field_copy[j][i].value = 0;
                 *moved = true;
@@ -186,6 +229,7 @@ static void sum(
                 }
 
                 field_copy[j + 1][i].value = field_copy[j][i].value * 2;
+                field_copy[j + 1][i].action = CA_SUM;
                 mb->scores += field_copy[j][i].value;
                 field_copy[j][i].value = 0;
                 *moved = true;
@@ -226,6 +270,7 @@ static void move(
                 }
 
                 field_copy[j][i - 1] = field_copy[j][i];
+                field_copy[j][i].action = CA_MOVE;
                 field_copy[j][i].value = 0;
                 *moved = true;
                 //printf("moved vertical up\n");
@@ -248,6 +293,7 @@ static void move(
                 }
 
                 field_copy[j][i + 1] = field_copy[j][i];
+                field_copy[j][i].action = CA_MOVE;
                 field_copy[j][i].value = 0;
                 *moved = true;
                 //printf("moved vertical down\n");
@@ -269,6 +315,7 @@ static void move(
                 }
 
                 field_copy[j - 1][i] = field_copy[j][i];
+                field_copy[j][i].action = CA_MOVE;
                 field_copy[j][i].value = 0;
                 *moved = true;
                 //printf("moved horizontal left\n");
@@ -277,7 +324,6 @@ static void move(
         }
         case DIR_RIGHT: {
             if (j + 1 < FIELD_SIZE && field_copy[j + 1][i].value == 0) {
-
 
                 if (mv) {
                     struct Cell *cur = &mv->queue[mv->queue_size++];
@@ -291,6 +337,7 @@ static void move(
                 }
 
                 field_copy[j + 1][i] = field_copy[j][i];
+                field_copy[j][i].action = CA_MOVE;
                 field_copy[j][i].value = 0;
                 *moved = true;
                 //printf("moved horizontal right\n");
@@ -322,6 +369,10 @@ static void update(
     bool moved = false;
     int iter = 0;
 
+    for (int i = 0; i < FIELD_SIZE; i++) 
+        for (int j = 0; j < FIELD_SIZE; j++) 
+            field_copy[j][i].action = CA_NONE;
+
     do {
         moved = false;
 
@@ -334,8 +385,7 @@ static void update(
 
         for (int i = 0; i < FIELD_SIZE; i++) {
             for (int j = 0; j < FIELD_SIZE; j++) {
-                if (field_copy[j][i].value == 0) 
-                    continue;
+                if (field_copy[j][i].value == 0) continue;
                 sum(mb, dir, field_copy, i, j, &moved, mv);
             }
         }
@@ -344,22 +394,34 @@ static void update(
         //printf("iter %d\n", iter);
     } while (moved);
 
-    memmove(mb->field, field_copy, field_size_bytes);
+    /*
+    Как выделить те плитки, что должны рисовать, но не передвигаются?
+     */
 
     if (mv) {
         mv->fixed_size = 0;
         for (int q = 0; q < mv->queue_size; ++q) {
             for (int i = 0; i < FIELD_SIZE; i++)
                 for (int j = 0; j < FIELD_SIZE; j++)
-                    if (mv->queue[q].from_i == mb->field[j][i].from_i &&
-                        mv->queue[q].from_j == mb->field[j][i].from_j) {
-                        mv->fixed[mv->fixed_size++] = mb->field[j][i];
+                    /*if (mv->queue[q].from_i == mb->field[j][i].from_i &&*/
+                        /*mv->queue[q].from_j == mb->field[j][i].from_j) {*/
+                    if (field_copy[j][i].action == CA_NONE && 
+                        field_copy[j][i].value != 0) {
+                        mv->fixed[mv->fixed_size] = mb->field[j][i];
+                        //mv->fixed[mv->fixed_size] = field_copy[j][i];
+                        mv->fixed[mv->fixed_size].from_i = i;
+                        mv->fixed[mv->fixed_size].from_j = j;
+                        mv->fixed[mv->fixed_size].to_i = i;
+                        mv->fixed[mv->fixed_size].to_j = j;
+                        mv->fixed_size++;
                     }
         }
     }
 
+    memmove(mb->field, field_copy, field_size_bytes);
+
     if (!is_over(mb))
-        put(mb);
+        put(mb, mv);
     else
         mb->state = MBS_GAMEOVER;
 
@@ -367,12 +429,16 @@ static void update(
         mb->state = MBS_WIN;
 }
 
+static void start(struct ModelBox *mb, struct ModelView *mv) {
+    put(mb, mv);
+}
+
 void modelbox_init(struct ModelBox *mb) {
     assert(mb);
     memset(mb, 0, sizeof(*mb));
-    put(mb);
     mb->last_dir = DIR_NONE;
     mb->update = update;
+    mb->start = start;
     mb->state = MBS_PROCESS;
     //mb->queue_cap = FIELD_SIZE * FIELD_SIZE;
     //mb->queue_size = 0;
@@ -447,24 +513,6 @@ static const char *action2str(enum CellAction action) {
     return str;
 }
 
-struct DrawOpts {
-    int     fontsize;
-    Vector2 offset_coef; // 1. is default value
-    bool    custom_color;
-    Color   color;
-    double  amount;
-};
-
-static const struct DrawOpts dflt_draw_opts = {
-    .offset_coef = {
-        1.,
-        1.,
-    },
-    .fontsize = 90,
-    .custom_color = false,
-};
-// */
-
 static void cell_draw(
     struct ModelView *mv, struct Cell *cell, struct DrawOpts opts
 ) {
@@ -472,7 +520,6 @@ static void cell_draw(
     int fontsize = opts.fontsize;
     float spacing = 2.;
     //const int field_width = FIELD_SIZE * quad_width;
-    Vector2 start = mv->pos;
 
     assert(cell);
     //if (!cell) return;
@@ -482,11 +529,38 @@ static void cell_draw(
     // Удалить закончившиеся таймеры.
     //
     // Таймеры для фиксированнного значения fps, длятся duration секунд.
+    if (cell->value == 0)
+        return;
 
     char msg[64] = {0};
     //sprintf(msg, "%d [%s]", cell->value, action2str(cell->action));
     sprintf(msg, "%d", cell->value);
     int textw = 0;
+
+    assert(opts.amount >= 0 && opts.amount <= 1.);
+    Vector2 base_pos;
+
+    if (cell->action == CA_NONE) {
+        base_pos = (Vector2) {
+            cell->from_j, cell->from_i,
+        };
+    } else if (cell->action == CA_MOVE) {
+        base_pos = (Vector2) {
+            Lerp(cell->from_j, cell->to_j, opts.amount),
+            Lerp(cell->from_i, cell->to_i, opts.amount),
+        };
+    } else {
+        base_pos = (Vector2) {
+            Lerp(cell->from_j, cell->to_j, opts.amount),
+            Lerp(cell->from_i, cell->to_i, opts.amount),
+        };
+        const float font_scale = 4.;
+        if (opts.amount <= 0.5)
+            fontsize = Lerp(fontsize, fontsize * font_scale, opts.amount);
+        else
+            fontsize = Lerp(fontsize * 2., fontsize, opts.amount);
+    }
+
 
     do {
         Font f = GetFontDefault();
@@ -494,29 +568,24 @@ static void cell_draw(
         //printf("fontsize %d\n", fontsize);
     } while (textw > quad_width);
 
-    Vector2 pos = start;
+    Vector2 pos = mv->pos;
     // TODO: Как сделать offset_coef рабочим в диапазоне -1..1
-    // Значение по умолчанию - 0
-    // -1 - смещение влево
+    // Значение по умолчанию - 0, -1 - смещение влево
 
     Vector2 offset = {
         opts.offset_coef.x * (quad_width - textw) / 2.,
         opts.offset_coef.x * (quad_width - fontsize) / 2.,
     };
 
-    assert(opts.amount >= 0 && opts.amount <= 1.);
-    Vector2 base_pos = {
-        Lerp(cell->from_j, cell->to_j, opts.amount),
-        Lerp(cell->from_i, cell->to_i, opts.amount),
-    };
-
-    trace("cell_draw: opts.amount %f\n", opts.amount);
-    trace("cell_draw: cell %p, base_pos %s\n", cell, Vector2_tostr(base_pos));
+    //trace("cell_draw: opts.amount %f\n", opts.amount);
+    //trace("cell_draw: cell %p, base_pos %s\n", cell, Vector2_tostr(base_pos));
 
     Vector2 disp = Vector2Add(Vector2Scale(base_pos, quad_width), offset);
     pos = Vector2Add(pos, disp);
 
     Color color = opts.custom_color ? opts.color : get_color(mv, cell->value);
+    if (opts.anim_alpha)
+        color.a = Lerp(10, 255, opts.amount);
     //Color color = DARKBLUE;
     DrawTextEx(GetFontDefault(), msg, pos, fontsize, 0, color);
 
@@ -609,18 +678,22 @@ static void draw_numbers(struct ModelView *mv, Field field) {
     }
 }
 
-static void timer_add(struct ModelView *mv, void *udata, size_t sz) {
+static void timer_add(
+    struct ModelView *mv, void *udata, size_t sz, void (*update)(struct Timer*)
+) {
     trace(
         "timer_add: timer_size %d, timers_cap %d\n",
         mv->timers_size, 
         mv->timers_cap
     );
+    assert(update);
     assert(mv->timers_size + 1 < mv->timers_cap);
     struct Timer *tmr = &mv->timers[mv->timers_size++];
     tmr->start_time = GetTime();
     tmr->duration = TMR_BLOCK_TIME;
     tmr->expired = false;
     tmr->data = malloc(sz);
+    tmr->update = update;
     memmove(tmr->data, udata, sz);
 }
 
@@ -632,7 +705,7 @@ static const struct DrawOpts special_draw_opts = {
     .offset_coef = { 1., 1., },
 };
 
-static void tmr_update(struct Timer *t) {
+static void tmr_update_tile(struct Timer *t) {
     struct TimerData *timer_data = t->data;
     struct ModelView *mv = timer_data->mv;
     int index = floor(t->amount * timer_data->slides.num);
@@ -642,6 +715,26 @@ static void tmr_update(struct Timer *t) {
     opts.amount = t->amount;
     opts.fontsize = 90;
     cell_draw(mv, cell, opts);
+}
+
+static void tmr_update_put(struct Timer *t) {
+    struct TimerDataPut *timer_data = t->data;
+    struct ModelView *mv = timer_data->mv;
+    //int index = floor(t->amount * timer_data->slides.num);
+    struct Cell cell = {
+        .action = CA_MOVE,
+        .from_j = timer_data->x,
+        .from_i = timer_data->y,
+        .to_j = timer_data->x,
+        .to_i = timer_data->y,
+        .value = timer_data->value,
+    };
+    //trace("tmr_update: udata %p\n", udata);
+    struct DrawOpts opts = special_draw_opts;
+    opts.amount = t->amount;
+    opts.fontsize = 90;
+    opts.anim_alpha = true;
+    cell_draw(mv, &cell, opts);
 }
 
 static void timers_remove_expired(
@@ -664,10 +757,11 @@ static void timers_remove_expired(
         } else {
             if (mv->timers[i].data) {
                 //free(mv->timers[i].data);
-                struct TimerData *timer_data = mv->timers[i].data;
-                int num = timer_data->slides.num;
-                struct Cell *cell = &timer_data->slides.arr[num];
-                expired_cells[(*expired_cells_num)++] = cell;
+                
+                //struct TimerData *timer_data = mv->timers[i].data;
+                //int num = timer_data->slides.num;
+                //struct Cell *cell = &timer_data->slides.arr[num];
+                //expired_cells[(*expired_cells_num)++] = cell;
             }
         }
     }
@@ -686,7 +780,8 @@ static void timers_update(struct ModelView *mv) {
             //trace(
                 //"timers_update: timer %p, amount %f\n", timer, timer->amount
             //);
-            tmr_update(timer);
+            assert(timer->update);
+            timer->update(timer);
         }
     }
 }
@@ -1036,7 +1131,7 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
             .slides = arr[i],
             .mv = mv,
         };
-        timer_add(mv, &timer_data, sizeof(timer_data));
+        timer_add(mv, &timer_data, sizeof(timer_data), tmr_update_tile);
     }
 
     if (traced) trace("\n");
@@ -1052,11 +1147,6 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     if (mv->timers_size == 0)
         mv->state = MVS_READY;
     else mv->state = MVS_ANIMATION;
-
-    if (mv->state == MVS_READY) {
-        sort_numbers(mv, mb);
-        draw_numbers(mv, mb->field);
-    }
 
     //trace("draw: mv->timers_size %d\n", mv->timers_size);
 
@@ -1090,10 +1180,17 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     /*
     if (mv->fixed_size)
         trace("model_draw: mv->fixed_size %d\n", mv->fixed_size);
-    for (int j = 0; j < mv->fixed_size; ++j) {
-        cell_draw(mv, &mv->fixed[j], dflt_draw_opts);
-    }
     */
+    for (int j = 0; j < mv->fixed_size; ++j) {
+        //cell_draw(mv, &mv->fixed[j], dflt_draw_opts);
+    }
+    // */
+
+    if (mv->state == MVS_READY) {
+        sort_numbers(mv, mb);
+        draw_numbers(mv, mb->field);
+    }
+
 
     fill_global_queue(mv);
     fill_global_arr(arr, arr_num);

@@ -39,6 +39,7 @@ struct Timer {
     double  amount;     // 0..1
     bool    expired;
     void    *data;
+    void    (*update)(struct Timer *tmr);
 };
 
 enum ModelViewState {
@@ -68,6 +69,7 @@ struct ModelBox {
     enum ModelBoxState  state;
     enum Direction      last_dir;
     ModelBoxUpdate      update;
+    void                (*start)(struct ModelBox *mb, struct ModelView *mv);
     bool                dropped;
 };
 
@@ -79,9 +81,11 @@ struct ModelView {
     struct Timer        timers[FIELD_SIZE * FIELD_SIZE * 2];
     int                 timers_cap, timers_size;
 
+    // Очередь действий
     struct Cell         queue[FIELD_SIZE * FIELD_SIZE];
     int                 queue_cap, queue_size;
 
+    // Статичные плитки для рисования, которые не рисуются таймерами
     struct Cell         fixed[FIELD_SIZE * FIELD_SIZE];
     int                 fixed_cap, fixed_size;
 
