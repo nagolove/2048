@@ -43,6 +43,7 @@ struct DrawOpts {
     bool    anim_alpha;
 };
 
+/*
 static const struct DrawOpts dflt_draw_opts = {
     .offset_coef = {
         1.,
@@ -52,7 +53,6 @@ static const struct DrawOpts dflt_draw_opts = {
     .custom_color = false,
 };
 // */
-
 
 static const int quad_width = 128 + 64;
 
@@ -79,15 +79,6 @@ static void timer_add(
     struct ModelView *mv, void *udata, size_t sz, void (*update)(struct Timer*)
 );
 
-/*
-static void copy_field(
-    struct Cell dest[FIELD_SIZE][FIELD_SIZE], 
-    struct Cell source[FIELD_SIZE][FIELD_SIZE]
-) {
-    memmove(dest, source, sizeof(dest[0][0]) * FIELD_SIZE * FIELD_SIZE);
-}
-*/
-
 static int find_max(struct ModelBox *mb) {
     int max = 0;
     for (int i = 0; i < FIELD_SIZE; i++)
@@ -105,7 +96,6 @@ static bool is_over(struct ModelBox *mb) {
             if (mb->field[i][j].value > 0)
                 num++;
 
-    //printf("is_over: %d\n", FIELD_SIZE * FIELD_SIZE == num);
     return FIELD_SIZE * FIELD_SIZE == num;
 }
 
@@ -126,7 +116,6 @@ static void put(struct ModelBox *mb, struct ModelView *mv) {
         mb->field[x][y].value = 4;
 
     struct TimerDataPut timer_data = {
-        //.slides = arr[i],
         .x = x,
         .y = y,
         .value = v,
@@ -165,7 +154,6 @@ static void sum(
                 mb->scores += field_copy[j][i].value;
                 field_copy[j][i].value = 0;
                 *moved = true;
-                //printf("summarized vertical up\n");
             }
             break;
         }
@@ -188,7 +176,6 @@ static void sum(
                 mb->scores += field_copy[j][i].value;
                 field_copy[j][i].value = 0;
                 *moved = true;
-                //printf("summarized vertical down\n");
             }
             break;
         }
@@ -210,7 +197,6 @@ static void sum(
                 mb->scores += field_copy[j][i].value;
                 field_copy[j][i].value = 0;
                 *moved = true;
-                //printf("summarized horizontal left\n");
             }
             break;
         }
@@ -233,7 +219,6 @@ static void sum(
                 mb->scores += field_copy[j][i].value;
                 field_copy[j][i].value = 0;
                 *moved = true;
-                //printf("summarized horizontal right\n");
             }
             break;
         default:
@@ -266,14 +251,12 @@ static void move(
                     cur->to_i = i - 1;
                     cur->to_j = j;
                     cur->action = CA_MOVE;
-                    //cur->value = field_copy[j][i].value;
                 }
 
                 field_copy[j][i - 1] = field_copy[j][i];
                 field_copy[j][i].action = CA_MOVE;
                 field_copy[j][i].value = 0;
                 *moved = true;
-                //printf("moved vertical up\n");
             }
             break;
         }
@@ -289,14 +272,12 @@ static void move(
                     cur->to_i = i + 1;
                     cur->to_j = j;
                     cur->action = CA_MOVE;
-                    cur->value = field_copy[j][i].value;
                 }
 
                 field_copy[j][i + 1] = field_copy[j][i];
                 field_copy[j][i].action = CA_MOVE;
                 field_copy[j][i].value = 0;
                 *moved = true;
-                //printf("moved vertical down\n");
             }
             break;
         }
@@ -311,7 +292,6 @@ static void move(
                     cur->to_i = i;
                     cur->to_j = j - 1;
                     cur->action = CA_MOVE;
-                    cur->value = field_copy[j][i].value;
                 }
 
                 field_copy[j - 1][i] = field_copy[j][i];
@@ -333,14 +313,12 @@ static void move(
                     cur->to_i = i;
                     cur->to_j = j + 1;
                     cur->action = CA_MOVE;
-                    cur->value = field_copy[j][i].value;
                 }
 
                 field_copy[j + 1][i] = field_copy[j][i];
                 field_copy[j][i].action = CA_MOVE;
                 field_copy[j][i].value = 0;
                 *moved = true;
-                //printf("moved horizontal right\n");
             }
             break;
         default:
@@ -391,7 +369,11 @@ static void update(
         }
 
         iter++;
-        //printf("iter %d\n", iter);
+        int iter_limit = FIELD_SIZE * FIELD_SIZE;
+        if (iter > iter_limit) {
+            trace("update: iter_limit was reached\n");
+            exit(EXIT_FAILURE);
+        }
     } while (moved);
 
     /*
@@ -403,12 +385,9 @@ static void update(
         for (int q = 0; q < mv->queue_size; ++q) {
             for (int i = 0; i < FIELD_SIZE; i++)
                 for (int j = 0; j < FIELD_SIZE; j++)
-                    /*if (mv->queue[q].from_i == mb->field[j][i].from_i &&*/
-                        /*mv->queue[q].from_j == mb->field[j][i].from_j) {*/
                     if (field_copy[j][i].action == CA_NONE && 
                         field_copy[j][i].value != 0) {
                         mv->fixed[mv->fixed_size] = mb->field[j][i];
-                        //mv->fixed[mv->fixed_size] = field_copy[j][i];
                         mv->fixed[mv->fixed_size].from_i = i;
                         mv->fixed[mv->fixed_size].from_j = j;
                         mv->fixed[mv->fixed_size].to_i = i;
@@ -440,9 +419,7 @@ void modelbox_init(struct ModelBox *mb) {
     mb->update = update;
     mb->start = start;
     mb->state = MBS_PROCESS;
-    //mb->queue_cap = FIELD_SIZE * FIELD_SIZE;
-    //mb->queue_size = 0;
-    mb->dropped = true;
+    mb->dropped = false;
 }
 
 static int cmp(const void *pa, const void *pb) {
@@ -745,24 +722,19 @@ static void timers_remove_expired(
     assert(expired_cells_num);
     assert(expired_cells);
 
-    //*expired_cells_num = 0;
-
-    // Зачем нужна структура tmp?
+    // Хранилище для неистекщих таймеров
     struct Timer tmp[mv->timers_cap];
+
     memset(tmp, 0, sizeof(tmp));
     int tmp_size = 0;
     for (int i = 0; i < mv->timers_size; i++) {
-        if (!mv->timers[i].expired) {
-            tmp[tmp_size++] = mv->timers[i];
-        } else {
+        if (mv->timers[i].expired) {
             if (mv->timers[i].data) {
-                //free(mv->timers[i].data);
-                
-                //struct TimerData *timer_data = mv->timers[i].data;
-                //int num = timer_data->slides.num;
-                //struct Cell *cell = &timer_data->slides.arr[num];
-                //expired_cells[(*expired_cells_num)++] = cell;
+                free(mv->timers[i].data);
+                mv->timers[i].data = NULL;
             }
+        } else {
+            tmp[tmp_size++] = mv->timers[i];
         }
     }
     memmove(mv->timers, tmp, sizeof(tmp[0]) * tmp_size);
@@ -777,9 +749,6 @@ static void timers_update(struct ModelView *mv) {
         if (now - timer->start_time >= timer->duration) {
             timer->expired = true;
         } else {
-            //trace(
-                //"timers_update: timer %p, amount %f\n", timer, timer->amount
-            //);
             assert(timer->update);
             timer->update(timer);
         }
@@ -810,7 +779,7 @@ static const char *cell2str(const struct Cell cell) {
     return buf;
 }
 
-// XXX: Что делает функция?
+// Из массива со слайдами делает массив массивов(цепочек) слайдов
 static void divide_slides(
     struct Cell *queue, int queue_size, struct CellArr *out_arr, int *out_num
 ) {
@@ -830,7 +799,6 @@ static void divide_slides(
             struct Cell *top = NULL;
             if (ca->num > 0) {
                 top = &ca->arr[ca->num - 1];
-                //if (cur.to_j == top->from_j && cur.to_i == top->from_i) {
                 if (cur.from_j == top->to_j && cur.from_i == top->to_i) {
                     trace("divide_slides: found\n");
                     found = k;
@@ -943,7 +911,6 @@ static void movements_window() {
         ImGuiTableFlags_Hideable;
     //const float TEXT_BASE_HEIGHT = igGetTextLineHeightWithSpacing();
 
-    /*ImVec2 outer_size = {0., TEXT_BASE_HEIGHT * 8.};*/
     ImVec2 outer_size = {0., 0.};
     if (igBeginTable("movements", 1, table_flags, outer_size, 0.)) {
         for (int row = 0; row < global_queue_size; ++row) {
@@ -973,6 +940,7 @@ static void movements_window() {
     }
     igEnd();
 }
+// */
 
 static void paths_window() {
     bool open = true;
@@ -1018,6 +986,7 @@ static void paths_window() {
     }
     igEnd();
 }
+// */
 
 static void gui() {
     rlImGuiBegin(false);
@@ -1027,6 +996,7 @@ static void gui() {
     igShowDemoWindow(&open);
     rlImGuiEnd();
 }
+// */
 
 static void fill_global_queue(struct ModelView *mv) {
     if (global_queue_size + 1 == global_queue_maxsize) {
@@ -1055,74 +1025,14 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     assert(mv);
     assert(mb);
 
-    // FIXME: Рисовка разным цветом не всегда работает
-
     draw_field(mv);
-    bool debug = !IsKeyDown(KEY_D);
-    if (debug) {
-    }
-
-    /*
-    console_write("timers num: %d\n", mv->timers_size);
-    console_write("last dir: %s\n", dir2str(mb->last_dir));
-    console_write("queue size: %d\n", mv->queue_size);
-    */
-
-    if (mv->state == MVS_READY) {
-        //memmove(mv->queue, mb->queue, sizeof(mb->queue[0]) * mb->queue_size);
-        //mv->queue_size = mb->queue_size;
-    }
-
-    /*
-    left        
-    right
-    up
-    down
-     */
-    
 
     struct CellArr arr[32] = {0}; 
     int arr_num = 0;
     
     divide_slides(mv->queue, mv->queue_size, arr, &arr_num);
 
-    /*
-    // {{{
-    arr_num = 1;
-
-    arr[0].num = 3;
-
-    arr[0].arr[0].action = CA_NONE;
-    arr[0].arr[0].from_i = -1;
-    arr[0].arr[0].from_j = -1;
-    arr[0].arr[0].to_i = 100;
-    arr[0].arr[0].to_j = 100;
-
-    arr[0].arr[1].action = CA_NONE;
-    arr[0].arr[1].from_i = -2;
-    arr[0].arr[1].from_j = -2;
-    arr[0].arr[1].to_i = 101;
-    arr[0].arr[1].to_j = 101;
-
-    arr[0].arr[2].action = CA_NONE;
-    arr[0].arr[2].from_i = -3;
-    arr[0].arr[2].from_j = -3;
-    arr[0].arr[2].to_i = 102;
-    arr[0].arr[2].to_j = 102;
-    // }}}
-    */
-    //print_paths(arr, arr_num);
-
-    // TODO: Добавлять не все таймеры, а только те, что должны быть запущены
-    // в данный момент
     bool traced = false;
-    /*
-    for (int i = 0; i < mb->queue_size; i++) {
-        traced = true;
-        trace("draw: mb->queue[%d] = %s\n", i, cell2str(mb->queue[i]));
-        timer_add(mv, &mb->queue[i], sizeof(mb->queue[0]));
-    }
-    */
 
     for (int i = 0; i < arr_num; i++) {
         traced = true;
@@ -1147,8 +1057,6 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     if (mv->timers_size == 0)
         mv->state = MVS_READY;
     else mv->state = MVS_ANIMATION;
-
-    //trace("draw: mv->timers_size %d\n", mv->timers_size);
 
     /*
     // Копии ячеек уже стоящих на местах не попадают в финальный массив для
@@ -1177,10 +1085,6 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     }
     // */
 
-    /*
-    if (mv->fixed_size)
-        trace("model_draw: mv->fixed_size %d\n", mv->fixed_size);
-    */
     for (int j = 0; j < mv->fixed_size; ++j) {
         //cell_draw(mv, &mv->fixed[j], dflt_draw_opts);
     }
@@ -1195,7 +1099,7 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     fill_global_queue(mv);
     fill_global_arr(arr, arr_num);
 
-    //gui();
+    gui();
 }
 
 void modelview_init(
@@ -1224,6 +1128,15 @@ void modelview_init(
     mv->queue_size = 0;
 }
 
+void timers_free(struct ModelView *mv) {
+    for (int i = 0; i < mv->timers_size; ++i) {
+        if (mv->timers[i].data) {
+            free(mv->timers[i].data);
+            mv->timers[i].data = NULL;
+        }
+    }
+}
+
 void modelbox_shutdown(struct ModelBox *mb) {
     assert(mb);
     memset(mb, 0, sizeof(*mb));
@@ -1233,6 +1146,8 @@ void modelbox_shutdown(struct ModelBox *mb) {
 void modelview_shutdown(struct ModelView *mv) {
     assert(mv);
     memset(mv, 0, sizeof(*mv));
+    if (!mv->dropped)
+        timers_free(mv);
     mv->dropped = true;
 }
 
