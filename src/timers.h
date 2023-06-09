@@ -29,3 +29,7 @@ void timerman_add(struct TimerMan *tm, struct TimerDef td);
 int timerman_update(struct TimerMan *tm);
 void timerman_pause(struct TimerMan *tm, bool is_paused);
 void timerman_window(struct TimerMan *tm);
+void timerman_clear(struct TimerMan *tm);
+int timerman_remove_expired(struct TimerMan *tm);
+int timerman_num(struct TimerMan *tm, int *infinite_num);
+void timerman_clear_infinite(struct TimerMan *tm);

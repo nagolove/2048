@@ -30,6 +30,11 @@ struct CellArr {
     int num;
 };
 
+struct TimerCellDraw {
+    struct ModelView *mv;
+    struct Cell cell;
+};
+
 struct TimerData {
     struct CellArr      slides;
     struct ModelView    *mv;
@@ -81,6 +86,9 @@ static Color colors[] = {
 
 static void tmr_update_tile(struct Timer *t);
 static void tmr_update_put(struct Timer *t);
+static void cell_draw(
+    struct ModelView *mv, struct Cell *cell, struct DrawOpts opts
+);
 
 static int find_max(struct ModelBox *mb) {
     int max = 0;
@@ -131,6 +139,24 @@ static void put(struct ModelBox *mb, struct ModelView *mv) {
         .update = tmr_update_put,
     });
 }
+
+static const struct DrawOpts special_draw_opts = {
+    //.color = BLUE,
+    .custom_color = false,
+    .fontsize = 40,
+    //.offset_coef = { 0., 0., },
+    .offset_coef = { 1., 1., },
+};
+
+static void tmr_cell_draw(struct Timer *t) {
+    struct TimerCellDraw *timer_data = t->data;
+    struct DrawOpts opts = special_draw_opts;
+    opts.amount = t->amount;
+    opts.fontsize = 90;
+    opts.color = MAGENTA;
+    cell_draw(timer_data->mv, &timer_data->cell, opts);
+}
+
 
 // Складывает значения плиток в определенном направлении.
 // Все действия попадают в очередь действий.
@@ -402,17 +428,32 @@ static void update(
     for (int i = 0; i < FIELD_SIZE; ++i) {
         for (int j = 0; j < FIELD_SIZE; ++j) {
             if (mb->field[j][i].value == field_copy[j][i].value) {
-                struct Cell *cur = &mv->queue[mv->queue_size++];
-                /*struct Cell *cur = &mv->fixed[mv->fixed_size++];*/
+                trace("update: fixed tile\n");
+                //struct Cell *cur = &mv->queue[mv->queue_size++];
+                struct TimerCellDraw timer_data = {
+                    .mv = mv,
+                };
+                struct Cell *cur = &timer_data.cell;
+                //struct Cell *cur = &mv->fixed[mv->fixed_size++];
                 cur->action = CA_NONE;
                 cur->from_i = i;
                 cur->from_j = j;
                 cur->to_i = i;
                 cur->to_j = j;
                 cur->value = mb->field[j][i].value;
+
+                timerman_add(mv->timers, (struct TimerDef) {
+                    .duration = -1,
+                    .sz = sizeof(timer_data),
+                    .update = tmr_cell_draw,
+                    .udata = &timer_data,
+                });
+
             }
         }
     }
+    // */
+
     memmove(mb->field, field_copy, field_size_bytes);
 
     if (!is_over(mb))
@@ -625,15 +666,6 @@ static void draw_numbers(struct ModelView *mv, Field field) {
         }
     }
 }
-
-static const struct DrawOpts special_draw_opts = {
-    //.color = BLUE,
-    .custom_color = false,
-    .fontsize = 40,
-    //.offset_coef = { 0., 0., },
-    .offset_coef = { 1., 1., },
-};
-
 static void tmr_update_tile(struct Timer *t) {
     struct TimerData *timer_data = t->data;
     // slides: [ ], [ ], [ ], [ ]
@@ -646,7 +678,7 @@ static void tmr_update_tile(struct Timer *t) {
     if (t->amount > 0.998) {
         trace("tmr_update_tile: amount was reached 0.998\n");
         // приехали, рисовать плитку статически
-        timer_data->mv->fixed[timer_data->mv->fixed_size++] = *cell;
+        //timer_data->mv->fixed[timer_data->mv->fixed_size++] = *cell;
     } else {
         opts.fontsize = 90;
         cell_draw(timer_data->mv, cell, opts);
@@ -719,7 +751,7 @@ static void divide_slides(
             if (ca->num > 0) {
                 top = &ca->arr[ca->num - 1];
                 if (cur.from_j == top->to_j && cur.from_i == top->to_i) {
-                    trace("divide_slides: found\n");
+                    //trace("divide_slides: found\n");
                     found = k;
                     break;
                 }
@@ -873,7 +905,7 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
         divide_slides(mv->queue, mv->queue_size, arr, &arr_num);
 
         for (int i = 0; i < arr_num; i++) {
-            trace("draw: mb->queue[%d] = %s\n", i, cell2str(mv->queue[i]));
+            //trace("draw: mb->queue[%d] = %s\n", i, cell2str(mv->queue[i]));
             struct TimerData timer_data = {
                 .slides = arr[i],
                 .mv = mv,
@@ -891,6 +923,8 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
                 .sz = sizeof(timer_data),
                 .update = tmr_update_tile,
             });
+
+            mv->state = MVS_ANIMATION;
         }
     }
 
@@ -913,8 +947,14 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     }
     */
 
-
-    int timersnum = timerman_update(mv->timers);
+    timerman_update(mv->timers);
+    int infinite_num = 0;
+    timerman_remove_expired(mv->timers);
+    int timersnum = timerman_num(mv->timers, &infinite_num);
+    trace("model_draw: timersnum %d, infinite_num %d\n",
+        timersnum, infinite_num);
+    if (timersnum - infinite_num == 0 && infinite_num != 0)
+        timerman_clear_infinite(mv->timers);
 
     mv->state = timersnum ? MVS_ANIMATION : MVS_READY;
 

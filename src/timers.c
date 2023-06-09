@@ -51,7 +51,7 @@ void timerman_add(struct TimerMan *tm, struct TimerDef td) {
     memmove(tmr->data, td.udata, td.sz);
 }
 
-static void timers_remove_expired(struct TimerMan *tm) {
+int timerman_remove_expired(struct TimerMan *tm) {
     assert(tm);
     // Хранилище для неистекщих таймеров
     struct Timer tmp[tm->timers_cap];
@@ -70,12 +70,15 @@ static void timers_remove_expired(struct TimerMan *tm) {
     }
     memmove(tm->timers, tmp, sizeof(tmp[0]) * tmp_size);
     tm->timers_size = tmp_size;
+    return tm->timers_size;
 }
 
 int timerman_update(struct TimerMan *tm) {
     for (int i = 0; i < tm->timers_size; i++) {
-        double now = GetTime();
         struct Timer *timer = &tm->timers[i];
+        if (timer->duration < 0) continue;
+
+        double now = GetTime();
         timer->amount = (now - timer->start_time) / timer->duration;
 
         // Сделать установку паузы и снятие с нее
@@ -87,7 +90,6 @@ int timerman_update(struct TimerMan *tm) {
             timer->update(timer);
         }
     }
-    timers_remove_expired(tm);
     return tm->timers_size;
 }
 
@@ -165,4 +167,37 @@ void timerman_window(struct TimerMan *tm) {
         igEndTable();
     }
     igEnd();
+}
+
+void timerman_clear(struct TimerMan *tm) {
+    assert(tm);
+    tm->timers_size = 0;
+}
+
+void timerman_clear_infinite(struct TimerMan *tm) {
+    assert(tm);
+
+    struct Timer tmp[tm->timers_cap];
+    memset(tmp, 0, sizeof(tmp));
+    int tmp_num = 0;
+
+    for (int i = 0; i < tm->timers_size; ++i) {
+        if (tm->timers[i].duration >= 0)
+            tmp[tmp_num++] = tm->timers[i];
+    }
+
+    if (tmp_num > 0) {
+        memcpy(tm->timers, tmp, sizeof(struct Timer) * tmp_num);
+    }
+    tm->timers_size = tmp_num;
+}
+
+int timerman_num(struct TimerMan *tm, int *infinite_num) {
+    assert(tm);
+    if (infinite_num) {
+        *infinite_num = 0;
+        for (int i = 0; i < tm->timers_size; ++i)
+            *infinite_num += tm->timers[i].duration < 0;
+    }
+    return tm->timers_size;
 }

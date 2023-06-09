@@ -38,12 +38,12 @@ static HotkeyStorage hk = {0};
 
 
 void input() {
-    main_view.queue_size = 0;
-    main_view.fixed_size = 0;
-
     // Закончилась-ли анимация?
     if (main_view.state != MVS_READY)
         return;
+
+    main_view.queue_size = 0;
+    main_view.fixed_size = 0;
 
     if (IsKeyPressed(KEY_LEFT)) {
         //main_view.expired_cells_num = 0;
