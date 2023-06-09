@@ -1,7 +1,9 @@
 #pragma once
 
+#include "timers.h"
 #include "raylib.h"
 #include <stdbool.h>
+#include <stddef.h>
 
 #define FIELD_SIZE  4
 #define WIN_VALUE   2048
@@ -33,15 +35,6 @@ struct Cell {
     enum CellAction action;
 };
 
-struct Timer {
-    double  start_time; // GetTime()
-    double  duration;   // in seconds
-    double  amount;     // 0..1
-    bool    expired;
-    void    *data;
-    void    (*update)(struct Timer *tmr);
-};
-
 enum ModelViewState {
     MVS_ANIMATION,
     MVS_READY,
@@ -64,13 +57,11 @@ typedef void (*ModelBoxUpdate)(
 struct ModelBox {
     int                 scores;
     Field               field;
-    //struct Cell         queue[FIELD_SIZE * FIELD_SIZE];
-    //int                 queue_cap, queue_size;
     enum ModelBoxState  state;
     enum Direction      last_dir;
     ModelBoxUpdate      update;
     void                (*start)(struct ModelBox *mb, struct ModelView *mv);
-    bool                dropped;
+    bool                dropped;    //Флаг деинициализации структуры
 };
 
 /*
@@ -78,27 +69,21 @@ struct ModelBox {
  */
 struct ModelView {
     // Таймеры для анимации плиток
-    struct Timer        timers[FIELD_SIZE * FIELD_SIZE * 2];
-    int                 timers_cap, timers_size;
+    struct TimerMan     *timers;
 
     // Очередь действий
     struct Cell         queue[FIELD_SIZE * FIELD_SIZE];
     int                 queue_cap, queue_size;
 
-    // Статичные плитки для рисования, которые не рисуются таймерами
+    // Статичные плитки для рисования
     struct Cell         fixed[FIELD_SIZE * FIELD_SIZE];
     int                 fixed_cap, fixed_size;
-
-    //struct Cell         *expired_cells[FIELD_SIZE * FIELD_SIZE];
-    //int                 expired_cells_num, expired_cells_cap;
 
     struct Cell         sorted[FIELD_SIZE * FIELD_SIZE];
 
     Vector2             pos;
     enum ModelViewState state;
-    Field               field_prev; //?
-    double              tmr_block;  //?
-    bool                dropped;    //?
+    bool                dropped;    //Флаг деинициализации структуры
     void    (*draw)(struct ModelView *mv, struct ModelBox *mb);
 };
 

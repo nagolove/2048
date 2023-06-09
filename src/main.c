@@ -25,9 +25,11 @@
 static struct ModelBox     main_model;
 static struct ModelView    main_view;
 
-static bool automode = false;
-static const int screen_width = 1920;
-static const int screen_height = 1080;
+//static const int screen_width = 1920;
+//static const int screen_height = 1080;
+
+static const int screen_width = 1920 * 2;
+static const int screen_height = 1080 * 2;
 
 static Camera2D camera = { 0 };
 static const double MAX_VALUE = 2048;
@@ -37,6 +39,7 @@ static HotkeyStorage hk = {0};
 
 void input() {
     main_view.queue_size = 0;
+    main_view.fixed_size = 0;
 
     // Закончилась-ли анимация?
     if (main_view.state != MVS_READY)
@@ -157,14 +160,16 @@ void camera_process() {
     }
 }
 
+bool is_paused = false;
+
 static void update(void *arg) {
     /*camera_process();*/
-    if (!automode) {
-        if (main_model.state != MBS_GAMEOVER)
-            input();
-    } else {
-        //auto_play();
+
+    if (IsKeyPressed(KEY_P)) {
+        is_paused = !is_paused;
     }
+
+    timerman_pause(main_view.timers, is_paused);
 
     if (IsKeyPressed(KEY_R)) {
         modelbox_shutdown(&main_model);
@@ -192,6 +197,8 @@ static void update(void *arg) {
     BeginMode2D(camera);
     ClearBackground(RAYWHITE);
 
+    if (main_model.state != MBS_GAMEOVER)
+        input();
     main_view.draw(&main_view, &main_model);
 
     draw_scores();
@@ -234,6 +241,7 @@ int main(void) {
     camera.zoom = 1.0f;
     srand(time(NULL));
     InitWindow(screen_width, screen_height, "2048");
+    SetWindowMonitor(1);
     //SetTargetFPS(999);
     SetTargetFPS(60);
 
@@ -242,16 +250,6 @@ int main(void) {
             .font_path = "assets/djv.ttf",
             .font_size_pixels = 40,
     });
-    /*
-    net_viewer = genann_view_new("viewer");
-    genann_view_position_set(net_viewer, (Vector2) { 0., -1000. });
-    */
-
-    /*
-    trained = load();
-    genann_print(trained);
-    genann_print_run(trained);
-    */
 
     logger_init();
     sc_init();
@@ -293,6 +291,7 @@ int main(void) {
     modelbox_shutdown(&main_model);
     modelview_shutdown(&main_view);
 
+    // TODO: Падает тут 
     rlImGuiShutdown();
 
     hotkey_shutdown(&hk);
