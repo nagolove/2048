@@ -429,11 +429,15 @@ static void update(
         for (int j = 0; j < FIELD_SIZE; ++j) {
             if (mb->field[j][i].value == field_copy[j][i].value) {
                 trace("update: fixed tile\n");
-                //struct Cell *cur = &mv->queue[mv->queue_size++];
-                struct TimerCellDraw timer_data = {
-                    .mv = mv,
-                };
-                struct Cell *cur = &timer_data.cell;
+                struct Cell *cur = &mv->queue[mv->queue_size++];
+
+                /*
+                 *struct TimerCellDraw timer_data = {
+                 *    .mv = mv,
+                 *};
+                 *struct Cell *cur = &timer_data.cell;
+                 */
+
                 //struct Cell *cur = &mv->fixed[mv->fixed_size++];
                 cur->action = CA_NONE;
                 cur->from_i = i;
@@ -442,12 +446,15 @@ static void update(
                 cur->to_j = j;
                 cur->value = mb->field[j][i].value;
 
+
+                /*
                 timerman_add(mv->timers, (struct TimerDef) {
                     .duration = -1,
                     .sz = sizeof(timer_data),
                     .update = tmr_cell_draw,
                     .udata = &timer_data,
                 });
+                */
 
             }
         }
@@ -679,6 +686,7 @@ static void tmr_update_tile(struct Timer *t) {
         trace("tmr_update_tile: amount was reached 0.998\n");
         // приехали, рисовать плитку статически
         //timer_data->mv->fixed[timer_data->mv->fixed_size++] = *cell;
+        timerman_add(
     } else {
         opts.fontsize = 90;
         cell_draw(timer_data->mv, cell, opts);
@@ -910,12 +918,14 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
                 .slides = arr[i],
                 .mv = mv,
             };
+
             /*
     Когда один таймер закончился, а другой еще нет - перестает рисоваться
     картинка того таймера, который закончился.
     Если таймер закончил выполнение, то его картинка должна продолжать
     рисоваться.
              */
+
             timerman_add(mv->timers, (struct TimerDef) {
                 //.duration = TMR_BLOCK_TIME,
                 .duration = 2. * arr[i].num,
