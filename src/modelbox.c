@@ -3,6 +3,7 @@
 // TODO: Отказаться от блокировки ввода что-бы можно было играть на скорости выше скорости анимации, то есть до 60 герц.
 
 #include "modelbox.h"
+#include "koh_destral_ecs.h"
 #include "timers.h"
 #include <stddef.h>
 
@@ -54,7 +55,6 @@ struct DrawOpts {
     bool    anim_alpha;
 };
 
-/*
 static const struct DrawOpts dflt_draw_opts = {
     .offset_coef = {
         1.,
@@ -65,8 +65,15 @@ static const struct DrawOpts dflt_draw_opts = {
 };
 // */
 
+static const de_cp_type cmp_cell = {
+    .cp_id = 0,
+    .cp_sizeof = sizeof(struct Cell),
+    .name = "cell",
+};
+
 static const int quad_width = 128 + 64;
 
+/*
 static int global_queue_size = 0;
 static int global_queue_maxsize = 0;
 static struct Cell *global_queue = 0;
@@ -74,6 +81,7 @@ static struct Cell *global_queue = 0;
 static int global_arr_size = 0;
 static int global_arr_maxsize = 0;
 static struct CellArr *global_arr = 0;
+*/
 
 static Color colors[] = {
     RED,
@@ -84,62 +92,108 @@ static Color colors[] = {
     GRAY,
 };
 
-static void tmr_update_tile(struct Timer *t);
-static void tmr_update_put(struct Timer *t);
+//static void tmr_update_tile(struct Timer *t);
+//static void tmr_update_put(struct Timer *t);
 static void cell_draw(
     struct ModelView *mv, struct Cell *cell, struct DrawOpts opts
 );
 
-static int find_max(struct ModelBox *mb) {
+static int find_max(struct ModelView *mv) {
     int max = 0;
+
+    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
+        cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
+        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+        if (c && c->value > max)
+            max = c->value;
+    }
+
+    /*
     for (int i = 0; i < FIELD_SIZE; i++)
         for (int j = 0; j < FIELD_SIZE; j++)
-            if (mb->field[i][j].value > max)
-                max = mb->field[i][j].value;
+            if (mv->field[i][j].value > max)
+                max = mv->field[i][j].value;
+    */
 
     return max;
 }
 
-static bool is_over(struct ModelBox *mb) {
+static bool is_over(struct ModelView *mv) {
     int num = 0;
-    for (int i = 0; i < FIELD_SIZE; i++)
-        for (int j = 0; j < FIELD_SIZE; j++)
-            if (mb->field[i][j].value > 0)
-                num++;
+
+    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
+        cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
+        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+        if (c) num += c->value > 0;
+    }
 
     return FIELD_SIZE * FIELD_SIZE == num;
 }
 
-static void put(struct ModelBox *mb, struct ModelView *mv) {
-    assert(mb);
+static struct Cell *get_cell(struct ModelView *mv, int x, int y) {
+    assert(mv);
+    assert(mv->r);
+    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
+        cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
+        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+        if (c && c->from_x == x && c->from_y == y) {
+            return c;
+        }
+    }
+    return NULL;
+}
+
+static struct Cell *create_cell(struct ModelView *mv, int x, int y) {
+    assert(mv);
+    assert(mv->r);
+    de_entity en = de_create(mv->r);
+    struct Cell *cell = de_emplace(mv->r, en, cmp_cell);
+    assert(cell);
+    cell->from_x = x;
+    cell->from_y = y;
+    cell->action = CA_NONE;
+    cell->to_x = x;
+    cell->to_y = y;
+    cell->value = -1;
+    trace("create_cell: (%d, %d)\n", cell->from_x, cell->from_y);
+    return cell;
+}
+
+static void put(struct ModelView *mv) {
+    assert(mv);
     int x = rand() % FIELD_SIZE;
     int y = rand() % FIELD_SIZE;
 
-    while (mb->field[x][y].value != 0) {
+    struct Cell *cell = get_cell(mv, x, y);
+    while (cell && cell->value != 0) {
         x = rand() % FIELD_SIZE;
         y = rand() % FIELD_SIZE;
+        cell = get_cell(mv, x, y);
     }
 
-    float v = (float)rand() / (float)RAND_MAX;
-    if (v >= 0. && v < 0.9)
-        mb->field[x][y].value = 2;
-    else 
-        mb->field[x][y].value = 4;
+    if (!cell)
+        cell = create_cell(mv, x, y);
 
-    struct TimerDataPut timer_data = {
-        .x = x,
-        .y = y,
-        .value = v,
-        .mv = mv,
-    };
-    timerman_add(mv->timers, (struct TimerDef) {
-        .duration = TMR_PUT_TIME,
-        .sz = sizeof(timer_data),
-        .udata = &timer_data,
-        .update = tmr_update_put,
-    });
+    assert(cell);
+
+    float v = (float)rand() / (float)RAND_MAX;
+    if (v >= 0. && v < 0.9) {
+        //cell = get_cell(mv, x, y);
+        //assert(cell);
+        cell->value = 2;
+    } else {
+        //cell = get_cell(mv, x, y);
+        //assert(cell);
+        cell->value = 4;
+    }
+
+    cell->action = CA_NONE;
+    cell->to_x = cell->from_x;
+    cell->to_y = cell->from_y;
+    trace("put: val %d\n", cell->value);
 }
 
+/*
 static const struct DrawOpts special_draw_opts = {
     //.color = BLUE,
     .custom_color = false,
@@ -147,7 +201,9 @@ static const struct DrawOpts special_draw_opts = {
     //.offset_coef = { 0., 0., },
     .offset_coef = { 1., 1., },
 };
+*/
 
+/*
 static void tmr_cell_draw(struct Timer *t) {
     struct TimerCellDraw *timer_data = t->data;
     struct DrawOpts opts = special_draw_opts;
@@ -156,350 +212,40 @@ static void tmr_cell_draw(struct Timer *t) {
     opts.color = MAGENTA;
     cell_draw(timer_data->mv, &timer_data->cell, opts);
 }
+*/
 
-
-// Складывает значения плиток в определенном направлении.
-// Все действия попадают в очередь действий.
-static void sum(
-        struct ModelBox *mb,
-        enum Direction dir,
-        struct Cell field_copy[FIELD_SIZE][FIELD_SIZE],
-        int i, int j,
-        bool *moved,
-        struct ModelView *mv
-) {
-    // {{{
-    if (i < 0 || i >= FIELD_SIZE) {
-        return;
-    }
-    if (j < 0 || j >= FIELD_SIZE) {
-        return;
-    }
-
-    switch (dir) {
-        case DIR_UP: {
-            if (i > 0 && field_copy[j][i - 1].value == field_copy[j][i].value) {
-                
-                if (mv) {
-                    struct Cell *cur = &mv->queue[mv->queue_size++];
-                    cur->from_i = i;
-                    cur->from_j = j;
-                    cur->to_i = i - 1;
-                    cur->to_j = j;
-                    cur->action = CA_SUM;
-                    cur->value = field_copy[j][i].value * 2;
-                }
-
-                field_copy[j][i - 1].value = field_copy[j][i].value * 2;
-                field_copy[j][i - 1].action = CA_SUM;
-                mb->scores += field_copy[j][i].value;
-                field_copy[j][i].value = 0;
-                *moved = true;
-            }
-            break;
-        }
-        case DIR_DOWN: {
-            if (i + 1 < FIELD_SIZE && 
-                field_copy[j][i + 1].value == field_copy[j][i].value) {
-
-                if (mv) {
-                    struct Cell *cur = &mv->queue[mv->queue_size++];
-                    cur->from_i = i;
-                    cur->from_j = j;
-                    cur->to_i = i + 1;
-                    cur->to_j = j;
-                    cur->action = CA_SUM;
-                    cur->value = field_copy[j][i].value * 2;
-                }
-
-                field_copy[j][i + 1].value = field_copy[j][i].value * 2;
-                field_copy[j][i + 1].action = CA_SUM;
-                mb->scores += field_copy[j][i].value;
-                field_copy[j][i].value = 0;
-                *moved = true;
-            }
-            break;
-        }
-        case DIR_LEFT: {
-            if (j > 0 && field_copy[j - 1][i].value == field_copy[j][i].value) {
-
-                if (mv) {
-                    struct Cell *cur = &mv->queue[mv->queue_size++];
-                    cur->from_i = i;
-                    cur->from_j = j;
-                    cur->to_i = i;
-                    cur->to_j = j - 1;
-                    cur->action = CA_SUM;
-                    cur->value = field_copy[j][i].value * 2;
-                }
-
-                field_copy[j - 1][i].value = field_copy[j][i].value * 2;
-                field_copy[j - 1][i].action = CA_SUM;
-                mb->scores += field_copy[j][i].value;
-                field_copy[j][i].value = 0;
-                *moved = true;
-            }
-            break;
-        }
-        case DIR_RIGHT: {
-            if (j + 1 < FIELD_SIZE && 
-                field_copy[j + 1][i].value == field_copy[j][i].value) {
-
-                if (mv) {
-                    struct Cell *cur = &mv->queue[mv->queue_size++];
-                    cur->from_i = i;
-                    cur->from_j = j;
-                    cur->to_i = i;
-                    cur->to_j = j + 1;
-                    cur->action = CA_SUM;
-                    cur->value = field_copy[j][i].value * 2;
-                }
-
-                field_copy[j + 1][i].value = field_copy[j][i].value * 2;
-                field_copy[j + 1][i].action = CA_SUM;
-                mb->scores += field_copy[j][i].value;
-                field_copy[j][i].value = 0;
-                *moved = true;
-            }
-            break;
-        default:
-            break;
-        }
-    }
-    // }}}
-}
-
-// Двигает плитки в определенном направлении.
-// Все действия попадают в очередь действий.
-static void move(
-        struct ModelBox *mb,
-        enum Direction dir,
-        struct Cell field_copy[FIELD_SIZE][FIELD_SIZE],
-        int i, int j,
-        bool *moved,
-        struct ModelView *mv
-) {
-    // {{{
-    //if (i < 0 || i >= FIELD_SIZE || j < 0 || j >= FIELD_SIZE) {
-        //return;
-    //}
-
-    switch (dir) {
-        case DIR_UP: {
-            if (i > 0 && field_copy[j][i - 1].value == 0) {
-
-                if (mv) {
-                    struct Cell *cur = &mv->queue[mv->queue_size++];
-                    cur->value = field_copy[j][i].value;
-                    cur->from_i = i;
-                    cur->from_j = j;
-                    cur->to_i = i - 1;
-                    cur->to_j = j;
-                    cur->action = CA_MOVE;
-                }
-
-                field_copy[j][i - 1] = field_copy[j][i];
-                field_copy[j][i].action = CA_MOVE;
-                field_copy[j][i].value = 0;
-                *moved = true;
-            }
-            break;
-        }
-        case DIR_DOWN: {
-            if (i + 1 < FIELD_SIZE && field_copy[j][i + 1].value == 0) {
-
-
-                if (mv) {
-                    struct Cell *cur = &mv->queue[mv->queue_size++];
-                    cur->value = field_copy[j][i].value;
-                    cur->from_i = i;
-                    cur->from_j = j;
-                    cur->to_i = i + 1;
-                    cur->to_j = j;
-                    cur->action = CA_MOVE;
-                }
-
-                field_copy[j][i + 1] = field_copy[j][i];
-                field_copy[j][i].action = CA_MOVE;
-                field_copy[j][i].value = 0;
-                *moved = true;
-            }
-            break;
-        }
-        case DIR_LEFT: {
-            if (j > 0 && field_copy[j - 1][i].value == 0) {
-
-                if (mv) {
-                    struct Cell *cur = &mv->queue[mv->queue_size++];
-                    cur->value = field_copy[j][i].value;
-                    cur->from_i = i;
-                    cur->from_j = j;
-                    cur->to_i = i;
-                    cur->to_j = j - 1;
-                    cur->action = CA_MOVE;
-                }
-
-                field_copy[j - 1][i] = field_copy[j][i];
-                field_copy[j][i].action = CA_MOVE;
-                field_copy[j][i].value = 0;
-                *moved = true;
-                //printf("moved horizontal left\n");
-            }
-            break;
-        }
-        case DIR_RIGHT: {
-            if (j + 1 < FIELD_SIZE && field_copy[j + 1][i].value == 0) {
-
-                if (mv) {
-                    struct Cell *cur = &mv->queue[mv->queue_size++];
-                    cur->value = field_copy[j][i].value;
-                    cur->from_i = i;
-                    cur->from_j = j;
-                    cur->to_i = i;
-                    cur->to_j = j + 1;
-                    cur->action = CA_MOVE;
-                }
-
-                field_copy[j + 1][i] = field_copy[j][i];
-                field_copy[j][i].action = CA_MOVE;
-                field_copy[j][i].value = 0;
-                *moved = true;
-            }
-            break;
-        default:
-            break;
-        }
-    }
-    // }}}
-}
-
-
-static void update(
-    struct ModelBox *mb, enum Direction dir, struct ModelView *mv
-) {
-    assert(mb);
-    if (mb->state == MBS_GAMEOVER)
+static void update(struct ModelView *mv, enum Direction dir) {
+    assert(mv);
+    if (mv->state == MVS_GAMEOVER)
         return;
 
-    mb->last_dir = dir;
-    mv->queue_size = 0;
-
-    const int field_size_bytes = sizeof(mb->field[0][0]) * 
-                                 FIELD_SIZE * FIELD_SIZE;
-    struct Cell field_copy[FIELD_SIZE][FIELD_SIZE] = {0};
-    memmove(field_copy, mb->field, field_size_bytes);
-
-    bool moved = false;
-    int iter = 0;
-
-    for (int i = 0; i < FIELD_SIZE; i++) 
-        for (int j = 0; j < FIELD_SIZE; j++) 
-            field_copy[j][i].action = CA_NONE;
-
-    do {
-        moved = false;
-
-        for (int i = 0; i < FIELD_SIZE; i++) {
-            for (int j = 0; j < FIELD_SIZE; j++) {
-                if (field_copy[j][i].value == 0) continue;
-                move(mb, dir, field_copy, i, j, &moved, mv);
-            }
-        }
-
-        for (int i = 0; i < FIELD_SIZE; i++) {
-            for (int j = 0; j < FIELD_SIZE; j++) {
-                if (field_copy[j][i].value == 0) continue;
-                sum(mb, dir, field_copy, i, j, &moved, mv);
-            }
-        }
-
-        iter++;
-        int iter_limit = FIELD_SIZE * FIELD_SIZE;
-        if (iter > iter_limit) {
-            trace("update: iter_limit was reached\n");
-            exit(EXIT_FAILURE);
-        }
-    } while (moved);
-
-    /*
-    Как выделить те плитки, что должны рисовать, но не передвигаются?
-     */
-
-    for (int i = 0; i < FIELD_SIZE; ++i) {
-        for (int j = 0; j < FIELD_SIZE; ++j) {
-            if (mb->field[j][i].value == field_copy[j][i].value) {
-                trace("update: fixed tile\n");
-                struct Cell *cur = &mv->queue[mv->queue_size++];
-
-                /*
-                 *struct TimerCellDraw timer_data = {
-                 *    .mv = mv,
-                 *};
-                 *struct Cell *cur = &timer_data.cell;
-                 */
-
-                //struct Cell *cur = &mv->fixed[mv->fixed_size++];
-                cur->action = CA_NONE;
-                cur->from_i = i;
-                cur->from_j = j;
-                cur->to_i = i;
-                cur->to_j = j;
-                cur->value = mb->field[j][i].value;
-
-
-                /*
-                timerman_add(mv->timers, (struct TimerDef) {
-                    .duration = -1,
-                    .sz = sizeof(timer_data),
-                    .update = tmr_cell_draw,
-                    .udata = &timer_data,
-                });
-                */
-
-            }
-        }
-    }
-    // */
-
-    memmove(mb->field, field_copy, field_size_bytes);
-
-    if (!is_over(mb))
-        put(mb, mv);
+    if (!is_over(mv))
+        put(mv);
     else
-        mb->state = MBS_GAMEOVER;
+        mv->state = MVS_GAMEOVER;
 
-    if (find_max(mb) == WIN_VALUE)
-        mb->state = MBS_WIN;
-}
-
-static void start(struct ModelBox *mb, struct ModelView *mv) {
-    put(mb, mv);
-}
-
-void modelbox_init(struct ModelBox *mb) {
-    assert(mb);
-    memset(mb, 0, sizeof(*mb));
-    mb->last_dir = DIR_NONE;
-    mb->update = update;
-    mb->start = start;
-    mb->state = MBS_PROCESS;
-    mb->dropped = false;
+    if (find_max(mv) == WIN_VALUE)
+        mv->state = MVS_WIN;
 }
 
 static int cmp(const void *pa, const void *pb) {
-    const int *a = pa, *b = pb;
-    return *a < *b;
+    const struct Cell *a = pa, *b = pb;
+    return a->value < b->value;
 }
 
-static void sort_numbers(struct ModelView *mv, struct ModelBox *mb) {
+static void sort_numbers(struct ModelView *mv) {
     struct Cell tmp[FIELD_SIZE * FIELD_SIZE] = {0};
     int idx = 0;
-    for (int i = 0; i < FIELD_SIZE; i++)
-        for (int j = 0; j < FIELD_SIZE; j++)
-            tmp[idx++].value = mb->field[j][i].value;
+    for (int y = 0; y < FIELD_SIZE; y++)
+        for (int x = 0; x < FIELD_SIZE; x++) {
+            struct Cell *cell = get_cell(mv, x, y);
+            if (cell)
+                tmp[idx++].value = cell->value;
+        }
 
-    qsort(tmp, FIELD_SIZE * FIELD_SIZE, sizeof(mb->field[0][0]), cmp);
-    memmove(mv->sorted, tmp, sizeof(mv->sorted));
+    trace("sort_numbers: idx %d\n", idx);
+    qsort(tmp, idx, sizeof(tmp[0]), cmp);
+    memmove(mv->sorted, tmp, sizeof(tmp[0]) * idx);
 }
 
 static void draw_field(struct ModelView *mv) {
@@ -535,6 +281,7 @@ static Color get_color(struct ModelView *mv, int cell_value) {
     return colors[colors_num - 1];
 }
 
+/*
 static const char *action2str(enum CellAction action) {
     static char str[64] = {0};
     memset(str, 0, sizeof(str));
@@ -557,6 +304,7 @@ static const char *action2str(enum CellAction action) {
     }
     return str;
 }
+*/
 
 static void cell_draw(
     struct ModelView *mv, struct Cell *cell, struct DrawOpts opts
@@ -572,10 +320,10 @@ static void cell_draw(
     // Создать таймер для каждого движения в очереди
     // Обработать события всех таймеров
     // Удалить закончившиеся таймеры.
-    //
+ 
     // Таймеры для фиксированнного значения fps, длятся duration секунд.
-    if (cell->value == 0)
-        return;
+    //if (cell->value == 0)
+        //return;
 
     char msg[64] = {0};
     //sprintf(msg, "%d [%s]", cell->value, action2str(cell->action));
@@ -587,17 +335,17 @@ static void cell_draw(
 
     if (cell->action == CA_NONE) {
         base_pos = (Vector2) {
-            cell->from_j, cell->from_i,
+            cell->from_x, cell->from_y,
         };
     } else if (cell->action == CA_MOVE) {
         base_pos = (Vector2) {
-            Lerp(cell->from_j, cell->to_j, opts.amount),
-            Lerp(cell->from_i, cell->to_i, opts.amount),
+            Lerp(cell->from_x, cell->to_x, opts.amount),
+            Lerp(cell->from_y, cell->to_y, opts.amount),
         };
     } else {
         base_pos = (Vector2) {
-            Lerp(cell->from_j, cell->to_j, opts.amount),
-            Lerp(cell->from_i, cell->to_i, opts.amount),
+            Lerp(cell->from_x, cell->to_x, opts.amount),
+            Lerp(cell->from_y, cell->to_y, opts.amount),
         };
         const float font_scale = 4.;
         if (opts.amount <= 0.5)
@@ -637,20 +385,23 @@ static void cell_draw(
     // text_draw_in_rect((Rectangle), ALIGN_LEFT, pos, font, fontsize);
 }
 
-static void draw_numbers(struct ModelView *mv, Field field) {
+static void draw_numbers(struct ModelView *mv) {
     assert(mv);
-    assert(field);
     int fontsize = 90;
     float spacing = 2.;
     //const int field_width = FIELD_SIZE * quad_width;
     Vector2 start = mv->pos;
-    for (int i = 0; i < FIELD_SIZE; i++) {
-        for (int j = 0; j < FIELD_SIZE; j++) {
-            if (field[j][i].value == 0)
+    for (int y = 0; y < FIELD_SIZE; y++) {
+        for (int x = 0; x < FIELD_SIZE; y++) {
+            struct Cell *cell = get_cell(mv, x, y);
+            if (!cell)
+                return;
+
+            if (cell->value == 0)
                 continue;
 
             char msg[64] = {0};
-            sprintf(msg, "%d", field[j][i].value);
+            sprintf(msg, "%d", cell->value);
             int textw = 0;
 
             do {
@@ -660,9 +411,9 @@ static void draw_numbers(struct ModelView *mv, Field field) {
             } while (textw > quad_width);
 
             Vector2 pos = start;
-            pos.x += j * quad_width + (quad_width - textw) / 2.;
-            pos.y += i * quad_width + (quad_width - fontsize) / 2.;
-            Color color = get_color(mv, field[j][i].value);
+            pos.x += x * quad_width + (quad_width - textw) / 2.;
+            pos.y += y * quad_width + (quad_width - fontsize) / 2.;
+            Color color = get_color(mv, cell->value);
             DrawTextEx(GetFontDefault(), msg, pos, fontsize, 0, color);
 
             /*
@@ -673,6 +424,8 @@ static void draw_numbers(struct ModelView *mv, Field field) {
         }
     }
 }
+
+/*
 static void tmr_update_tile(struct Timer *t) {
     struct TimerData *timer_data = t->data;
     // slides: [ ], [ ], [ ], [ ]
@@ -686,23 +439,25 @@ static void tmr_update_tile(struct Timer *t) {
         trace("tmr_update_tile: amount was reached 0.998\n");
         // приехали, рисовать плитку статически
         //timer_data->mv->fixed[timer_data->mv->fixed_size++] = *cell;
-        timerman_add(
+        //timerman_add(
     } else {
         opts.fontsize = 90;
         cell_draw(timer_data->mv, cell, opts);
     }
 }
+*/
 
+/*
 static void tmr_update_put(struct Timer *t) {
     struct TimerDataPut *timer_data = t->data;
     struct ModelView *mv = timer_data->mv;
     //int index = floor(t->amount * timer_data->slides.num);
     struct Cell cell = {
         .action = CA_MOVE,
-        .from_j = timer_data->x,
-        .from_i = timer_data->y,
-        .to_j = timer_data->x,
-        .to_i = timer_data->y,
+        .from_x = timer_data->x,
+        .from_y = timer_data->y,
+        .to_x = timer_data->x,
+        .to_y = timer_data->y,
         .value = timer_data->value,
     };
     //trace("tmr_update: udata %p\n", udata);
@@ -712,6 +467,7 @@ static void tmr_update_put(struct Timer *t) {
     opts.anim_alpha = true;
     cell_draw(mv, &cell, opts);
 }
+*/
 
 const char *dir2str(enum Direction dir) {
     static char buf[32] = {0};
@@ -725,19 +481,22 @@ const char *dir2str(enum Direction dir) {
     return buf;
 };
 
+/*
 static const char *cell2str(const struct Cell cell) {
     static char buf[128] = {0};
     sprintf(buf, "from (%d, %d) to (%d, %d), value %d, action %s", 
-        cell.from_j,
-        cell.from_i,
-        cell.to_j,
-        cell.to_i,
+        cell.from_x,
+        cell.from_y,
+        cell.to_x,
+        cell.to_y,
         cell.value,
         action2str(cell.action)
     );
     return buf;
 }
+*/
 
+/*
 // Из массива со слайдами делает массив массивов(цепочек) слайдов
 static void divide_slides(
     struct Cell *queue, int queue_size, struct CellArr *out_arr, int *out_num
@@ -758,7 +517,7 @@ static void divide_slides(
             struct Cell *top = NULL;
             if (ca->num > 0) {
                 top = &ca->arr[ca->num - 1];
-                if (cur.from_j == top->to_j && cur.from_i == top->to_i) {
+                if (cur.from_x == top->to_x && cur.from_y == top->to_y) {
                     //trace("divide_slides: found\n");
                     found = k;
                     break;
@@ -774,7 +533,9 @@ static void divide_slides(
         }
     }
 }
+*/
 
+/*
 static void movements_window() {
     bool open = true;
     ImGuiWindowFlags flags = 0;
@@ -820,6 +581,7 @@ static void movements_window() {
 // */
 
 
+/*
 static void paths_window() {
     bool open = true;
     ImGuiWindowFlags flags = 0;
@@ -868,8 +630,8 @@ static void paths_window() {
 
 static void gui(struct ModelView *mv) {
     rlImGuiBegin(false);
-    movements_window();
-    paths_window();
+    //movements_window();
+    //paths_window();
     timerman_window(mv->timers);
     bool open = false;
     igShowDemoWindow(&open);
@@ -877,6 +639,7 @@ static void gui(struct ModelView *mv) {
 }
 // */
 
+/*
 static void fill_global_queue(struct ModelView *mv) {
     if (global_queue_size + 1 == global_queue_maxsize) {
         global_queue_size = 0;
@@ -887,7 +650,9 @@ static void fill_global_queue(struct ModelView *mv) {
     if (mv->queue_size > 0)
         global_queue[global_queue_size++].action = CA_NONE;
 }
+*/
 
+/*
 static void fill_global_arr(struct CellArr *arr, int arr_num) {
     if (global_arr_size + 1 == global_arr_maxsize) {
         global_arr_size = 0;
@@ -898,17 +663,39 @@ static void fill_global_arr(struct CellArr *arr, int arr_num) {
     if (arr_num > 0)
         global_arr[global_arr_size++].num = -1;
 }
+*/
 
+static void iter_each(de_ecs *r, de_entity en, void *udata) {
+    struct Cell * cell = de_try_get(r, en, cmp_cell);
+    trace(
+        "iter_each: en %d, cell %p, val %d\n", 
+        en, cell, cell ? cell->value : -1
+    );
+}
 
-static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
+static void model_draw(struct ModelView *mv) {
     assert(mv);
-    assert(mb);
 
     draw_field(mv);
 
-    struct CellArr arr[32] = {0}; 
-    int arr_num = 0;
-    
+    trace("model_draw: each\n");
+    de_each(mv->r, iter_each, mv);
+    trace("model_draw: end each\n");
+
+    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
+        cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
+        struct Cell *cell = de_view_get_safe(&v, cmp_cell);
+        //struct Cell *cell = de_view_get(&v, cmp_cell);
+        if (cell) {
+            trace("model_draw: cell_draw\n");
+            cell_draw(mv, cell, dflt_draw_opts);
+        }
+    }
+
+    //struct CellArr arr[32] = {0}; 
+    //int arr_num = 0;
+
+    /*
     if (mv->queue_size && mv->state == MVS_READY) {
         divide_slides(mv->queue, mv->queue_size, arr, &arr_num);
 
@@ -919,12 +706,10 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
                 .mv = mv,
             };
 
-            /*
-    Когда один таймер закончился, а другой еще нет - перестает рисоваться
-    картинка того таймера, который закончился.
-    Если таймер закончил выполнение, то его картинка должна продолжать
-    рисоваться.
-             */
+    //Когда один таймер закончился, а другой еще нет - перестает рисоваться
+    //картинка того таймера, который закончился.
+    //Если таймер закончил выполнение, то его картинка должна продолжать
+    //рисоваться.
 
             timerman_add(mv->timers, (struct TimerDef) {
                 //.duration = TMR_BLOCK_TIME,
@@ -937,6 +722,7 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
             mv->state = MVS_ANIMATION;
         }
     }
+    */
 
     /*
     for (int i = 0; i < mv->fixed_size; ++i) {
@@ -961,35 +747,28 @@ static void model_draw(struct ModelView *mv, struct ModelBox *mb) {
     int infinite_num = 0;
     timerman_remove_expired(mv->timers);
     int timersnum = timerman_num(mv->timers, &infinite_num);
-    trace("model_draw: timersnum %d, infinite_num %d\n",
-        timersnum, infinite_num);
+
+    //trace("model_draw: timersnum %d, infinite_num %d\n",
+        //timersnum, infinite_num);
+
     if (timersnum - infinite_num == 0 && infinite_num != 0)
         timerman_clear_infinite(mv->timers);
 
     mv->state = timersnum ? MVS_ANIMATION : MVS_READY;
 
-    for (int j = 0; j < mv->fixed_size; ++j) {
-        //cell_draw(mv, &mv->fixed[j], dflt_draw_opts);
-    }
-    // */
-
     if (mv->state == MVS_READY) {
-        sort_numbers(mv, mb);
-        draw_numbers(mv, mb->field);
+        sort_numbers(mv);
+        draw_numbers(mv);
     }
 
-
-    fill_global_queue(mv);
-    fill_global_arr(arr, arr_num);
+    //fill_global_queue(mv);
+    //fill_global_arr(arr, arr_num);
 
     gui(mv);
 }
 
-void modelview_init(
-    struct ModelView *mv, const Vector2 *pos, struct ModelBox *mb
-) {
+void modelview_init(struct ModelView *mv, const Vector2 *pos) {
     assert(mv);
-    assert(mb);
     //memset(mv, 0, sizeof(*mv));
     /*copy_field(mv->field_prev, mb->field);*/
     const int field_width = FIELD_SIZE * quad_width;
@@ -1004,36 +783,24 @@ void modelview_init(
     mv->state = MVS_READY;
     mv->draw = model_draw;
     mv->dropped = false;
-    mv->queue_cap = FIELD_SIZE * FIELD_SIZE;
-    mv->queue_size = 0;
-}
-
-void modelbox_shutdown(struct ModelBox *mb) {
-    assert(mb);
-    memset(mb, 0, sizeof(*mb));
-    mb->dropped = true;
+    mv->update = update;
+    mv->r = de_ecs_make();
+    //mv->queue_cap = FIELD_SIZE * FIELD_SIZE;
+    //mv->queue_size = 0;
 }
 
 void modelview_shutdown(struct ModelView *mv) {
     assert(mv);
     memset(mv, 0, sizeof(*mv));
-    if (!mv->dropped)
-        timerman_free(mv->timers);
+    if (!mv->dropped) {
+        if (mv->timers) {
+            timerman_free(mv->timers);
+            mv->timers = NULL;
+        }
+        if (mv->r) {
+            de_ecs_destroy(mv->r);
+            mv->r = NULL;
+        }
+    }
     mv->dropped = true;
-}
-
-void model_global_init() {
-    global_queue_maxsize = 100000;
-    global_queue = malloc(sizeof(global_queue[0]) * global_queue_maxsize);
-    assert(global_queue);
-
-    global_arr_maxsize = 100000;
-    global_arr_size = 0;
-    global_arr = malloc(sizeof(global_arr[0]) * global_arr_maxsize);
-    assert(global_arr);
-}
-
-void model_global_shutdown() {
-    free(global_queue);
-    free(global_arr);
 }

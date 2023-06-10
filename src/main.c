@@ -22,7 +22,6 @@
 #include <emscripten.h>
 #endif
 
-static struct ModelBox     main_model;
 static struct ModelView    main_view;
 
 //static const int screen_width = 1920;
@@ -32,7 +31,6 @@ static const int screen_width = 1920 * 2;
 static const int screen_height = 1080 * 2;
 
 static Camera2D camera = { 0 };
-static const double MAX_VALUE = 2048;
 
 static HotkeyStorage hk = {0};
 
@@ -42,21 +40,18 @@ void input() {
     if (main_view.state != MVS_READY)
         return;
 
-    main_view.queue_size = 0;
-    main_view.fixed_size = 0;
-
     if (IsKeyPressed(KEY_LEFT)) {
         //main_view.expired_cells_num = 0;
-        main_model.update(&main_model, DIR_LEFT, &main_view);
+        main_view.update(&main_view, DIR_LEFT);
     } else if (IsKeyPressed(KEY_RIGHT)) {
         //main_view.expired_cells_num = 0;
-        main_model.update(&main_model, DIR_RIGHT, &main_view);
+        main_view.update(&main_view, DIR_RIGHT);
     } else if (IsKeyPressed(KEY_UP)) {
         //main_view.expired_cells_num = 0;
-        main_model.update(&main_model, DIR_UP, &main_view);
+        main_view.update(&main_view, DIR_UP);
     } else if (IsKeyPressed(KEY_DOWN)) {
         //main_view.expired_cells_num = 0;
-        main_model.update(&main_model, DIR_DOWN, &main_view);
+        main_view.update(&main_view, DIR_DOWN);
     }
 }
 
@@ -85,7 +80,7 @@ void draw_over() {
 void draw_scores() {
     char msg[64] = {0};
     const int fontsize = 70;
-    sprintf(msg, "scores: %d", main_model.scores);
+    sprintf(msg, "scores: %d", main_view.scores);
     Vector2 pos = place_center(msg, fontsize);
     pos.y = 1.2 * fontsize;
     DrawText(msg, pos.x, pos.y, fontsize, BLUE);
@@ -97,23 +92,6 @@ void print_inputs(const double *inputs, int inputs_num) {
         printf("%f ", inputs[i]);
     }
     printf("\n");
-}
-
-void write_normalized_inputs(struct ModelBox *mb, double *inputs) {
-    assert(mb);
-    assert(inputs);
-
-    int inputs_num = FIELD_SIZE * FIELD_SIZE;
-    int idx = 0;
-    for (int i = 0; i < FIELD_SIZE; i++)
-        for (int j = 0; j < FIELD_SIZE; j++) 
-            inputs[idx++] = mb->field[j][i].value;
-
-    for (int i = 0; i < inputs_num; i++) {
-        inputs[i] = inputs[i] / MAX_VALUE;
-    }
-
-    //print_inputs(inputs, inputs_num);
 }
 
 // Как протестировать функцию?
@@ -172,15 +150,12 @@ static void update(void *arg) {
     timerman_pause(main_view.timers, is_paused);
 
     if (IsKeyPressed(KEY_R)) {
-        modelbox_shutdown(&main_model);
+        /*modelbox_shutdown(&main_model);*/
         modelview_shutdown(&main_view);
-        modelbox_init(&main_model);
-        modelview_init(&main_view, NULL, &main_model);
+        /*modelbox_init(&main_model);*/
+        modelview_init(&main_view, NULL);
 
-        model_global_shutdown();
-        model_global_init();
-
-        main_model.start(&main_model, &main_view);
+        /*main_view.start(&main_view, &main_view);*/
     }
 
     /*
@@ -197,17 +172,17 @@ static void update(void *arg) {
     BeginMode2D(camera);
     ClearBackground(RAYWHITE);
 
-    if (main_model.state != MBS_GAMEOVER)
+    if (main_view.state != MVS_GAMEOVER)
         input();
-    main_view.draw(&main_view, &main_model);
+    main_view.draw(&main_view);
 
     draw_scores();
-    switch (main_model.state) {
-        case MBS_GAMEOVER: {
+    switch (main_view.state) {
+        case MVS_GAMEOVER: {
             draw_over();
             break;
         }
-        case MBS_WIN: {
+        case MVS_WIN: {
             draw_win();
             break;
         }
@@ -256,9 +231,7 @@ int main(void) {
     logger_register_functions();
     sc_init_script();
 
-    modelbox_init(&main_model);
-    modelview_init(&main_view, NULL, &main_model);
-    main_model.start(&main_model, &main_view);
+    modelview_init(&main_view, NULL);
 
     hotkey_init(&hk);
     console_init(&hk, &(struct ConsoleSetup) {
@@ -272,8 +245,6 @@ int main(void) {
     });
     console_immediate_buffer_enable(true);
 
-    model_global_init();
-
     //view_test = printing_test();
 #if defined(PLATFORM_WEB)
     emscripten_set_main_loop_arg(update, NULL, 60, 1);
@@ -286,9 +257,6 @@ int main(void) {
 
     CloseWindow();
 
-    model_global_shutdown();
-
-    modelbox_shutdown(&main_model);
     modelview_shutdown(&main_view);
 
     // TODO: Падает тут 
