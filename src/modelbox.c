@@ -678,9 +678,9 @@ static void model_draw(struct ModelView *mv) {
 
     draw_field(mv);
 
-    trace("model_draw: each\n");
-    de_each(mv->r, iter_each, mv);
-    trace("model_draw: end each\n");
+    //trace("model_draw: each\n");
+    //de_each(mv->r, iter_each, mv);
+    //trace("model_draw: end each\n");
 
     for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
         cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
