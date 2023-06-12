@@ -7,6 +7,7 @@
 #include "timers.h"
 #include <stddef.h>
 #include <stdint.h>
+#include <time.h>
 
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 
@@ -27,9 +28,16 @@
 #define TMR_PUT_TIME    0.3
 //#define TMR_BLOCK_TIME  .1
 
+
+#define GLOBAL_CELLS_CAP    100000
+
+static struct Cell global_cells[GLOBAL_CELLS_CAP] = {0};
+static int global_cells_num = 0;
+static struct Cell cell_zero = {0};
+
 struct TimerData {
     struct ModelView    *mv;
-    struct Cell         *cell;
+    de_entity           cell;
 };
 
 /*
@@ -53,7 +61,7 @@ static const struct DrawOpts dflt_draw_opts = {
         1.,
         1.,
     },
-    .fontsize = 90,
+    .fontsize = 140,
     .custom_color = false,
 };
 // */
@@ -64,7 +72,7 @@ static const de_cp_type cmp_cell = {
     .name = "cell",
 };
 
-static const int quad_width = 128 + 64;
+static const int quad_width = 128 + 64 + 32;
 
 static Color colors[] = {
     RED,
@@ -169,12 +177,10 @@ static struct Cell *create_cell(struct ModelView *mv, int x, int y) {
     assert(cell);
     cell->from_x = x;
     cell->from_y = y;
-    cell->action = CA_NONE;
     cell->to_x = x;
     cell->to_y = y;
     cell->value = -1;
-    cell->moving = false;
-    trace("create_cell: (%d, %d)\n", cell->from_x, cell->from_y);
+    trace("create_cell: en %ld at (%d, %d)\n", en, cell->from_x, cell->from_y);
     return cell;
 }
 
@@ -202,7 +208,7 @@ static void put(struct ModelView *mv) {
         cell->value = 4;
     }
 
-    cell->action = CA_NONE;
+    //cell->action = CA_NONE;
     cell->to_x = cell->from_x;
     cell->to_y = cell->from_y;
     trace("put: val %d\n", cell->value);
@@ -218,37 +224,185 @@ static const struct DrawOpts special_draw_opts = {
 };
 */
 
+//static inline struct Cell *cell_from_timer(struct Timer *t) {
+//}
+
 static void tmr_cell_draw_stop(struct Timer *t) {
     struct TimerData *timer_data = t->data;
-    struct Cell *cell = timer_data->cell;
+    struct ModelView *mv = timer_data->mv;
+    if (!de_valid(mv->r, timer_data->cell)) {
+        trace("tmr_cell_draw_stop: invalid cell entity\n");
+        return;
+    }
+
+    struct Cell *cell = de_try_get(mv->r, timer_data->cell, cmp_cell);
+    //struct Cell *cell = de_get(mv->r, timer_data->cell, cmp_cell);
+
+    if (!cell) {
+        trace("tmr_cell_draw_stop: invalid cell component\n");
+        return;
+    }
+
     cell->moving = false;
-    cell->action = CA_NONE;
+    //cell->action = CA_NONE;
     cell->from_x = cell->to_x;
     cell->from_y = cell->to_y;
-    //cell_draw(timer_data->mv, timer_data->cell, opts);
 }
 
 
-static void tmr_cell_draw(struct Timer *t) {
+static bool tmr_cell_draw(struct Timer *t) {
     struct TimerData *timer_data = t->data;
+    struct ModelView *mv = timer_data->mv;
     //struct DrawOpts opts = special_draw_opts;
     struct DrawOpts opts = dflt_draw_opts;
+
+    if (!de_valid(mv->r, timer_data->cell)) {
+        trace("tmr_cell_draw: invalid cell entity\n");
+        return true;
+    }
+
+    struct Cell *cell = de_try_get(mv->r, timer_data->cell, cmp_cell);
+
+    if (!cell) {
+        trace("tmr_cell_draw: invalid cell component\n");
+        de_destroy(mv->r, timer_data->cell);
+        return true;
+    }
+
     opts.amount = t->amount;
-    opts.fontsize = 90;
+    //opts.fontsize = 140;
     opts.color = MAGENTA;
-    cell_draw(timer_data->mv, timer_data->cell, opts);
+    cell_draw(timer_data->mv, cell, opts);
+    return false;
 }
 
 static enum TimerManAction iter_timers(struct Timer *tmr, void* udata) {
+    trace("iter_timers:\n");
     struct TimerData *timer_data = tmr->data;
-    struct Cell *cell = udata;
-    if (timer_data->cell == cell) {
+    de_entity en = (de_entity)(uintptr_t)udata;
+    struct ModelView *mv = timer_data->mv;
+    //struct DrawOpts opts = special_draw_opts;
+
+    if (!de_valid(mv->r, timer_data->cell)) {
+        trace("iter_timers: remove timer with invalid cell entity\n");
+        return TMA_REMOVE_NEXT;
+    }
+
+    //struct Cell *cell = de_try_get(mv->r, timer_data->cell, cmp_cell);
+    //if (timer_data->cell == cell) {
+    if (timer_data->cell == en) {
         // XXX: Какое лучше условие использовать?
         //return TMA_REMOVE_BREAK;
-        trace("iter_timers: timer id %d was removed\n", tmr->id);
+        trace("iter_timers: remove timer with id %d\n", tmr->id);
         return TMA_REMOVE_NEXT;
     }
     return TMA_NEXT;
+}
+
+static void global_cell_push(struct Cell *cell) {
+    assert(cell);
+    global_cells[global_cells_num++] = *cell;
+}
+
+static void move(struct ModelView *mv) {
+    int cells_num = de_typeof_num(mv->r, cmp_cell);
+    for (int i = 0; i <= cells_num; ++i) {
+        for (int x = 0; x < FIELD_SIZE; ++x)
+            for (int y = 0; y < FIELD_SIZE; ++y) {
+                de_entity cell_en = de_null;
+                struct Cell *cell = get_cell_from(mv, x, y, &cell_en);
+                if (!cell) continue;
+
+                if (cell->moving)
+                    continue;
+
+                struct Cell *neighbour = get_cell_to(
+                    mv, x + mv->dx, y + mv->dy, NULL
+                );
+                if (neighbour) continue;
+
+                cell->to_x += mv->dx;
+
+                if (cell->to_x >= FIELD_SIZE)
+                    cell->to_x = FIELD_SIZE - 1;
+                if (cell->to_x < 0)
+                    cell->to_x = 0;
+
+                cell->to_y += mv->dy;
+
+                if (cell->to_y >= FIELD_SIZE)
+                    cell->to_y = FIELD_SIZE - 1;
+                if (cell->to_y < 0)
+                    cell->to_y = 0;
+
+
+                //cell->action = CA_MOVE;
+                cell->moving = true;
+
+                global_cell_push(cell);
+
+                if (!timerman_add(mv->timers, (struct TimerDef) {
+                    .duration = TMR_BLOCK_TIME,
+                    .sz = sizeof(struct TimerData),
+                    .on_update = tmr_cell_draw,
+                    .on_stop = tmr_cell_draw_stop,
+                    .udata = &(struct TimerData) {
+                        .mv = mv,
+                        .cell = cell_en,
+                }, })) {
+                    mv->state = MVS_GAMEOVER;
+                }
+
+            }
+    }
+
+    global_cell_push(&cell_zero);
+}
+
+static void sum(struct ModelView *mv) {
+    int cells_num = de_typeof_num(mv->r, cmp_cell);
+    for (int i = 0; i <= cells_num; ++i) {
+        for (int x = 0; x < FIELD_SIZE; ++x)
+            for (int y = 0; y < FIELD_SIZE; ++y) {
+                de_entity cell_en = de_null;
+                struct Cell *cell = get_cell_from(mv, x, y, &cell_en);
+                if (!cell) continue;
+
+                de_entity neighbour_en = de_null;
+                struct Cell *neighbour = get_cell_to(
+                    mv, x + mv->dx, y + mv->dy, &neighbour_en
+                );
+                if (!neighbour) continue;
+
+                //if (cell->value == 0 || neighbour->value == 0) continue;
+
+                if (cell->value == neighbour->value) {
+                    if (cell_en != de_null) {
+                        if (!cell->moving) {
+                            //cell->value = 111;
+                            neighbour->value += cell->value;
+                            memset(cell, 0, sizeof(*cell));
+                            trace(
+                                "model_draw: timerman_each for (%d, %d)\n",
+                                cell->from_x, cell->from_y
+                            );
+                            timerman_each(
+                                mv->timers,
+                                iter_timers,
+                                (void*)(uintptr_t)cell_en
+                            );
+                            trace("model_draw: timerman_each end\n");
+                            //assert(de_valid(mv->r, cell_en));
+                            if (de_valid(mv->r, cell_en)) {
+                                de_destroy(mv->r, cell_en);
+                                // TODO: возможность бесконечного цикла из-за i--?
+                                i--;
+                            }
+                        }
+                    }
+                }
+            }
+    }
 }
 
 static void update(struct ModelView *mv, enum Direction dir) {
@@ -259,6 +413,16 @@ static void update(struct ModelView *mv, enum Direction dir) {
     if (mv->state == MVS_ANIMATION)
         return;
 
+    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
+                cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
+        if (de_valid(mv->r, de_view_entity(&v))) {
+            struct Cell *c = de_view_get_safe(&v, cmp_cell);
+            if (c)
+                c->moving = false;
+        }
+    }
+
+
     if (!is_over(mv)) {
         if (IsKeyDown(KEY_P))
             put(mv);
@@ -268,89 +432,19 @@ static void update(struct ModelView *mv, enum Direction dir) {
     if (find_max(mv) == WIN_VALUE)
         mv->state = MVS_WIN;
 
-    int dx = 0, dy = 0;
+    //int dx = 0, dy = 0;
+    mv->dx = 0;
+    mv->dy = 0;
     switch (dir) {
-        case DIR_UP: dy = -1; break;
-        case DIR_DOWN: dy = 1; break;
-        case DIR_LEFT: dx = -1; break;
-        case DIR_RIGHT: dx = 1; break;
+        case DIR_UP: mv->dy = -1; break;
+        case DIR_DOWN: mv->dy = 1; break;
+        case DIR_LEFT: mv->dx = -1; break;
+        case DIR_RIGHT: mv->dx = 1; break;
         default: break;
     }
 
-    for (int i = 0; i <= de_typeof_num(mv->r, cmp_cell); ++i) {
-        for (int x = 0; x < FIELD_SIZE; ++x)
-            for (int y = 0; y < FIELD_SIZE; ++y) {
-                struct Cell *cell = get_cell_from(mv, x, y, NULL);
-                if (!cell) continue;
-
-                struct Cell *neighbour = get_cell_to(mv, x + dx, y + dy, NULL);
-                if (neighbour) continue;
-
-                if (cell->moving)
-                    continue;
-
-                cell->to_x += dx;
-
-                if (cell->to_x >= FIELD_SIZE)
-                    cell->to_x = FIELD_SIZE - 1;
-                if (cell->to_x < 0)
-                    cell->to_x = 0;
-
-                cell->to_y += dy;
-
-                if (cell->to_y >= FIELD_SIZE)
-                    cell->to_y = FIELD_SIZE - 1;
-                if (cell->to_y < 0)
-                    cell->to_y = 0;
-
-
-                cell->action = CA_MOVE;
-                cell->moving = true;
-                timerman_add(mv->timers, (struct TimerDef) {
-                    .duration = TMR_BLOCK_TIME,
-                    .sz = sizeof(struct TimerData),
-                    .on_update = tmr_cell_draw,
-                    .on_stop = tmr_cell_draw_stop,
-                    .udata = &(struct TimerData) {
-                        .mv = mv,
-                        .cell = cell,
-                }, });
-
-            }
-    }
-
-    for (int i = 0; i <= de_typeof_num(mv->r, cmp_cell); ++i) {
-        for (int x = 0; x < FIELD_SIZE; ++x)
-            for (int y = 0; y < FIELD_SIZE; ++y) {
-                de_entity cell_en = de_null;
-                struct Cell *cell = get_cell_from(mv, x, y, &cell_en);
-                if (!cell) continue;
-
-                de_entity neighbour_en = de_null;
-                struct Cell *neighbour = get_cell_to(
-                    mv, x + dx, y + dy, &neighbour_en
-                );
-                if (!neighbour) continue;
-
-                if (cell->value == 0 || neighbour->value == 0) continue;
-
-                if (cell->value == neighbour->value) {
-                    if (cell_en != de_null) {
-                        if (!cell->moving) {
-                            cell->value = 111;
-                            trace(
-                                "model_draw: timerman_each for (%d, %d)\n",
-                                cell->from_x, cell->from_y
-                            );
-                            timerman_each(mv->timers, iter_timers, cell);
-                            trace("model_draw: timerman_each end\n");
-                            assert(de_valid(mv->r, cell_en));
-                            de_destroy(mv->r, cell_en);
-                        }
-                    }
-                }
-            }
-    }
+    move(mv);
+    sum(mv);
 }
 
 static int cmp(const void *pa, const void *pb) {
@@ -376,7 +470,7 @@ static void sort_numbers(struct ModelView *mv) {
 static void draw_field(struct ModelView *mv) {
     const int field_width = FIELD_SIZE * quad_width;
     Vector2 start = mv->pos;
-    const float thick = 7.;
+    const float thick = 8.;
 
     Vector2 tmp = start;
     for (int u = 0; u <= FIELD_SIZE; u++) {
@@ -409,18 +503,9 @@ static const char *action2str(enum CellAction action) {
     static char str[64] = {0};
     memset(str, 0, sizeof(str));
     switch (action) {
-        case CA_SUM: {
-            strcpy(str, "sum");
-        break;
-        }
-        case CA_MOVE: {
-            strcpy(str, "move");
-        break;
-        }
-        case CA_NONE: {
-            strcpy(str, "none");
-        break;
-        }
+        case CA_SUM: strcpy(str, "sum"); break;
+        case CA_MOVE: strcpy(str, "move"); break;
+        case CA_NONE: strcpy(str, "none"); break;
         default:
             printf("bad value in action2str()\n");
             exit(EXIT_FAILURE);
@@ -453,15 +538,17 @@ static void cell_draw(
     assert(opts.amount >= 0 && opts.amount <= 1.);
     Vector2 base_pos;
 
-    if (cell->action == CA_NONE) {
-        base_pos = (Vector2) {
-            cell->from_x, cell->from_y,
-        };
-    } else if (cell->action == CA_MOVE) {
+    if (cell->moving) {
         base_pos = (Vector2) {
             Lerp(cell->from_x, cell->to_x, opts.amount),
             Lerp(cell->from_y, cell->to_y, opts.amount),
         };
+    } else {
+        base_pos = (Vector2) {
+            cell->from_x, cell->from_y,
+        };
+    }
+    /* sum
     } else {
         base_pos = (Vector2) {
             Lerp(cell->from_x, cell->to_x, opts.amount),
@@ -473,6 +560,7 @@ static void cell_draw(
         else
             fontsize = Lerp(fontsize * 2., fontsize, opts.amount);
     }
+    */
 
 
     do {
@@ -489,9 +577,6 @@ static void cell_draw(
         opts.offset_coef.x * (quad_width - textw) / 2.,
         opts.offset_coef.x * (quad_width - fontsize) / 2.,
     };
-
-    //trace("cell_draw: opts.amount %f\n", opts.amount);
-    //trace("cell_draw: cell %p, base_pos %s\n", cell, Vector2_tostr(base_pos));
 
     Vector2 disp = Vector2Add(Vector2Scale(base_pos, quad_width), offset);
     pos = Vector2Add(pos, disp);
@@ -516,55 +601,11 @@ static void draw_numbers(struct ModelView *mv) {
             if (cell->value == 0)
                 continue;
 
-            if (!cell->moving)
-                cell_draw(mv, cell, dflt_draw_opts);
+            //if (!cell->moving)
+            cell_draw(mv, cell, dflt_draw_opts);
         }
     }
 }
-
-/*
-static void tmr_update_tile(struct Timer *t) {
-    struct TimerData *timer_data = t->data;
-    // slides: [ ], [ ], [ ], [ ]
-    int index = floor(t->amount * timer_data->slides.num);
-    struct Cell *cell = &timer_data->slides.arr[index];
-    //trace("tmr_update: udata %p\n", udata);
-    struct DrawOpts opts = special_draw_opts;
-    opts.amount = t->amount;
-
-    if (t->amount > 0.998) {
-        trace("tmr_update_tile: amount was reached 0.998\n");
-        // приехали, рисовать плитку статически
-        //timer_data->mv->fixed[timer_data->mv->fixed_size++] = *cell;
-        //timerman_add(
-    } else {
-        opts.fontsize = 90;
-        cell_draw(timer_data->mv, cell, opts);
-    }
-}
-*/
-
-/*
-static void tmr_update_put(struct Timer *t) {
-    struct TimerDataPut *timer_data = t->data;
-    struct ModelView *mv = timer_data->mv;
-    //int index = floor(t->amount * timer_data->slides.num);
-    struct Cell cell = {
-        .action = CA_MOVE,
-        .from_x = timer_data->x,
-        .from_y = timer_data->y,
-        .to_x = timer_data->x,
-        .to_y = timer_data->y,
-        .value = timer_data->value,
-    };
-    //trace("tmr_update: udata %p\n", udata);
-    struct DrawOpts opts = special_draw_opts;
-    opts.amount = t->amount;
-    opts.fontsize = 90;
-    opts.anim_alpha = true;
-    cell_draw(mv, &cell, opts);
-}
-*/
 
 const char *dir2str(enum Direction dir) {
     static char buf[32] = {0};
@@ -578,22 +619,6 @@ const char *dir2str(enum Direction dir) {
     return buf;
 };
 
-/*
-static const char *cell2str(const struct Cell cell) {
-    static char buf[128] = {0};
-    sprintf(buf, "from (%d, %d) to (%d, %d), value %d, action %s", 
-        cell.from_x,
-        cell.from_y,
-        cell.to_x,
-        cell.to_y,
-        cell.value,
-        action2str(cell.action)
-    );
-    return buf;
-}
-*/
-
-/*
 static void movements_window() {
     bool open = true;
     ImGuiWindowFlags flags = 0;
@@ -608,27 +633,49 @@ static void movements_window() {
         ImGuiTableFlags_Hideable;
 
     ImVec2 outer_size = {0., 0.};
-    if (igBeginTable("movements", 1, table_flags, outer_size, 0.)) {
-        for (int row = 0; row < global_queue_size; ++row) {
+    if (igBeginTable("movements", 4, table_flags, outer_size, 0.)) {
+
+        igTableSetupColumn("fr", 0, 0, 0);
+        igTableSetupColumn("to", 0, 0, 1);
+        igTableSetupColumn("val", 0, 0, 2);
+        //igTableSetupColumn("act", 0, 0, 3);
+        igTableSetupColumn("moving", 0, 0, 3);
+        igTableHeadersRow();
+
+        for (int row = 0; row < global_cells_num; ++row) {
             igTableNextRow(0, 0);
-            igTableSetColumnIndex(0);
-            char *action = NULL;
-            if (global_queue[row].action == CA_SUM)
-                action = "SUM";
-            else if (global_queue[row].action == CA_MOVE)
-                action = "MOVE";
-            else if (global_queue[row].action == CA_NONE) {
-                igText("---------------------------");
-                continue;
+
+            if (!memcmp(&global_cells[row], 
+                       &cell_zero,
+                       sizeof(cell_zero))) {
+
+                igTableSetColumnIndex(0);
+                igText("-");
+                igTableSetColumnIndex(1);
+                igText("-");
+                igTableSetColumnIndex(2);
+                igText("-");
+                igTableSetColumnIndex(3);
+                igText("-");
+                //igTableSetColumnIndex(4);
+                //igText("-");
+
+            } else {
+
+                igTableSetColumnIndex(0);
+                igText("%d, %d", 
+                        global_cells[row].from_x, global_cells[row].from_y);
+                igTableSetColumnIndex(1);
+                igText("%d, %d", 
+                        global_cells[row].to_x, global_cells[row].to_y);
+                igTableSetColumnIndex(2);
+                igText("%d", global_cells[row].value);
+                //igTableSetColumnIndex(3);
+                //igText("%s", action2str(global_cells[row].action));
+                igTableSetColumnIndex(3);
+                igText("%s", global_cells[row].moving ? "true" : "false");
+
             }
-            igText(
-                    "[%d, %d] -> [%d, %d] %s", 
-                    global_queue[row].from_j,
-                    global_queue[row].from_i,
-                    global_queue[row].to_j,
-                    global_queue[row].to_i,
-                    action
-                  );
         }
         if (igGetScrollY() >= igGetScrollMaxY())
             igSetScrollHereY(1.);
@@ -646,76 +693,33 @@ static void entities_window(struct ModelView *mv) {
     int idx = 0;
     for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
                 cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
-        struct Cell *c = de_view_get_safe(&v, cmp_cell);
-        if (c) {
-            igSetNextItemOpen(false, ImGuiCond_Once);
-            if (igTreeNode_Ptr((void*)(intptr_t)idx, "en %d", idx)) {
-                igText("fr %d, %d", c->from_x, c->from_y);
-                igText("to %d, %d", c->to_x, c->to_y);
-                igText("act %s", action2str(c->action));
-                igText("val %d", c->value);
-                igTreePop();
-            }
-            idx++;
-        } else {
-            printf("bad entity: without cmp_cell component\n");
-            exit(EXIT_FAILURE);
-        }
-    }
-
-    igEnd();
-}
-
-/*
-static void paths_window() {
-    bool open = true;
-    ImGuiWindowFlags flags = 0;
-    igBegin("paths", &open, flags);
-
-    ImGuiTableFlags table_flags = ImGuiTableFlags_ScrollY |
-        ImGuiTableFlags_RowBg | 
-        ImGuiTableFlags_BordersOuter | 
-        ImGuiTableFlags_BordersV | 
-        ImGuiTableFlags_Resizable | 
-        ImGuiTableFlags_Reorderable | 
-        ImGuiTableFlags_Hideable;
-
-    ImVec2 outer_size = {0., 0.}; // Размер окошка таблицы
-    if (igBeginTable("paths", 1, table_flags, outer_size, 0.)) {
-        for (int row = 0; row < global_arr_size; ++row) {
-            igTableNextRow(0, 0);
-            igTableSetColumnIndex(0);
-
-            struct Cell *cells = global_arr[row].arr;
-            char line[512] = {0};
-            if (global_arr[row].num == -1)
-                igText(">>>>>>>>>");
-            else {
-                for (int j = 0; j < global_arr[row].num; j++) {
-                    char desc[64] = {0};
-                    sprintf(
-                        desc, "[%d, %d] -> [%d, %d];",
-                        cells[j].from_j,
-                        cells[j].from_i,
-                        cells[j].to_j,
-                        cells[j].to_i
-                    );
-                    strcat(line, desc);
+        if (de_valid(mv->r, de_view_entity(&v))) {
+            struct Cell *c = de_view_get_safe(&v, cmp_cell);
+            if (c) {
+                igSetNextItemOpen(true, ImGuiCond_Once);
+                if (igTreeNode_Ptr((void*)(uintptr_t)idx, "en %d", idx)) {
+                    igText("en      %ld", de_view_entity(&v));
+                    igText("fr      %d, %d", c->from_x, c->from_y);
+                    igText("to      %d, %d", c->to_x, c->to_y);
+                    //igText("act     %s", action2str(c->action));
+                    igText("val     %d", c->value);
+                    igText("moving  %s", c->moving ? "true" : "false");
+                    igTreePop();
                 }
-                igText(line);
+                idx++;
+            } else {
+                printf("bad entity: without cmp_cell component\n");
+                exit(EXIT_FAILURE);
             }
         }
-        if (igGetScrollY() >= igGetScrollMaxY())
-            igSetScrollHereY(1.);
-        igEndTable();
     }
+
     igEnd();
 }
-// */
 
 static void gui(struct ModelView *mv) {
     rlImGuiBegin(false, mv->camera);
-    //movements_window();
+    movements_window();
     //paths_window();
     entities_window(mv);
     timerman_window(mv->timers);
@@ -724,31 +728,36 @@ static void gui(struct ModelView *mv) {
     rlImGuiEnd();
 }
 
+static char *state2str(enum ModelViewState state) {
+    static char buf[32] = {0};
+    switch (state) {
+        case MVS_ANIMATION: strcpy(buf, "animation"); break;
+        case MVS_READY: strcpy(buf, "ready"); break;
+        case MVS_WIN: strcpy(buf, "win"); break;
+        case MVS_GAMEOVER: strcpy(buf, "gameover"); break;
+    }
+    return buf;
+}
+
 static void model_draw(struct ModelView *mv) {
     assert(mv);
 
     draw_field(mv);
 
-    /*
-    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
-        cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
-        struct Cell *cell = de_view_get_safe(&v, cmp_cell);
-        if (cell) {
-            trace("model_draw: cell_draw\n");
-            cell_draw(mv, cell, dflt_draw_opts);
-        }
+    if (mv->state != MVS_ANIMATION) {
+        //move(mv);
+        //sum(mv);
     }
-    */
 
     timerman_update(mv->timers);
     int infinite_num = 0;
-    timerman_remove_expired(mv->timers);
     int timersnum = timerman_num(mv->timers, &infinite_num);
 
     if (timersnum - infinite_num == 0 && infinite_num != 0)
         timerman_clear_infinite(mv->timers);
 
     mv->state = timersnum ? MVS_ANIMATION : MVS_READY;
+    //trace("model_draw: mv->state %s\n", state2str(mv->state));
 
     if (timersnum - infinite_num == 0) {
         // animate

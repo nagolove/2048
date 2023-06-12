@@ -10,10 +10,11 @@ struct Timer {
     double          start_time; // GetTime()
     double          duration;   // in seconds
     double          amount;     // 0..1
-    bool            expired;
+    //bool            expired;
     size_t          id;
     void            *data;      // всегда динамически выделяемая память
-    void            (*on_update)(struct Timer *tmr);
+    // возвращает истину для удаления таймера
+    bool            (*on_update)(struct Timer *tmr); 
     void            (*on_stop)(struct Timer *tmr);
 };
 
@@ -21,7 +22,9 @@ struct TimerDef {
     void    *udata;    // источник для копирования данных
     size_t  sz;      // размер копируемых данных
     double  duration;
-    void    (*on_update), (*on_stop)(struct Timer *tmr);
+    // возвращает истину для удаления таймера
+    bool    (*on_update)(struct Timer *tmr);
+    void    (*on_stop)(struct Timer *tmr);
 };
 
 enum TimerManAction {
@@ -34,7 +37,7 @@ enum TimerManAction {
 struct TimerMan *timerman_new(int cap);
 void timerman_free(struct TimerMan *tm);
 
-void timerman_add(struct TimerMan *tm, struct TimerDef td);
+bool timerman_add(struct TimerMan *tm, struct TimerDef td);
 int timerman_update(struct TimerMan *tm);
 void timerman_pause(struct TimerMan *tm, bool is_paused);
 void timerman_window(struct TimerMan *tm);

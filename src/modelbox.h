@@ -27,13 +27,12 @@ struct Cell {
     int             value;
     int             from_x, from_y, to_x, to_y;
     bool            moving;
-    enum CellAction action;
+    //enum CellAction action;
 };
 
 enum ModelViewState {
     MVS_ANIMATION,
     MVS_READY,
-    //MBS_PROCESS,
     MVS_WIN,
     MVS_GAMEOVER,
 };
@@ -66,6 +65,7 @@ struct ModelView {
     //Field               field;
     int                 scores;
     ModelBoxUpdate      update;
+    int                 dx, dy;
 
     // Таймеры для анимации плиток
     struct TimerMan     *timers;

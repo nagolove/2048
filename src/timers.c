@@ -42,9 +42,10 @@ void timerman_free(struct TimerMan *tm) {
     free(tm);
 }
 
-void timerman_add(struct TimerMan *tm, struct TimerDef td) {
+bool timerman_add(struct TimerMan *tm, struct TimerDef td) {
     assert(tm);
-    assert(tm->timers_size + 1 < tm->timers_cap);
+    if (tm->timers_size + 1 >= tm->timers_cap) 
+        return false;
     if (!td.on_update)
         trace("timerman_add: timer without on_update callback\n");
     struct Timer *tmr = &tm->timers[tm->timers_size++];
@@ -52,13 +53,15 @@ void timerman_add(struct TimerMan *tm, struct TimerDef td) {
     tmr->id = id++;
     tmr->start_time = GetTime();
     tmr->duration = td.duration;;
-    tmr->expired = false;
+    //tmr->expired = false;
     tmr->data = malloc(td.sz);
     tmr->on_update = td.on_update;
     tmr->on_stop = td.on_stop;
     memmove(tmr->data, td.udata, td.sz);
+    return true;
 }
 
+/*
 int timerman_remove_expired(struct TimerMan *tm) {
     assert(tm);
     // Хранилище для неистекщих таймеров
@@ -80,8 +83,23 @@ int timerman_remove_expired(struct TimerMan *tm) {
     tm->timers_size = tmp_size;
     return tm->timers_size;
 }
+*/
+
+static void timer_shutdown(struct Timer *timer) {
+    if (timer->on_stop) 
+        timer->on_stop(timer);
+    if (timer->data) {
+        free(timer->data);
+        timer->data = NULL;
+    }
+}
 
 int timerman_update(struct TimerMan *tm) {
+    struct Timer tmp[tm->timers_cap];
+
+    memset(tmp, 0, sizeof(tmp));
+    int tmp_size = 0;
+
     for (int i = 0; i < tm->timers_size; i++) {
         struct Timer *timer = &tm->timers[i];
         if (timer->duration < 0) continue;
@@ -90,14 +108,24 @@ int timerman_update(struct TimerMan *tm) {
         timer->amount = (now - timer->start_time) / timer->duration;
 
         // Сделать установку паузы и снятие с нее
-        
+
         if (now - timer->start_time > timer->duration) {
-            timer->expired = true;
-            if (timer->on_stop) timer->on_stop(timer);
+            //timer->expired = true;
+            timer_shutdown(timer);
         } else {
-            if (timer->on_update) timer->on_update(timer);
-        }
+            if (timer->on_update) {
+                if (timer->on_update(timer)) {
+                    timer_shutdown(timer);
+                } else
+                    // оставить таймер в менеджере
+                    tmp[tmp_size++] = tm->timers[i];
+            }
+        };
     }
+
+    memmove(tm->timers, tmp, sizeof(tmp[0]) * tmp_size);
+    tm->timers_size = tmp_size;
+
     return tm->timers_size;
 }
 
@@ -122,13 +150,12 @@ void timerman_window(struct TimerMan *tm) {
     if (igBeginTable("timers", 8, table_flags, outer_size, 0.)) {
         ImGuiTableColumnFlags column_flags = 0;
 
-        igTableSetupColumn(
-            "id", ImGuiTableColumnFlags_DefaultSort, 0., 0
-        );
-        igTableSetupColumn("start time", column_flags, 0., 1);
-        igTableSetupColumn("duration time", column_flags, 0., 2);
-        igTableSetupColumn("amount", column_flags, 0., 3);
-        igTableSetupColumn("expired", column_flags, 0., 4);
+        igTableSetupColumn("#", ImGuiTableColumnFlags_DefaultSort, 0., 0);
+        igTableSetupColumn("id", ImGuiTableColumnFlags_DefaultSort, 0., 1);
+        igTableSetupColumn("start time", column_flags, 0., 2);
+        igTableSetupColumn("duration time", column_flags, 0., 3);
+        igTableSetupColumn("amount", column_flags, 0., 4);
+        //igTableSetupColumn("expired", column_flags, 0., 5);
         igTableSetupColumn("data", column_flags, 0., 5);
         igTableSetupColumn("on_update cb", column_flags, 0., 6);
         igTableSetupColumn("on_stop cb", column_flags, 0., 7);
@@ -139,6 +166,10 @@ void timerman_window(struct TimerMan *tm) {
             struct Timer * tmr = &tm->timers[row];
 
             igTableNextRow(0, 0);
+
+            igTableSetColumnIndex(0);
+            sprintf(line, "%d", row);
+            igText(line);
 
             igTableSetColumnIndex(0);
             sprintf(line, "%ld", tmr->id);
@@ -156,19 +187,19 @@ void timerman_window(struct TimerMan *tm) {
             sprintf(line, "%f", tmr->amount);
             igText(line);
 
-            igTableSetColumnIndex(4);
-            sprintf(line, "%s", tmr->expired ? "true" : "false");
-            igText(line);
+            //igTableSetColumnIndex(4);
+            //sprintf(line, "%s", tmr->expired ? "true" : "false");
+            //igText(line);
 
-            igTableSetColumnIndex(5);
+            igTableSetColumnIndex(4);
             sprintf(line, "%p", tmr->data);
             igText(line);
 
-            igTableSetColumnIndex(6);
+            igTableSetColumnIndex(5);
             sprintf(line, "%p", tmr->on_update);
             igText(line);
 
-            igTableSetColumnIndex(7);
+            igTableSetColumnIndex(6);
             sprintf(line, "%p", tmr->on_stop);
             igText(line);
             // */
