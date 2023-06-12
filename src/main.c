@@ -86,6 +86,7 @@ void draw_scores() {
     DrawText(msg, pos.x, pos.y, fontsize, BLUE);
 }
 
+/*
 void print_inputs(const double *inputs, int inputs_num) {
     printf("print_inputs: ");
     for (int i = 0; i < inputs_num; i++) {
@@ -93,7 +94,9 @@ void print_inputs(const double *inputs, int inputs_num) {
     }
     printf("\n");
 }
+*/
 
+/*
 // Как протестировать функцию?
 int out2dir(const double *outputs) {
     assert(outputs);
@@ -106,8 +109,14 @@ int out2dir(const double *outputs) {
         }
     return max_index;
 }
+*/
 
 void camera_process() {
+    if (IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE)) {
+        camera.zoom = 1.;
+        camera.offset = (Vector2) { 0., 0. };
+    }
+
     if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT))
     {
         Vector2 delta = GetMouseDelta();
@@ -141,7 +150,7 @@ void camera_process() {
 bool is_paused = false;
 
 static void update(void *arg) {
-    /*camera_process();*/
+    camera_process();
 
     if (IsKeyPressed(KEY_P)) {
         is_paused = !is_paused;
@@ -153,7 +162,7 @@ static void update(void *arg) {
         /*modelbox_shutdown(&main_model);*/
         modelview_shutdown(&main_view);
         /*modelbox_init(&main_model);*/
-        modelview_init(&main_view, NULL);
+        modelview_init(&main_view, NULL, &camera);
 
         /*main_view.start(&main_view, &main_view);*/
     }
@@ -231,7 +240,7 @@ int main(void) {
     logger_register_functions();
     sc_init_script();
 
-    modelview_init(&main_view, NULL);
+    modelview_init(&main_view, NULL, &camera);
 
     hotkey_init(&hk);
     console_init(&hk, &(struct ConsoleSetup) {
