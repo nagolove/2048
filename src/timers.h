@@ -13,17 +13,18 @@ struct Timer {
     bool            expired;
     size_t          id;
     void            *data;      // всегда динамически выделяемая память
-    void            (*update)(struct Timer *tmr);
+    void            (*on_update)(struct Timer *tmr);
+    void            (*on_stop)(struct Timer *tmr);
 };
 
 struct TimerDef {
-    void *udata;    // источник для копирования данных
-    size_t sz;      // размер копируемых данных
-    double duration;
-    void (*update)(struct Timer*);
+    void    *udata;    // источник для копирования данных
+    size_t  sz;      // размер копируемых данных
+    double  duration;
+    void    (*on_update), (*on_stop)(struct Timer *tmr);
 };
 
-struct TimerMan *timerman_new();
+struct TimerMan *timerman_new(int cap);
 void timerman_free(struct TimerMan *tm);
 
 void timerman_add(struct TimerMan *tm, struct TimerDef td);

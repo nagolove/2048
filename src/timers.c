@@ -3,23 +3,25 @@
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 
 #include "cimgui.h"
+#include "koh_logger.h"
 #include "raylib.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define TIMERS_CAP      32 * 4
-
 struct TimerMan {
-    struct Timer        timers[TIMERS_CAP];
+    struct Timer        *timers;
     int                 timers_cap, timers_size;
     bool                paused;
 };
 
-struct TimerMan *timerman_new() {
+struct TimerMan *timerman_new(int cap) {
     struct TimerMan *tm = calloc(1, sizeof(*tm));
     assert(tm);
-    tm->timers_cap = TIMERS_CAP;
+    assert(cap > 0);
+    assert(cap < 2048 && "too many timers, 2048 is ceil");
+    tm->timers = calloc(cap, sizeof(tm->timers[0]));
+    tm->timers_cap = cap;
     return tm;
 }
 
@@ -32,6 +34,10 @@ void timerman_free(struct TimerMan *tm) {
             tm->timers[i].data = NULL;
         }
     }
+    if (tm->timers) {
+        free(tm->timers);
+        tm->timers = NULL;
+    }
 
     free(tm);
 }
@@ -39,7 +45,8 @@ void timerman_free(struct TimerMan *tm) {
 void timerman_add(struct TimerMan *tm, struct TimerDef td) {
     assert(tm);
     assert(tm->timers_size + 1 < tm->timers_cap);
-    assert(td.update);
+    if (!td.on_update)
+        trace("timerman_add: timer without on_update callback\n");
     struct Timer *tmr = &tm->timers[tm->timers_size++];
     static size_t id = 0;
     tmr->id = id++;
@@ -47,7 +54,8 @@ void timerman_add(struct TimerMan *tm, struct TimerDef td) {
     tmr->duration = td.duration;;
     tmr->expired = false;
     tmr->data = malloc(td.sz);
-    tmr->update = td.update;
+    tmr->on_update = td.on_update;
+    tmr->on_stop = td.on_stop;
     memmove(tmr->data, td.udata, td.sz);
 }
 
@@ -85,9 +93,9 @@ int timerman_update(struct TimerMan *tm) {
         
         if (now - timer->start_time > timer->duration) {
             timer->expired = true;
+            if (timer->on_stop) timer->on_stop(timer);
         } else {
-            assert(timer->update);
-            timer->update(timer);
+            if (timer->on_update) timer->on_update(timer);
         }
     }
     return tm->timers_size;
@@ -111,7 +119,7 @@ void timerman_window(struct TimerMan *tm) {
         ImGuiTableFlags_Hideable;
 
     ImVec2 outer_size = {0., 0.}; // Размер окошка таблицы
-    if (igBeginTable("timers", 7, table_flags, outer_size, 0.)) {
+    if (igBeginTable("timers", 8, table_flags, outer_size, 0.)) {
         ImGuiTableColumnFlags column_flags = 0;
 
         igTableSetupColumn(
@@ -122,7 +130,8 @@ void timerman_window(struct TimerMan *tm) {
         igTableSetupColumn("amount", column_flags, 0., 3);
         igTableSetupColumn("expired", column_flags, 0., 4);
         igTableSetupColumn("data", column_flags, 0., 5);
-        igTableSetupColumn("update time", column_flags, 0., 6);
+        igTableSetupColumn("on_update cb", column_flags, 0., 6);
+        igTableSetupColumn("on_stop cb", column_flags, 0., 7);
         igTableHeadersRow();
 
         for (int row = 0; row < tm->timers_size; ++row) {
@@ -156,7 +165,11 @@ void timerman_window(struct TimerMan *tm) {
             igText(line);
 
             igTableSetColumnIndex(6);
-            sprintf(line, "%p", tmr->update);
+            sprintf(line, "%p", tmr->on_update);
+            igText(line);
+
+            igTableSetColumnIndex(7);
+            sprintf(line, "%p", tmr->on_stop);
             igText(line);
             // */
         }
