@@ -107,6 +107,19 @@ static bool is_over(struct ModelView *mv) {
     return FIELD_SIZE * FIELD_SIZE == num;
 }
 
+static struct Cell *get_cell_to(struct ModelView *mv, int x, int y) {
+    assert(mv);
+    assert(mv->r);
+    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
+        cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
+        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+        if (c && c->to_x == x && c->to_y == y) {
+            return c;
+        }
+    }
+    return NULL;
+}
+
 static struct Cell *get_cell_from(struct ModelView *mv, int x, int y) {
     assert(mv);
     assert(mv->r);
@@ -198,6 +211,7 @@ static void tmr_cell_draw_stop(struct Timer *t) {
     struct TimerData *timer_data = t->data;
     struct Cell *cell = timer_data->cell;
     cell->moving = false;
+    cell->action = CA_NONE;
     cell->from_x = cell->to_x;
     cell->from_y = cell->to_y;
     //cell_draw(timer_data->mv, timer_data->cell, opts);
@@ -240,34 +254,17 @@ static void update(struct ModelView *mv, enum Direction dir) {
         default: break;
     }
 
-    bool moved = true;
-    do {
-        moved = false;
+    for (int i = 0; i <= de_typeof_num(mv->r, cmp_cell); ++i) {
         for (int x = 0; x < FIELD_SIZE; ++x)
             for (int y = 0; y < FIELD_SIZE; ++y) {
                 struct Cell *cell = get_cell_from(mv, x, y);
                 if (!cell) continue;
 
-                struct Cell *neighbour = get_cell_from(mv, x + dx, y + dy);
-                if (neighbour)
+                struct Cell *neighbour = get_cell_to(mv, x + dx, y + dy);
+                if (neighbour) continue;
+
+                if (cell->moving)
                     continue;
-                
-                /*
-                cell->from_x += dx;
-
-                if (cell->from_x >= FIELD_SIZE)
-                    cell->from_x = FIELD_SIZE - 1;
-                if (cell->from_x < 0)
-                    cell->from_x = 0;
-
-                cell->from_y += dy;
-
-                if (cell->from_y >= FIELD_SIZE)
-                    cell->from_y = FIELD_SIZE - 1;
-                if (cell->from_y < 0)
-                    cell->from_y = 0;
-
-                    */
 
                 cell->to_x += dx;
 
@@ -296,9 +293,8 @@ static void update(struct ModelView *mv, enum Direction dir) {
                         .cell = cell,
                 }, });
 
-                moved = true;
             }
-    } while (!moved);
+    }
 
 }
 
