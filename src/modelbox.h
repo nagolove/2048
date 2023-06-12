@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#define FIELD_SIZE  4
+#define FIELD_SIZE  7
 #define WIN_VALUE   2048
 
 enum Direction {
@@ -18,15 +18,15 @@ enum Direction {
 };
 
 enum CellAction {
+    CA_NONE,
     CA_MOVE,
     CA_SUM,
-    CA_NONE,
 };
 
 struct Cell {
-    int value;
-    //void (*on_move)(struct Cell *cell, int fromj, int fromi, int toj, int toi);
-    int from_x, from_y, to_x, to_y;
+    int             value;
+    int             from_x, from_y, to_x, to_y;
+    bool            moving;
     enum CellAction action;
 };
 
@@ -62,6 +62,7 @@ struct ModelBox {
  */
 struct ModelView {
     de_ecs              *r;
+    Camera2D            *camera;
     //Field               field;
     int                 scores;
     ModelBoxUpdate      update;
@@ -89,7 +90,7 @@ struct ModelView {
 };
 
 //void modelbox_init(struct ModelBox *mb);
-void modelview_init(struct ModelView *mv, const Vector2 *pos);
+void modelview_init(struct ModelView *mv, const Vector2 *pos, Camera2D *cam);
 //void modelbox_shutdown(struct ModelBox *mb);
 void modelview_shutdown(struct ModelView *mv);
 
