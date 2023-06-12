@@ -24,6 +24,13 @@ struct TimerDef {
     void    (*on_update), (*on_stop)(struct Timer *tmr);
 };
 
+enum TimerManAction {
+    TMA_NEXT,
+    TMA_BREAK,
+    TMA_REMOVE_NEXT,
+    TMA_REMOVE_BREAK,
+};
+
 struct TimerMan *timerman_new(int cap);
 void timerman_free(struct TimerMan *tm);
 
@@ -39,3 +46,8 @@ int timerman_remove_expired(struct TimerMan *tm);
 int timerman_num(struct TimerMan *tm, int *infinite_num);
 // Удалить бесконечные таймеры
 void timerman_clear_infinite(struct TimerMan *tm);
+void timerman_each(
+    struct TimerMan *tm, 
+    enum TimerManAction (*iter)(struct Timer *tmr, void*),
+    void *udata
+);

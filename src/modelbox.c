@@ -27,20 +27,17 @@
 #define TMR_PUT_TIME    0.3
 //#define TMR_BLOCK_TIME  .1
 
-struct CellArr {
-    struct Cell arr[32];
-    int num;
-};
-
 struct TimerData {
     struct ModelView    *mv;
     struct Cell         *cell;
 };
 
+/*
 struct TimerDataPut {
     int                 x, y, value;
     struct ModelView    *mv;
 };
+*/
 
 struct DrawOpts {
     int     fontsize;
@@ -107,26 +104,40 @@ static bool is_over(struct ModelView *mv) {
     return FIELD_SIZE * FIELD_SIZE == num;
 }
 
-static struct Cell *get_cell_to(struct ModelView *mv, int x, int y) {
+static struct Cell *get_cell_to(
+    struct ModelView *mv, int x, int y, de_entity *en
+) {
     assert(mv);
     assert(mv->r);
+
+
+    if (en) *en = de_null;
     for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
         cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
         struct Cell *c = de_view_get_safe(&v, cmp_cell);
         if (c && c->to_x == x && c->to_y == y) {
+            if (en)
+                *en = de_view_entity(&v);
             return c;
         }
     }
     return NULL;
 }
 
-static struct Cell *get_cell_from(struct ModelView *mv, int x, int y) {
+static struct Cell *get_cell_from(
+    struct ModelView *mv, int x, int y, de_entity *en
+) {
     assert(mv);
     assert(mv->r);
+
+    if (en) *en = de_null;
+
     for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
         cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
         struct Cell *c = de_view_get_safe(&v, cmp_cell);
         if (c && c->from_x == x && c->from_y == y) {
+            if (en)
+                *en = de_view_entity(&v);
             return c;
         }
     }
@@ -172,11 +183,11 @@ static void put(struct ModelView *mv) {
     int x = rand() % FIELD_SIZE;
     int y = rand() % FIELD_SIZE;
 
-    struct Cell *cell = get_cell_from(mv, x, y);
+    struct Cell *cell = get_cell_from(mv, x, y, NULL);
     while (cell && cell->value != 0) {
         x = rand() % FIELD_SIZE;
         y = rand() % FIELD_SIZE;
-        cell = get_cell_from(mv, x, y);
+        cell = get_cell_from(mv, x, y, NULL);
     }
 
     if (!cell)
@@ -228,6 +239,18 @@ static void tmr_cell_draw(struct Timer *t) {
     cell_draw(timer_data->mv, timer_data->cell, opts);
 }
 
+static enum TimerManAction iter_timers(struct Timer *tmr, void* udata) {
+    struct TimerData *timer_data = tmr->data;
+    struct Cell *cell = udata;
+    if (timer_data->cell == cell) {
+        // XXX: Какое лучше условие использовать?
+        //return TMA_REMOVE_BREAK;
+        trace("iter_timers: timer id %d was removed\n", tmr->id);
+        return TMA_REMOVE_NEXT;
+    }
+    return TMA_NEXT;
+}
+
 static void update(struct ModelView *mv, enum Direction dir) {
     assert(mv);
     if (mv->state == MVS_GAMEOVER)
@@ -257,10 +280,10 @@ static void update(struct ModelView *mv, enum Direction dir) {
     for (int i = 0; i <= de_typeof_num(mv->r, cmp_cell); ++i) {
         for (int x = 0; x < FIELD_SIZE; ++x)
             for (int y = 0; y < FIELD_SIZE; ++y) {
-                struct Cell *cell = get_cell_from(mv, x, y);
+                struct Cell *cell = get_cell_from(mv, x, y, NULL);
                 if (!cell) continue;
 
-                struct Cell *neighbour = get_cell_to(mv, x + dx, y + dy);
+                struct Cell *neighbour = get_cell_to(mv, x + dx, y + dy, NULL);
                 if (neighbour) continue;
 
                 if (cell->moving)
@@ -296,6 +319,38 @@ static void update(struct ModelView *mv, enum Direction dir) {
             }
     }
 
+    for (int i = 0; i <= de_typeof_num(mv->r, cmp_cell); ++i) {
+        for (int x = 0; x < FIELD_SIZE; ++x)
+            for (int y = 0; y < FIELD_SIZE; ++y) {
+                de_entity cell_en = de_null;
+                struct Cell *cell = get_cell_from(mv, x, y, &cell_en);
+                if (!cell) continue;
+
+                de_entity neighbour_en = de_null;
+                struct Cell *neighbour = get_cell_to(
+                    mv, x + dx, y + dy, &neighbour_en
+                );
+                if (!neighbour) continue;
+
+                if (cell->value == 0 || neighbour->value == 0) continue;
+
+                if (cell->value == neighbour->value) {
+                    if (cell_en != de_null) {
+                        if (!cell->moving) {
+                            cell->value = 111;
+                            trace(
+                                "model_draw: timerman_each for (%d, %d)\n",
+                                cell->from_x, cell->from_y
+                            );
+                            timerman_each(mv->timers, iter_timers, cell);
+                            trace("model_draw: timerman_each end\n");
+                            assert(de_valid(mv->r, cell_en));
+                            de_destroy(mv->r, cell_en);
+                        }
+                    }
+                }
+            }
+    }
 }
 
 static int cmp(const void *pa, const void *pb) {
@@ -308,7 +363,7 @@ static void sort_numbers(struct ModelView *mv) {
     int idx = 0;
     for (int y = 0; y < FIELD_SIZE; y++)
         for (int x = 0; x < FIELD_SIZE; x++) {
-            struct Cell *cell = get_cell_from(mv, x, y);
+            struct Cell *cell = get_cell_from(mv, x, y, NULL);
             if (cell)
                 tmp[idx++].value = cell->value;
         }
@@ -454,7 +509,7 @@ static void draw_numbers(struct ModelView *mv) {
     assert(mv);
     for (int y = 0; y < FIELD_SIZE; y++) {
         for (int x = 0; x < FIELD_SIZE; x++) {
-            struct Cell *cell = get_cell_from(mv, x, y);
+            struct Cell *cell = get_cell_from(mv, x, y, NULL);
             if (!cell)
                 continue;
 
@@ -699,7 +754,7 @@ static void model_draw(struct ModelView *mv) {
         // animate
         for (int x = 0; x < FIELD_SIZE; ++x)
             for (int y = 0; y < FIELD_SIZE; ++y) {
-                struct Cell *cell = get_cell_from(mv, x, y);
+                struct Cell *cell = get_cell_from(mv, x, y, NULL);
                 if (!cell)
                     continue;
 

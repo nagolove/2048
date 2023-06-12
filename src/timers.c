@@ -214,3 +214,41 @@ int timerman_num(struct TimerMan *tm, int *infinite_num) {
     }
     return tm->timers_size;
 }
+
+void timerman_each(
+    struct TimerMan *tm, 
+    enum TimerManAction (*iter)(struct Timer *tmr, void*),
+    void *udata
+) {
+    assert(tm);
+    assert(iter);
+    if (!iter) return;
+
+    struct Timer tmp[tm->timers_cap];
+    memset(tmp, 0, sizeof(tmp));
+    int tmp_num = 0;
+
+    for (int i = 0; i < tm->timers_size; ++i) {
+        switch (iter(&tm->timers[i], udata)) {
+            case TMA_NEXT: 
+                tmp[tmp_num++] = tm->timers[i];
+                break;
+            case TMA_BREAK:
+                tmp[tmp_num++] = tm->timers[i];
+                goto copy;
+            case TMA_REMOVE_NEXT: break;
+            case TMA_REMOVE_BREAK: 
+                goto copy;
+            default:
+                trace("timerman_each: bad value in enum TimeManAction\n");
+                exit(EXIT_FAILURE);
+        }
+    }
+
+copy:
+
+    if (tmp_num > 0) {
+        memcpy(tm->timers, tmp, sizeof(struct Timer) * tmp_num);
+    }
+    tm->timers_size = tmp_num;
+}
