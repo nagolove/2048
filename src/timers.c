@@ -53,11 +53,17 @@ bool timerman_add(struct TimerMan *tm, struct TimerDef td) {
     tmr->id = id++;
     tmr->start_time = GetTime();
     tmr->duration = td.duration;;
-    //tmr->expired = false;
-    tmr->data = malloc(td.sz);
+
+    if (td.sz) {
+        tmr->sz = td.sz;
+        tmr->data = malloc(td.sz);
+        assert(tmr->data);
+        memmove(tmr->data, td.udata, td.sz);
+    } else
+        tmr->data = td.udata;
+
     tmr->on_update = td.on_update;
     tmr->on_stop = td.on_stop;
-    memmove(tmr->data, td.udata, td.sz);
     return true;
 }
 
@@ -88,7 +94,7 @@ int timerman_remove_expired(struct TimerMan *tm) {
 static void timer_shutdown(struct Timer *timer) {
     if (timer->on_stop) 
         timer->on_stop(timer);
-    if (timer->data) {
+    if (timer->data && timer->sz) {
         free(timer->data);
         timer->data = NULL;
     }
@@ -171,19 +177,19 @@ void timerman_window(struct TimerMan *tm) {
             sprintf(line, "%d", row);
             igText(line);
 
-            igTableSetColumnIndex(0);
+            igTableSetColumnIndex(1);
             sprintf(line, "%ld", tmr->id);
             igText(line);
 
-            igTableSetColumnIndex(1);
+            igTableSetColumnIndex(2);
             sprintf(line, "%f", tmr->start_time);
             igText(line);
 
-            igTableSetColumnIndex(2);
+            igTableSetColumnIndex(3);
             sprintf(line, "%f", tmr->duration);
             igText(line);
 
-            igTableSetColumnIndex(3);
+            igTableSetColumnIndex(4);
             sprintf(line, "%f", tmr->amount);
             igText(line);
 
@@ -191,15 +197,15 @@ void timerman_window(struct TimerMan *tm) {
             //sprintf(line, "%s", tmr->expired ? "true" : "false");
             //igText(line);
 
-            igTableSetColumnIndex(4);
+            igTableSetColumnIndex(5);
             sprintf(line, "%p", tmr->data);
             igText(line);
 
-            igTableSetColumnIndex(5);
+            igTableSetColumnIndex(6);
             sprintf(line, "%p", tmr->on_update);
             igText(line);
 
-            igTableSetColumnIndex(6);
+            igTableSetColumnIndex(7);
             sprintf(line, "%p", tmr->on_stop);
             igText(line);
             // */
@@ -218,6 +224,7 @@ void timerman_clear(struct TimerMan *tm) {
     tm->timers_size = 0;
 }
 
+/*
 void timerman_clear_infinite(struct TimerMan *tm) {
     assert(tm);
 
@@ -235,6 +242,7 @@ void timerman_clear_infinite(struct TimerMan *tm) {
     }
     tm->timers_size = tmp_num;
 }
+*/
 
 int timerman_num(struct TimerMan *tm, int *infinite_num) {
     assert(tm);

@@ -11,7 +11,7 @@ struct Timer {
     double          duration;   // in seconds
     double          amount;     // 0..1
     //bool            expired;
-    size_t          id;
+    size_t          id, sz;
     void            *data;      // всегда динамически выделяемая память
     // возвращает истину для удаления таймера
     bool            (*on_update)(struct Timer *tmr); 
@@ -48,7 +48,7 @@ int timerman_remove_expired(struct TimerMan *tm);
 // infinite_num возвращает количество бесконечных таймеров
 int timerman_num(struct TimerMan *tm, int *infinite_num);
 // Удалить бесконечные таймеры
-void timerman_clear_infinite(struct TimerMan *tm);
+//void timerman_clear_infinite(struct TimerMan *tm);
 void timerman_each(
     struct TimerMan *tm, 
     enum TimerManAction (*iter)(struct Timer *tmr, void*),
