@@ -66,6 +66,7 @@ struct ModelView {
     int                 scores;
     ModelBoxUpdate      update;
     int                 dx, dy;
+    bool                has_sum, has_move;
 
     // Таймеры для анимации плиток
     struct TimerMan     *timers;
