@@ -526,8 +526,6 @@ static bool move(struct ModelView *mv) {
                 cell->anima = true;
                 has_move = true;
 
-                global_cell_push(cell);
-
                 assert(cell_en != de_null);
                 struct TimerData td = {
                     .mv = mv,
@@ -543,7 +541,6 @@ static bool move(struct ModelView *mv) {
             }
     }
 
-    global_cell_push(&cell_zero);
     return has_move;
 }
 
@@ -864,6 +861,31 @@ static void ecs_window(struct ModelView *mv) {
     igEnd();
 }
 
+static void removed_entities_window() {
+    bool open = true;
+    ImGuiWindowFlags flags = 0;
+    igBegin("removed entities", &open, flags);
+
+    for (int i = 0; i < global_cells_num; i++) {
+            struct Cell *c = &global_cells[i];
+            igSetNextItemOpen(false, ImGuiCond_Once);
+            if (igTreeNode_Ptr((void*)(uintptr_t)i, "i %d", i)) {
+                //igText("en      %ld", de_view_entity(&v));
+                igText("fr      %d, %d", c->from_x, c->from_y);
+                igText("to      %d, %d", c->to_x, c->to_y);
+                //igText("act     %s", action2str(c->action));
+                igText("val     %d", c->value);
+                igText("anima   %s", c->anima ? "true" : "false");
+                igText("anim_sz %s", c->anim_size ? "true" : "false");
+                igText("dropped %s", c->dropped ? "true" : "false");
+                igTreePop();
+        }
+    }
+
+    igEnd();
+}
+
+
 static void entities_window(struct ModelView *mv) {
     bool open = true;
     ImGuiWindowFlags flags = 0;
@@ -900,6 +922,7 @@ static void entities_window(struct ModelView *mv) {
 static void gui(struct ModelView *mv) {
     rlImGuiBegin(false, mv->camera);
     movements_window();
+    removed_entities_window();
     //paths_window();
     entities_window(mv);
     timerman_window(mv->timers);
@@ -935,6 +958,7 @@ static void destroy_dropped(struct ModelView *mv) {
                 "destroy_dropped: cell val %d, fr (%d, %d), to (%d, %d)\n",
                 c->value, c->from_x, c->from_y, c->to_x, c->to_y
             );
+            global_cell_push(c);
             memset(c, 0, sizeof(*c));
             de_destroy(mv->r, de_view_entity(&v));
         }
