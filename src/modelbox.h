@@ -5,8 +5,9 @@
 #include "raylib.h"
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
-#define FIELD_SIZE  7
+#define FIELD_SIZE  5
 #define WIN_VALUE   2048
 
 enum Direction {
@@ -24,10 +25,13 @@ enum CellAction {
 };
 
 struct Cell {
+    int8_t          guard1[5];
+    bool            dropped;    // подлежит удалению 
     int             value;
+    bool            anim_size;  // анимировать размер шрифта
     int             from_x, from_y, to_x, to_y;
-    bool            moving;
-    //enum CellAction action;
+    bool            anima;      // флаг нахождения в таймере
+    int8_t          guard2[5];
 };
 
 enum ModelViewState {
@@ -62,7 +66,6 @@ struct ModelBox {
 struct ModelView {
     de_ecs              *r;
     Camera2D            *camera;
-    //Field               field;
     int                 scores;
     ModelBoxUpdate      update;
     int                 dx, dy;
@@ -71,23 +74,12 @@ struct ModelView {
     // Таймеры для анимации плиток
     struct TimerMan     *timers;
 
-    /*
-
-    // Очередь действий
-    struct Cell         queue[FIELD_SIZE * FIELD_SIZE];
-    int                 queue_cap, queue_size;
-
-    // Статичные плитки для рисования
-    struct Cell         fixed[FIELD_SIZE * FIELD_SIZE];
-    int                 fixed_cap, fixed_size;
-
-    */
     struct Cell         sorted[FIELD_SIZE * FIELD_SIZE];
 
     Vector2             pos;
     enum ModelViewState state;
     bool                dropped;    //Флаг деинициализации структуры
-    void    (*draw)(struct ModelView *mv);
+    void                (*draw)(struct ModelView *mv);
 };
 
 //void modelbox_init(struct ModelBox *mb);
