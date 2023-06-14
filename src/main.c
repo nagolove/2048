@@ -24,11 +24,14 @@
 
 static struct ModelView    main_view;
 
-//static const int screen_width = 1920;
-//static const int screen_height = 1080;
 
+#if defined(PLATFORM_WEB)
+static const int screen_width = 1920;
+static const int screen_height = 1080;
+#else
 static const int screen_width = 1920 * 2;
 static const int screen_height = 1080 * 2;
+#endif
 
 static Camera2D camera = { 0 };
 
@@ -82,7 +85,11 @@ void draw_scores() {
     const int fontsize = 70;
     sprintf(msg, "scores: %d", main_view.scores);
     Vector2 pos = place_center(msg, fontsize);
-    pos.y = 1.2 * fontsize;
+#if defined(PLATFORM_WEB)
+    pos.y = 1.0 * fontsize;
+#else
+    pos.y = 1.0 * fontsize;
+#endif
     DrawText(msg, pos.x, pos.y, fontsize, BLUE);
 }
 

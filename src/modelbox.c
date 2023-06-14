@@ -34,10 +34,72 @@ static struct Cell global_cells[GLOBAL_CELLS_CAP] = {0};
 static int global_cells_num = 0;
 static struct Cell cell_zero = {0};
 
-struct Ecs_circ_buf {
-    de_ecs  *ecs;
+struct ecs_circ_buf {
+    de_ecs  **ecs;
     int     num, cap;
+    int     i, j, cur;
 };
+
+static struct ecs_circ_buf ecs_buf = {0};
+static struct de_ecs *ecs_tmp = NULL;
+
+static void ecs_circ_buf_init(struct ecs_circ_buf *b, int cap) {
+    assert(cap > 0);
+    assert(b);
+    b->cap = cap;
+    b->ecs = calloc(b->cap, sizeof(b->ecs[0]));
+    b->num = 0;
+    b->cur = 0;
+}
+
+static void ecs_circ_buf_shutdown(struct ecs_circ_buf *b) {
+    assert(b);
+    for (int j = 0; j < b->num; ++j) {
+        if (b->ecs[j]) {
+            de_ecs_destroy(b->ecs[j]);
+            b->ecs[j] = NULL;
+        }
+    }
+    if (b->ecs) {
+        free(b->ecs);
+        b->ecs = NULL;
+    }
+}
+
+static void ecs_circ_buf_push(struct ecs_circ_buf *b, de_ecs *r) {
+    if (b->ecs[b->i]) {
+        de_ecs_destroy(b->ecs[b->i]);
+    }
+    b->ecs[b->i] = de_ecs_clone(r);
+    b->i = (b->i + 1) % b->cap;
+    b->num++;
+    if (b->num >= b->cap)
+        b->num = b->cap;
+}
+
+static de_ecs *ecs_circ_buf_prev(struct ecs_circ_buf *b) {
+    assert(b);
+    de_ecs *ret = NULL;
+    if (b->cur > 0) {
+        if (b->ecs[b->cur - 1]) {
+            ret = b->ecs[b->cur - 1];
+            b->cur--;
+        }
+    }
+    return ret;
+}
+
+static de_ecs *ecs_circ_buf_next(struct ecs_circ_buf *b) {
+    assert(b);
+    de_ecs *ret = NULL;
+    if (b->cur < b->cap) {
+        if (b->ecs[b->cur + 1]) {
+            ret = b->ecs[b->cur + 1];
+            b->cur++;
+        }
+    }
+    return ret;
+}
 
 struct TimerData {
     struct ModelView    *mv;
@@ -80,7 +142,11 @@ static const de_cp_type cmp_cell = {
     .initial_cap = 1000,
 };
 
+#if defined(PLATFORM_WEB)
+static const int quad_width = 128 + 32;
+#else
 static const int quad_width = 128 + 64 + 32;
+#endif
 
 static Color colors[] = {
     RED,
@@ -498,7 +564,6 @@ static bool sum(struct ModelView *mv) {
             );
             if (!neighbour) continue;
             if (neighbour->dropped) continue;
-            //assert(neighbour->dropped);
 
             assert(cell_en != de_null);
             assert(neighbour_en != de_null);
@@ -510,28 +575,14 @@ static bool sum(struct ModelView *mv) {
                     neighbour->value += cell->value;
                     mv->scores += cell->value;
 
-                    /*
-                    trace(
-                        "model_draw: timerman_each for (%d, %d)\n",
-                        cell->from_x, cell->from_y
-                    );
-                    */
-
                     timerman_each(
                         mv->timers,
                         iter_timers,
                         &cell_en
                     );
-                    //memset(cell, 0, sizeof(*cell));
-                    //trace("model_draw: timerman_each end\n");
-                    //assert(de_valid(mv->r, cell_en));
+
                     assert(de_valid(mv->r, cell_en));
                     if (de_valid(mv->r, cell_en)) {
-                        /*
-                        trace("sum: de_destroy "
-                              "cell val %d, neighbour val %d\n",
-                              cell->value, neighbour->value);
-                              */
 
                         cell->dropped = true;
                         cell->anima = true;
@@ -657,7 +708,7 @@ static void cell_draw(
     }
 
     if (opts.anim_size) {
-        const float font_scale = 4.;
+        const float font_scale = 6.;
         if (opts.amount <= 0.5)
             fontsize = Lerp(fontsize, fontsize * font_scale, opts.amount);
         else
@@ -791,12 +842,24 @@ static void ecs_window(struct ModelView *mv) {
 
     if (igButton("|<<", (ImVec2) {0})) {
     }
+    igSameLine(0, 10);
     if (igButton("<<", (ImVec2) {0})) {
+        mv->r = ecs_circ_buf_prev(&ecs_buf);
     }
+    igSameLine(0, 10);
+    if (igButton("restore", (ImVec2) {0})) {
+        if (ecs_tmp)
+            mv->r = ecs_tmp;
+    }
+    igSameLine(0, 10);
     if (igButton(">>", (ImVec2) {0})) {
+        mv->r = ecs_circ_buf_next(&ecs_buf);
     }
+    igSameLine(0, 10);
     if (igButton(">>|", (ImVec2) {0})) {
     }
+    igText("captured %d systems", ecs_buf.num);
+    igText("cur %d system", ecs_buf.cur);
 
     igEnd();
 }
@@ -860,6 +923,7 @@ static char *state2str(enum ModelViewState state) {
 */
 
 static void destroy_dropped(struct ModelView *mv) {
+    ecs_circ_buf_push(&ecs_buf, mv->r);
     for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
                 cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
         assert(de_valid(mv->r, de_view_entity(&v)));
@@ -891,15 +955,19 @@ void anima_clear(struct ModelView *mv) {
 static void model_draw(struct ModelView *mv) {
     assert(mv);
 
+#if !defined(PLATFORM_WEB)
+    gui(mv);
+#endif
+
+    if (!mv->r)
+        return;
+
     draw_field(mv);
 
     timerman_update(mv->timers);
     int infinite_num = 0;
     int timersnum = timerman_num(mv->timers, &infinite_num);
     mv->state = timersnum ? MVS_ANIMATION : MVS_READY;
-
-    //trace("model_draw: state %s\n", state2str(mv->state));
-    //destroy_dropped(mv);
 
     if (mv->state == MVS_ANIMATION) {
     } else if (mv->state == MVS_READY) {
@@ -926,8 +994,6 @@ static void model_draw(struct ModelView *mv) {
     if (find_max(mv) == WIN_VALUE) {
         mv->state = MVS_WIN;
     }
-
-    gui(mv);
 }
 
 void modelview_init(struct ModelView *mv, const Vector2 *pos, Camera2D *cam) {
@@ -947,6 +1013,7 @@ void modelview_init(struct ModelView *mv, const Vector2 *pos, Camera2D *cam) {
     mv->update = update;
     mv->r = de_ecs_make();
     mv->camera = cam;
+    ecs_circ_buf_init(&ecs_buf, 2048);
     put(mv);
 }
 
@@ -963,5 +1030,6 @@ void modelview_shutdown(struct ModelView *mv) {
             mv->r = NULL;
         }
     }
+    ecs_circ_buf_shutdown(&ecs_buf);
     mv->dropped = true;
 }
