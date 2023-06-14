@@ -34,28 +34,53 @@ static const int screen_height = 1080 * 2;
 #endif
 
 static Camera2D camera = { 0 };
-
 static HotkeyStorage hk = {0};
+static Vector2 handle1 = {0}, handle2 = {0};
 
+float maxf(float a, float b) {
+    return a > b ? a : b;
+}
 
 void input() {
     // Закончилась-ли анимация?
     if (main_view.state != MVS_READY)
         return;
 
-    if (IsKeyPressed(KEY_LEFT)) {
-        //main_view.expired_cells_num = 0;
-        main_view.update(&main_view, DIR_LEFT);
-    } else if (IsKeyPressed(KEY_RIGHT)) {
-        //main_view.expired_cells_num = 0;
-        main_view.update(&main_view, DIR_RIGHT);
-    } else if (IsKeyPressed(KEY_UP)) {
-        //main_view.expired_cells_num = 0;
-        main_view.update(&main_view, DIR_UP);
-    } else if (IsKeyPressed(KEY_DOWN)) {
-        //main_view.expired_cells_num = 0;
-        main_view.update(&main_view, DIR_DOWN);
+    enum Direction dir = {0};
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        handle1 = GetMousePosition();
     }
+    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        handle2 = GetMousePosition();
+        //Vector2 diff = Vector2Subtract(handle2, handle1);
+        Vector2 diff = Vector2Subtract(handle1, handle2);
+        if (fabs(diff.x) > fabs(diff.y)) {
+            if (diff.x < 0) dir = DIR_RIGHT;
+            else if (diff.x > 0) dir = DIR_LEFT;
+        } else { 
+            if (diff.y > 0) dir = DIR_UP;
+            else if (diff.y < 0) dir = DIR_DOWN;
+        }
+    }
+
+    struct {
+        enum Direction  dir;
+        int             key;
+    } keys_dirs[] = {
+        {DIR_LEFT, KEY_LEFT},
+        {DIR_RIGHT, KEY_RIGHT},
+        {DIR_UP, KEY_UP},
+        {DIR_DOWN, KEY_DOWN},
+    };
+
+    for (int j = 0; j < sizeof(keys_dirs) / sizeof(keys_dirs[0]); ++j) {
+        if (IsKeyPressed(keys_dirs[j].key)) {
+            dir = keys_dirs[j].dir;
+            break;
+        }
+    } 
+
+    main_view.update(&main_view, dir);
 }
 
 Vector2 place_center(const char *text, int fontsize) {

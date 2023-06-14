@@ -11,11 +11,11 @@
 #define WIN_VALUE   2048
 
 enum Direction {
+    DIR_NONE,
     DIR_LEFT,
     DIR_RIGHT,
     DIR_DOWN,
     DIR_UP,
-    DIR_NONE,
 };
 
 enum CellAction {
