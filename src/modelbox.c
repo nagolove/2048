@@ -2,28 +2,28 @@
 
 // TODO: Отказаться от блокировки ввода что-бы можно было играть на скорости выше скорости анимации, то есть до 60 герц.
 
-#include "modelbox.h"
+#define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
+
+#include "cimgui.h"
+#include "cimgui_impl.h"
+#include "koh_common.h"
+#include "koh_console.h"
 #include "koh_destral_ecs.h"
+#include "koh_logger.h"
+#include "koh_routine.h"
+#include "model.h"
+#include "modelbox.h"
+#include "raylib.h"
+#include "raymath.h"
 #include "timers.h"
+#include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <time.h>
-
-#define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
-
-#include "raylib.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <assert.h>
 #include <string.h>
-#include "koh_logger.h"
-#include "koh_console.h"
-#include "koh_common.h"
-#include "koh_routine.h"
-#include "raymath.h"
-#include "cimgui.h"
-#include "cimgui_impl.h"
+#include <time.h>
 
 #define TMR_BLOCK_TIME  0.3
 #define TMR_PUT_TIME    0.3
@@ -42,6 +42,7 @@ struct ecs_circ_buf {
 
 static struct ecs_circ_buf ecs_buf = {0};
 static struct de_ecs *ecs_tmp = NULL;
+static struct ModelBox model_checker = {0};
 
 static void ecs_circ_buf_init(struct ecs_circ_buf *b, int cap) {
     assert(cap > 0);
@@ -407,7 +408,17 @@ static bool tmr_cell_draw(struct Timer *t) {
     return false;
 }
 
-static void put(struct ModelView *mv) {
+void modelview_put_manual(struct ModelView *mv, int x, int y, int value) {
+    struct Cell *cell = get_cell_from(mv, x, y, NULL);
+    if (!cell) {
+        cell = create_cell(mv, x, y, NULL);
+    }
+    cell->from_x = cell->to_x = x;
+    cell->from_y = cell->to_y = y;
+    cell->value = value;
+}
+
+void modelview_put(struct ModelView *mv) {
     assert(mv);
     int x = rand() % FIELD_SIZE;
     int y = rand() % FIELD_SIZE;
@@ -438,6 +449,8 @@ static void put(struct ModelView *mv) {
     cell->anima = true;
     cell->dropped = false;
 
+    modelbox_put(&model_checker, cell->from_x, cell->from_y, cell->value);
+
     struct TimerData td = {
         .mv = mv,
         .cell = cell_en,
@@ -452,25 +465,13 @@ static void put(struct ModelView *mv) {
 }
 
 static enum TimerManAction iter_timers(struct Timer *tmr, void* udata) {
-    //trace("iter_timers:\n");
     struct TimerData *timer_data = tmr->data;
-    //de_entity en = (de_entity)(uintptr_t)udata;
     de_entity en = *(de_entity*)udata;
     struct ModelView *mv = timer_data->mv;
-    //struct DrawOpts opts = special_draw_opts;
 
     assert(de_valid(mv->r, en));
     assert(de_valid(mv->r, timer_data->cell));
 
-    /*
-    if (!de_valid(mv->r, timer_data->cell)) {
-        trace("iter_timers: remove timer with invalid cell entity\n");
-        return TMA_REMOVE_NEXT;
-    }
-    */
-
-    //struct Cell *cell = de_try_get(mv->r, timer_data->cell, cmp_cell);
-    //if (timer_data->cell == cell) {
     if (timer_data->cell == en) {
         // XXX: Какое лучше условие использовать?
         //return TMA_REMOVE_BREAK;
@@ -487,9 +488,9 @@ static void global_cell_push(struct Cell *cell) {
 }
 
 static bool move(struct ModelView *mv) {
-    int cells_num = de_typeof_num(mv->r, cmp_cell);
+    /*int cells_num = de_typeof_num(mv->r, cmp_cell);*/
     bool has_move = false;
-    for (int i = 0; i <= cells_num; ++i) {
+    /*for (int i = 0; i <= cells_num; ++i) {*/
         for (int x = 0; x < FIELD_SIZE; ++x)
             for (int y = 0; y < FIELD_SIZE; ++y) {
                 de_entity cell_en = de_null;
@@ -520,9 +521,6 @@ static bool move(struct ModelView *mv) {
 
                 cell->to_x += mv->dx;
                 cell->to_y += mv->dy;
-
-
-                //cell->action = CA_MOVE;
                 cell->anima = true;
                 has_move = true;
 
@@ -539,7 +537,7 @@ static bool move(struct ModelView *mv) {
                     .udata = &td,
                 });
             }
-    }
+    //}
 
     return has_move;
 }
@@ -571,6 +569,8 @@ static bool sum(struct ModelView *mv) {
                     //cell->value = 111;
                     neighbour->value += cell->value;
                     mv->scores += cell->value;
+
+                    koh_screenshot_incremental();
 
                     timerman_each(
                         mv->timers,
@@ -616,6 +616,7 @@ static bool sum(struct ModelView *mv) {
 
 static void update(struct ModelView *mv, enum Direction dir) {
     assert(mv);
+    mv->dir = dir;
     switch (dir) {
         case DIR_UP: mv->dy = -1; break;
         case DIR_DOWN: mv->dy = 1; break;
@@ -976,6 +977,12 @@ void anima_clear(struct ModelView *mv) {
     }
 }
 
+static void clear_input(struct ModelView *mv) {
+    mv->dx = 0;
+    mv->dy = 0;
+    mv->dir = DIR_NONE;
+}
+
 static void model_draw(struct ModelView *mv) {
     assert(mv);
 
@@ -985,6 +992,8 @@ static void model_draw(struct ModelView *mv) {
 
     if (!mv->r)
         return;
+
+    modelbox_update(&model_checker, mv->dir);
 
     draw_field(mv);
 
@@ -1001,9 +1010,8 @@ static void model_draw(struct ModelView *mv) {
             mv->has_sum = sum(mv);
             mv->has_move = move(mv);
             if (!mv->has_move && !mv->has_sum) {
-                mv->dx = 0;
-                mv->dy = 0;
-                put(mv);
+                clear_input(mv);
+                modelview_put(mv);
             }
         }
     }
@@ -1038,7 +1046,7 @@ void modelview_init(struct ModelView *mv, const Vector2 *pos, Camera2D *cam) {
     mv->r = de_ecs_make();
     mv->camera = cam;
     ecs_circ_buf_init(&ecs_buf, 2048);
-    put(mv);
+    modelbox_init(&model_checker);
 }
 
 void modelview_shutdown(struct ModelView *mv) {
@@ -1055,5 +1063,6 @@ void modelview_shutdown(struct ModelView *mv) {
         }
     }
     ecs_circ_buf_shutdown(&ecs_buf);
+    modelbox_shutdown(&model_checker);
     mv->dropped = true;
 }

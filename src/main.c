@@ -52,7 +52,6 @@ void input() {
     }
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
         handle2 = GetMousePosition();
-        //Vector2 diff = Vector2Subtract(handle2, handle1);
         Vector2 diff = Vector2Subtract(handle1, handle2);
         if (fabs(diff.x) > fabs(diff.y)) {
             if (diff.x < 0) dir = DIR_RIGHT;
@@ -195,6 +194,7 @@ static void update() {
         modelview_shutdown(&main_view);
         /*modelbox_init(&main_model);*/
         modelview_init(&main_view, NULL, &camera);
+        modelview_put(&main_view);
 
         /*main_view.start(&main_view, &main_view);*/
     }
@@ -267,6 +267,7 @@ int main(void) {
     sc_init_script();
 
     modelview_init(&main_view, NULL, &camera);
+    modelview_put(&main_view);
 
     hotkey_init(&hk);
     console_init(&hk, &(struct ConsoleSetup) {

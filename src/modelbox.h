@@ -41,24 +41,9 @@ enum ModelViewState {
     MVS_GAMEOVER,
 };
 
-// x:y
-typedef struct Cell Field[FIELD_SIZE][FIELD_SIZE];
-
-typedef struct ModelBox ModelBox;
 typedef struct ModelView ModelView;
 
 typedef void (*ModelBoxUpdate)(struct ModelView *mb, enum Direction dir);
-
-/*
-    Текущеее состояние поля. Без анимации и эффектов. Подходит для машинного 
-    обучения тк работает быстро и использует небольшое количество памяти.
- */
-struct ModelBox {
-    enum Direction      last_dir;
-    ModelBoxUpdate      update;
-    void                (*start)(struct ModelBox *mb, struct ModelView *mv);
-    bool                dropped;    //Флаг деинициализации структуры
-};
 
 /*
     Отображение поля. Все, что связано с анимацией.
@@ -69,6 +54,7 @@ struct ModelView {
     int                 scores;
     ModelBoxUpdate      update;
     int                 dx, dy;
+    enum Direction      dir;
     bool                has_sum, has_move;
 
     // Таймеры для анимации плиток
@@ -85,6 +71,8 @@ struct ModelView {
 //void modelbox_init(struct ModelBox *mb);
 void modelview_init(struct ModelView *mv, const Vector2 *pos, Camera2D *cam);
 //void modelbox_shutdown(struct ModelBox *mb);
+void modelview_put_manual(struct ModelView *mv, int x, int y, int value);
+void modelview_put(struct ModelView *mv);
 void modelview_shutdown(struct ModelView *mv);
 
 void model_global_init();
