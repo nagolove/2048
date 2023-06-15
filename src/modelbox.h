@@ -72,8 +72,10 @@ struct ModelView {
 void modelview_init(struct ModelView *mv, const Vector2 *pos, Camera2D *cam);
 //void modelbox_shutdown(struct ModelBox *mb);
 void modelview_put_manual(struct ModelView *mv, int x, int y, int value);
+void modelview_put_cell(struct ModelView *mv, struct Cell cell);
 void modelview_put(struct ModelView *mv);
 void modelview_shutdown(struct ModelView *mv);
+void modelview_save_state2file(struct ModelView *mv);
 
 void model_global_init();
 void model_global_shutdown();

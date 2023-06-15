@@ -158,6 +158,68 @@ static Color colors[] = {
     GRAY,
 };
 
+void modelview_save_state2file(struct ModelView *mv) {
+    static struct Cell prev_state[FIELD_SIZE * FIELD_SIZE] = {0};
+    static int prev_state_sz = 0;
+
+    static struct Cell state[FIELD_SIZE * FIELD_SIZE] = {0};
+    static int state_sz = 0;
+
+    state_sz = 0;
+    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { cmp_cell });
+         de_view_valid(&v); de_view_next(&v)) {
+        assert(de_valid(mv->r, de_view_entity(&v)));
+        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+        assert(c);
+        state[state_sz++] = *c;
+    }
+
+    bool equal = false;
+    if (prev_state_sz == state_sz) {
+        int eq_num = 0;
+        for (int i = 0; i < state_sz; ++i) {
+            for (int j = 0; j < prev_state_sz; j++) {
+                eq_num += memcmp(
+                        &state[i], &prev_state[j], sizeof(state[0])) == 0;
+            }
+            trace("modelview_save_state2file: eq_num %d\n", eq_num);
+        }
+
+        equal = eq_num == prev_state_sz;
+    }
+
+    memmove(prev_state, state, sizeof(state[0]) * state_sz);
+    prev_state_sz = state_sz;
+
+    trace("modelview_save_state2file: equal %s\n", equal ? "t" : "f");
+    if (equal) return;
+
+    FILE *file = fopen("state.txt", "a");
+    if (!file) return;
+    fprintf(file, "\n");
+
+    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { cmp_cell });
+         de_view_valid(&v); de_view_next(&v)) {
+        assert(de_valid(mv->r, de_view_entity(&v)));
+        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+        assert(c);
+
+        fprintf(file, "fr %d, %d ", c->from_x, c->from_y);
+        fprintf(file, "to %d, %d ", c->to_x, c->to_y);
+        fprintf(file, "val %d ", c->value);
+        fprintf(file, "anim_size %s ", c->anim_size ? "true" : "false");
+        fprintf(file, "anima %s ", c->anima ? "true" : "false");
+        fprintf(file, "dropped %s ", c->dropped ? "true" : "false");
+        fprintf(file, "\n");
+    }
+
+    fprintf(file, "\n");
+    fprintf(file, "\n");
+
+    fclose(file);
+}
+
+
 static void cell_draw(
     struct ModelView *mv, struct Cell *cell, struct DrawOpts opts
 );
@@ -570,7 +632,7 @@ static bool sum(struct ModelView *mv) {
                     neighbour->value += cell->value;
                     mv->scores += cell->value;
 
-                    koh_screenshot_incremental();
+                    /*koh_screenshot_incremental();*/
 
                     timerman_each(
                         mv->timers,
@@ -1047,6 +1109,10 @@ void modelview_init(struct ModelView *mv, const Vector2 *pos, Camera2D *cam) {
     mv->camera = cam;
     ecs_circ_buf_init(&ecs_buf, 2048);
     modelbox_init(&model_checker);
+
+    FILE *file = fopen("state.txt", "w");
+    if (file)
+        fclose(file);
 }
 
 void modelview_shutdown(struct ModelView *mv) {
@@ -1065,4 +1131,18 @@ void modelview_shutdown(struct ModelView *mv) {
     ecs_circ_buf_shutdown(&ecs_buf);
     modelbox_shutdown(&model_checker);
     mv->dropped = true;
+}
+
+void modelview_put_cell(struct ModelView *mv, struct Cell cell) {
+    assert(mv);
+    struct Cell *new_cell = get_cell_from(mv, cell.from_x, cell.from_y, NULL);
+    if (!new_cell) {
+        new_cell = create_cell(mv, cell.from_x, cell.from_y, NULL);
+    }
+    memset(new_cell, 0, sizeof(*new_cell));
+    new_cell->from_x = cell.from_x;
+    new_cell->from_y = cell.from_y;
+    new_cell->to_x = cell.to_x;
+    new_cell->to_y = cell.to_y;
+    new_cell->value = cell.value;
 }
