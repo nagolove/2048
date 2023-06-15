@@ -29,8 +29,9 @@ struct Cell {
     bool            dropped;    // подлежит удалению 
     int             value;
     bool            anim_size;  // анимировать размер шрифта
-    int             from_x, from_y, to_x, to_y;
+    int             x, y;
     bool            anima;      // флаг нахождения в таймере
+    bool            touched;
     int8_t          guard2[5];
 };
 

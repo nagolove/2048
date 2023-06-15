@@ -188,12 +188,12 @@ static void parse_data(struct ModelView *mv, const char *data, bool hard) {
     while (tok) {
         struct Cell cell = {0};
         printf("parse_data: tok %s\n", tok);
-        sscanf(tok, "%*s%d%*s%d%*s%d%*s%d%*s%d", 
-            &cell.from_x, &cell.from_y, &cell.to_x, &cell.to_y, &cell.value);
+        //sscanf(tok, "%*s%d%*s%d%*s%d%*s%d%*s%d", 
+        sscanf(tok, "%d%*s%d%*s%d", &cell.x, &cell.y, &cell.value);
         if (hard)
             modelview_put_cell(mv, cell);
         else
-            modelview_put_manual(mv, cell.from_x, cell.from_y, cell.value);
+            modelview_put_manual(mv, cell.x, cell.y, cell.value);
         tok = strtok(NULL, "\n");
     }
 }
@@ -220,9 +220,13 @@ static void update() {
 
     if (IsKeyPressed(KEY_L)) {
         const char *data = 
-        "fr 0, 3 to 0, 4 val 2 anim_size false anima true dropped false\n"
-        "fr 0, 2 to 0, 2 val 4 anim_size false anima false dropped false\n"
-        "fr 0, 0 to 0, 1 val 4 anim_size false anima true dropped false\n";
+"0, 3 val 2 anim_size false anima true dropped false \n"
+"3, 4 val 8 anim_size false anima false dropped false \n"
+"0, 4 val 32 anim_size false anima false dropped false \n"
+"4, 3 val 2 anim_size false anima false dropped false \n"
+"2, 4 val 32 anim_size false anima false dropped false \n"
+"4, 4 val 4 anim_size false anima false dropped false \n"
+"1, 4 val 64 anim_size false anima false dropped false \n";
 
         modelview_shutdown(&main_view);
         modelview_init(&main_view, NULL, &camera);
