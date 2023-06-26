@@ -4,7 +4,7 @@
 #include "koh_hotkey.h"
 #include "koh_logger.h"
 #include "koh_script.h"
-#include "modelbox.h"
+#include "modelview.h"
 #include "raylib.h"
 #include "raymath.h"
 #include <assert.h>
@@ -80,7 +80,7 @@ void input() {
     } 
 
     main_view.update(&main_view, dir);
-    modelview_save_state2file(&main_view);
+    //modelview_save_state2file(&main_view);
 }
 
 Vector2 place_center(const char *text, int fontsize) {
@@ -211,7 +211,11 @@ static void update() {
         /*modelbox_shutdown(&main_model);*/
         modelview_shutdown(&main_view);
         /*modelbox_init(&main_model);*/
-        modelview_init(&main_view, NULL, &camera);
+        modelview_init(&main_view, (struct Setup) {
+            .cam = &camera,
+            .field_size = 5,
+            .pos = NULL,
+        });
         modelview_put(&main_view);
 
         /*main_view.start(&main_view, &main_view);*/
@@ -229,7 +233,11 @@ static void update() {
 "1, 4 val 64 anim_size false anima false dropped false \n";
 
         modelview_shutdown(&main_view);
-        modelview_init(&main_view, NULL, &camera);
+        modelview_init(&main_view, (struct Setup) {
+            .pos = NULL,
+            .cam = &camera,
+            .field_size = 5,
+        });
         bool hard = IsKeyDown(KEY_H);
         parse_data(&main_view, data, hard);
     }
@@ -301,7 +309,11 @@ int main(void) {
     logger_register_functions();
     sc_init_script();
 
-    modelview_init(&main_view, NULL, &camera);
+    modelview_init(&main_view, (struct Setup) {
+        .pos = NULL,
+        .cam = &camera,
+        .field_size = 5,
+    });
     modelview_put(&main_view);
 
     hotkey_init(&hk);
@@ -312,7 +324,8 @@ int main(void) {
         .color_cursor = BLUE,
         .color_text = BLACK,
         .fnt_path = "assets/djv.ttf",
-        .fnt_size = 50,
+        //.fnt_size = 50,
+        .fnt_size = 20,
     });
     console_immediate_buffer_enable(true);
 

@@ -11,8 +11,8 @@
 #include "koh_destral_ecs.h"
 #include "koh_logger.h"
 #include "koh_routine.h"
-#include "model.h"
-#include "modelbox.h"
+#include "modeltest.h"
+#include "modelview.h"
 #include "raylib.h"
 #include "raymath.h"
 #include "timers.h"
@@ -24,9 +24,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-
-#define TMR_BLOCK_TIME  0.3
-#define TMR_PUT_TIME    0.3
 
 #define GLOBAL_CELLS_CAP    100000
 
@@ -40,9 +37,9 @@ struct ecs_circ_buf {
     int     i, j, cur;
 };
 
-static struct ecs_circ_buf ecs_buf = {0};
-static struct de_ecs *ecs_tmp = NULL;
-static struct ModelBox model_checker = {0};
+static struct ecs_circ_buf  ecs_buf = {0};
+static struct de_ecs        *ecs_tmp = NULL;
+static struct ModelTest     model_checker = {0};
 
 static void ecs_circ_buf_init(struct ecs_circ_buf *b, int cap) {
     assert(cap > 0);
@@ -158,6 +155,7 @@ static Color colors[] = {
     GRAY,
 };
 
+/*
 void modelview_save_state2file(struct ModelView *mv) {
     static struct Cell prev_state[FIELD_SIZE * FIELD_SIZE] = {0};
     static int prev_state_sz = 0;
@@ -219,7 +217,7 @@ void modelview_save_state2file(struct ModelView *mv) {
 
     fclose(file);
 }
-
+*/
 
 static void cell_draw(
     struct ModelView *mv, struct Cell *cell, struct DrawOpts opts
@@ -249,7 +247,7 @@ static bool is_over(struct ModelView *mv) {
         if (c) num += c->value > 0;
     }
 
-    return FIELD_SIZE * FIELD_SIZE == num;
+    return mv->field_size * mv->field_size == num;
 }
 
 static struct Cell *get_cell(
@@ -309,9 +307,9 @@ static struct Cell *create_cell(
     assert(mv);
     assert(mv->r);
 
-    if (get_cell_count(mv) >= FIELD_SIZE * FIELD_SIZE) {
+    if (get_cell_count(mv) >= mv->field_size * mv->field_size) {
         trace("create_cell: cells were reached limit of %d\n",
-              FIELD_SIZE * FIELD_SIZE);
+              mv->field_size * mv->field_size);
         abort();
         return NULL;
     }
@@ -426,13 +424,13 @@ void modelview_put_manual(struct ModelView *mv, int x, int y, int value) {
 
 void modelview_put(struct ModelView *mv) {
     assert(mv);
-    int x = rand() % FIELD_SIZE;
-    int y = rand() % FIELD_SIZE;
+    int x = rand() % mv->field_size;
+    int y = rand() % mv->field_size;
 
     struct Cell *cell = get_cell(mv, x, y, NULL);
     while (cell) {
-        x = rand() % FIELD_SIZE;
-        y = rand() % FIELD_SIZE;
+        x = rand() % mv->field_size;
+        y = rand() % mv->field_size;
         cell = get_cell(mv, x, y, NULL);
     }
 
@@ -455,14 +453,14 @@ void modelview_put(struct ModelView *mv) {
     cell->anima = true;
     cell->dropped = false;
 
-    modelbox_put(&model_checker, cell->x, cell->y, cell->value);
+    modeltest_put(&model_checker, cell->x, cell->y, cell->value);
 
     struct TimerData td = {
         .mv = mv,
         .cell = cell_en,
     };
     timerman_add(mv->timers, (struct TimerDef) {
-        .duration = TMR_PUT_TIME,
+        .duration = mv->tmr_put_time,
         .sz = sizeof(struct TimerData),
         .on_update = tmr_cell_draw_put,
         .on_stop = tmr_cell_draw_stop,
@@ -478,8 +476,8 @@ static void global_cell_push(struct Cell *cell) {
 static bool move(struct ModelView *mv) {
     /*int cells_num = de_typeof_num(mv->r, cmp_cell);*/
 
-    for (int x = 0; x < FIELD_SIZE; ++x)
-        for (int y = 0; y < FIELD_SIZE; ++y) {
+    for (int x = 0; x < mv->field_size; ++x)
+        for (int y = 0; y < mv->field_size; ++y) {
             de_entity cell_en = de_null;
             struct Cell *cell = get_cell(mv, x, y, &cell_en);
 
@@ -493,8 +491,8 @@ static bool move(struct ModelView *mv) {
     bool touched = false;
     do {
         touched = false;
-        for (int x = 0; x < FIELD_SIZE; ++x)
-            for (int y = 0; y < FIELD_SIZE; ++y) {
+        for (int x = 0; x < mv->field_size; ++x)
+            for (int y = 0; y < mv->field_size; ++y) {
                 de_entity cell_en = de_null;
                 struct Cell *cell = get_cell(mv, x, y, &cell_en);
                 if (!cell) continue;
@@ -510,12 +508,12 @@ static bool move(struct ModelView *mv) {
                 );
                 if (neighbour) continue;
 
-                if (cell->x + mv->dx >= FIELD_SIZE)
+                if (cell->x + mv->dx >= mv->field_size)
                     continue;
                 if (cell->x + mv->dx < 0)
                     continue;
 
-                if (cell->y + mv->dy >= FIELD_SIZE)
+                if (cell->y + mv->dy >= mv->field_size)
                     continue;
                 if (cell->y + mv->dy < 0)
                     continue;
@@ -535,7 +533,7 @@ static bool move(struct ModelView *mv) {
                 touched = true;
 
                 timerman_add(mv->timers, (struct TimerDef) {
-                    .duration = TMR_BLOCK_TIME,
+                    .duration = mv->tmr_block_time,
                     .sz = sizeof(struct TimerData),
                     .on_update = tmr_cell_draw,
                     .on_stop = tmr_cell_draw_stop,
@@ -549,8 +547,8 @@ static bool move(struct ModelView *mv) {
 
 static bool sum(struct ModelView *mv) {
     bool has_sum = false;
-    for (int x = 0; x < FIELD_SIZE; ++x)
-        for (int y = 0; y < FIELD_SIZE; ++y) {
+    for (int x = 0; x < mv->field_size; ++x)
+        for (int y = 0; y < mv->field_size; ++y) {
             de_entity cell_en = de_null;
             struct Cell *cell = get_cell(mv, x, y, &cell_en);
             if (!cell) continue;
@@ -587,7 +585,7 @@ static bool sum(struct ModelView *mv) {
                             .cell = cell_en,
                         };
                         timerman_add(mv->timers, (struct TimerDef) {
-                            .duration = TMR_BLOCK_TIME,
+                            .duration = mv->tmr_block_time,
                             .on_stop = tmr_cell_draw_stop,
                             .on_update = tmr_cell_draw_drop,
                             .sz = sizeof(struct TimerData),
@@ -598,7 +596,7 @@ static bool sum(struct ModelView *mv) {
                         td.cell = neighbour_en;
 
                         timerman_add(mv->timers, (struct TimerDef) {
-                            .duration = TMR_BLOCK_TIME,
+                            .duration = mv->tmr_block_time,
                             .on_stop = tmr_cell_draw_stop,
                             .on_update = tmr_cell_draw_neighbour_drop,
                             .sz = sizeof(struct TimerData),
@@ -629,10 +627,11 @@ static int cmp(const void *pa, const void *pb) {
 }
 
 static void sort_numbers(struct ModelView *mv) {
-    struct Cell tmp[FIELD_SIZE * FIELD_SIZE] = {0};
+    struct Cell tmp[mv->field_size * mv->field_size];
+    memset(tmp, 0, sizeof(tmp));
     int idx = 0;
-    for (int y = 0; y < FIELD_SIZE; y++)
-        for (int x = 0; x < FIELD_SIZE; x++) {
+    for (int y = 0; y < mv->field_size; y++)
+        for (int x = 0; x < mv->field_size; x++) {
             struct Cell *cell = get_cell(mv, x, y, NULL);
             if (cell)
                 tmp[idx++].value = cell->value;
@@ -644,12 +643,12 @@ static void sort_numbers(struct ModelView *mv) {
 }
 
 static void draw_field(struct ModelView *mv) {
-    const int field_width = FIELD_SIZE * quad_width;
+    const int field_width = mv->field_size * quad_width;
     Vector2 start = mv->pos;
     const float thick = 8.;
 
     Vector2 tmp = start;
-    for (int u = 0; u <= FIELD_SIZE; u++) {
+    for (int u = 0; u <= mv->field_size; u++) {
         Vector2 end = tmp;
         end.y += field_width;
         DrawLineEx(tmp, end, thick, BLACK);
@@ -657,7 +656,7 @@ static void draw_field(struct ModelView *mv) {
     }
 
     tmp = start;
-    for (int u = 0; u <= FIELD_SIZE; u++) {
+    for (int u = 0; u <= mv->field_size; u++) {
         Vector2 end = tmp;
         end.x += field_width;
         DrawLineEx(tmp, end, thick, BLACK);
@@ -743,8 +742,8 @@ static void cell_draw(
 
 static void draw_numbers(struct ModelView *mv) {
     assert(mv);
-    for (int y = 0; y < FIELD_SIZE; y++) {
-        for (int x = 0; x < FIELD_SIZE; x++) {
+    for (int y = 0; y < mv->field_size; y++) {
+        for (int x = 0; x < mv->field_size; x++) {
             struct Cell *cell = get_cell(mv, x, y, NULL);
             if (!cell)
                 continue;
@@ -891,6 +890,8 @@ static void entities_window(struct ModelView *mv) {
     ImGuiWindowFlags flags = 0;
     igBegin("entities", &open, flags);
 
+    if (!mv->r) goto _exit;
+
     int idx = 0;
     for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
                 cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
@@ -916,6 +917,13 @@ static void entities_window(struct ModelView *mv) {
         }
     }
 
+_exit:
+    igEnd();
+}
+
+static void options_window(struct ModelView *mv) {
+    bool wnd_open = true;
+    igBegin("options_window", &wnd_open, 0);
     igEnd();
 }
 
@@ -926,6 +934,7 @@ static void gui(struct ModelView *mv) {
     //paths_window();
     entities_window(mv);
     timerman_window(mv->timers);
+    options_window(mv);
     ecs_window(mv);
     bool open = false;
     igShowDemoWindow(&open);
@@ -982,7 +991,8 @@ static void clear_input(struct ModelView *mv) {
     mv->dir = DIR_NONE;
 }
 
-static void check_model(struct ModelView *mv, struct ModelBox *mb) {
+/*
+static void check_model(struct ModelView *mv, struct ModelTest *mb) {
     for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
                 cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
         if (de_valid(mv->r, de_view_entity(&v))) {
@@ -994,6 +1004,7 @@ static void check_model(struct ModelView *mv, struct ModelBox *mb) {
         }
     }
 }
+*/
 
 static void model_draw(struct ModelView *mv) {
     assert(mv);
@@ -1005,8 +1016,8 @@ static void model_draw(struct ModelView *mv) {
     if (!mv->r)
         return;
 
-    modelbox_update(&model_checker, mv->dir);
-    check_model(mv, &model_checker);
+    modeltest_update(&model_checker, mv->dir);
+    /*check_model(mv, &model_checker);*/
 
     draw_field(mv);
 
@@ -1016,8 +1027,7 @@ anim:
     int timersnum = timerman_num(mv->timers, &infinite_num);
     mv->state = timersnum ? MVS_ANIMATION : MVS_READY;
 
-    if (mv->state == MVS_ANIMATION) {
-    } else if (mv->state == MVS_READY) {
+    if (mv->state == MVS_READY) {
         destroy_dropped(mv);
         anima_clear(mv);
         if (mv->dx || mv->dy) {
@@ -1047,25 +1057,32 @@ anim:
     }
 }
 
-void modelview_init(struct ModelView *mv, const Vector2 *pos, Camera2D *cam) {
+void modelview_init(struct ModelView *mv, const struct Setup setup) {
     assert(mv);
-    const int field_width = FIELD_SIZE * quad_width;
-    if (!pos) {
+    mv->field_size = setup.field_size;
+    const int cells_num = mv->field_size * mv->field_size;
+    mv->sorted = calloc(cells_num, sizeof(mv->sorted[0]));
+    const int field_width = mv->field_size * quad_width;
+    if (!setup.pos) {
         mv->pos = (Vector2){
             .x = (GetScreenWidth() - field_width) / 2.,
             .y = (GetScreenHeight() - field_width) / 2.,
         };
     } else 
-        mv->pos = *pos;
-    mv->timers = timerman_new(FIELD_SIZE * FIELD_SIZE * 2);
+        mv->pos = *setup.pos;
+    mv->timers = timerman_new(mv->field_size * mv->field_size * 2);
     mv->state = MVS_READY;
     mv->draw = model_draw;
     mv->dropped = false;
     mv->update = update;
     mv->r = de_ecs_make();
-    mv->camera = cam;
+    mv->camera = setup.cam;
     ecs_circ_buf_init(&ecs_buf, 2048);
-    modelbox_init(&model_checker);
+
+    mv->tmr_block_time = 0.3;
+    mv->tmr_put_time = 0.3;
+
+    modeltest_init(&model_checker, mv->field_size);
 
     FILE *file = fopen("state.txt", "w");
     if (file)
@@ -1085,8 +1102,12 @@ void modelview_shutdown(struct ModelView *mv) {
             mv->r = NULL;
         }
     }
+    if (mv->sorted) {
+        free(mv->sorted);
+        mv->sorted = NULL;
+    }
     ecs_circ_buf_shutdown(&ecs_buf);
-    modelbox_shutdown(&model_checker);
+    modeltest_shutdown(&model_checker);
     mv->dropped = true;
 }
 

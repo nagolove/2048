@@ -7,7 +7,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define FIELD_SIZE  5
 #define WIN_VALUE   2048
 
 enum Direction {
@@ -54,14 +53,16 @@ struct ModelView {
     Camera2D            *camera;
     int                 scores;
     ModelBoxUpdate      update;
-    int                 dx, dy;
+    int                 dx, dy, field_size;
+    float               tmr_put_time, tmr_block_time;
     enum Direction      dir;
     bool                has_sum, has_move;
 
     // Таймеры для анимации плиток
     struct TimerMan     *timers;
 
-    struct Cell         sorted[FIELD_SIZE * FIELD_SIZE];
+    struct Cell         *sorted;
+    int                 sorted_num;
 
     Vector2             pos;
     enum ModelViewState state;
@@ -69,8 +70,14 @@ struct ModelView {
     void                (*draw)(struct ModelView *mv);
 };
 
+struct Setup {
+    Vector2  *pos;
+    Camera2D *cam;
+    int      field_size;
+};
+
 //void modelbox_init(struct ModelBox *mb);
-void modelview_init(struct ModelView *mv, const Vector2 *pos, Camera2D *cam);
+void modelview_init(struct ModelView *mv, struct Setup setup);
 //void modelbox_shutdown(struct ModelBox *mb);
 void modelview_put_manual(struct ModelView *mv, int x, int y, int value);
 void modelview_put_cell(struct ModelView *mv, struct Cell cell);
