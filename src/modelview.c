@@ -328,6 +328,19 @@ static struct Cell *create_cell(
     return cell;
 }
 
+static void tmr_cell_draw_stop_drop(struct Timer *t) {
+    struct TimerData *timer_data = t->data;
+    struct ModelView *mv = timer_data->mv;
+
+    assert(de_valid(mv->r, timer_data->cell));
+    struct Cell *cell = de_try_get(mv->r, timer_data->cell, cmp_cell);
+    assert(cell);
+
+    cell->anima = false;
+    cell->anim_size = false;
+    //cell->dropped = true;
+}
+
 static void tmr_cell_draw_stop(struct Timer *t) {
     struct TimerData *timer_data = t->data;
     struct ModelView *mv = timer_data->mv;
@@ -338,10 +351,9 @@ static void tmr_cell_draw_stop(struct Timer *t) {
 
     cell->anima = false;
     cell->anim_size = false;
-    //cell->x += mv->dx;
-    //cell->y += mv->dy;
 }
 
+// какой эффект рисует функция и для какой плитки?
 static bool tmr_cell_draw_drop(struct Timer *t) {
     struct TimerData *timer_data = t->data;
     struct ModelView *mv = timer_data->mv;
@@ -360,6 +372,7 @@ static bool tmr_cell_draw_drop(struct Timer *t) {
     return false;
 }
 
+// какой эффект рисует функция и для какой плитки?
 static bool tmr_cell_draw_neighbour_drop(struct Timer *t) {
     struct TimerData *timer_data = t->data;
     struct ModelView *mv = timer_data->mv;
@@ -480,7 +493,6 @@ static bool move(struct ModelView *mv) {
         for (int y = 0; y < mv->field_size; ++y) {
             de_entity cell_en = de_null;
             struct Cell *cell = get_cell(mv, x, y, &cell_en);
-
             if (cell)
                 cell->touched = false;
     }
@@ -545,6 +557,73 @@ static bool move(struct ModelView *mv) {
     return has_move;
 }
 
+static bool try_sum(
+    struct ModelView *mv, struct Cell *cell, de_entity cell_en, int x, int y
+) {
+    bool has_sum = false;
+    assert(mv);
+    assert(cell);
+    assert(cell_en != de_null);
+
+    if (cell->dropped) 
+        return has_sum;
+
+    de_entity neighbour_en = de_null;
+    struct Cell *neighbour = get_cell(
+        mv, x + mv->dx, y + mv->dy, &neighbour_en
+    );
+    if (!neighbour) 
+        return has_sum;
+    if (neighbour->dropped) 
+        return has_sum;
+
+    assert(cell_en != de_null);
+    assert(neighbour_en != de_null);
+
+    if (cell->value != neighbour->value)
+        return has_sum;
+
+    has_sum = true;
+    neighbour->value += cell->value;
+    mv->scores += cell->value;
+
+    /*koh_screenshot_incremental();*/
+
+    assert(de_valid(mv->r, cell_en));
+    if (!de_valid(mv->r, cell_en))
+        return has_sum;
+
+    cell->dropped = true;
+    cell->anima = true;
+    cell->anim_size = true;
+
+    struct TimerData td = {
+        .mv = mv,
+        .cell = cell_en,
+    };
+    timerman_add(mv->timers, (struct TimerDef) {
+        .duration = mv->tmr_block_time,
+        .on_stop = tmr_cell_draw_stop,
+        .on_update = tmr_cell_draw_drop,
+        .sz = sizeof(struct TimerData),
+        .udata = &td,
+    });
+
+    neighbour->anima = true;
+    td.cell = neighbour_en;
+
+    timerman_add(mv->timers, (struct TimerDef) {
+        .duration = mv->tmr_block_time,
+        //.on_stop = tmr_cell_draw_stop_drop,
+        .on_stop = tmr_cell_draw_stop,
+        .on_update = tmr_cell_draw_neighbour_drop,
+        .sz = sizeof(struct TimerData),
+        .udata = &td,
+    });
+
+    return has_sum;
+}
+
 static bool sum(struct ModelView *mv) {
     bool has_sum = false;
     for (int x = 0; x < mv->field_size; ++x)
@@ -552,60 +631,9 @@ static bool sum(struct ModelView *mv) {
             de_entity cell_en = de_null;
             struct Cell *cell = get_cell(mv, x, y, &cell_en);
             if (!cell) continue;
-
-            if (cell->dropped) continue;
-            //assert(cell->dropped);
-
-            de_entity neighbour_en = de_null;
-            struct Cell *neighbour = get_cell(
-                mv, x + mv->dx, y + mv->dy, &neighbour_en
-            );
-            if (!neighbour) continue;
-            if (neighbour->dropped) continue;
-
-            assert(cell_en != de_null);
-            assert(neighbour_en != de_null);
-
-            if (cell->value == neighbour->value) {
-                    has_sum = true;
-                    neighbour->value += cell->value;
-                    mv->scores += cell->value;
-
-                    /*koh_screenshot_incremental();*/
-
-                    assert(de_valid(mv->r, cell_en));
-                    if (de_valid(mv->r, cell_en)) {
-
-                        cell->dropped = true;
-                        cell->anima = true;
-                        cell->anim_size = true;
-
-                        struct TimerData td = {
-                            .mv = mv,
-                            .cell = cell_en,
-                        };
-                        timerman_add(mv->timers, (struct TimerDef) {
-                            .duration = mv->tmr_block_time,
-                            .on_stop = tmr_cell_draw_stop,
-                            .on_update = tmr_cell_draw_drop,
-                            .sz = sizeof(struct TimerData),
-                            .udata = &td,
-                        });
-
-                        neighbour->anima = true;
-                        td.cell = neighbour_en;
-
-                        timerman_add(mv->timers, (struct TimerDef) {
-                            .duration = mv->tmr_block_time,
-                            .on_stop = tmr_cell_draw_stop,
-                            .on_update = tmr_cell_draw_neighbour_drop,
-                            .sz = sizeof(struct TimerData),
-                            .udata = &td,
-                        });
-                    }
-                //}
+            // XXX: применение ||
+            has_sum = has_sum || try_sum(mv, cell, cell_en, x, y);
         }
-    }
     return has_sum;
 }
 
@@ -985,12 +1013,6 @@ void anima_clear(struct ModelView *mv) {
     }
 }
 
-static void clear_input(struct ModelView *mv) {
-    mv->dx = 0;
-    mv->dy = 0;
-    mv->dir = DIR_NONE;
-}
-
 /*
 static void check_model(struct ModelView *mv, struct ModelTest *mb) {
     for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
@@ -1021,25 +1043,28 @@ static void model_draw(struct ModelView *mv) {
 
     draw_field(mv);
 
-anim:
+//_anim:
     timerman_update(mv->timers);
     int infinite_num = 0;
     int timersnum = timerman_num(mv->timers, &infinite_num);
     mv->state = timersnum ? MVS_ANIMATION : MVS_READY;
 
     if (mv->state == MVS_READY) {
+        // TODO: удаляет неправильно
         destroy_dropped(mv);
         anima_clear(mv);
         if (mv->dx || mv->dy) {
 
             mv->has_sum = sum(mv);
-            if (mv->has_sum) goto anim;
+            //if (mv->has_sum) goto _anim;
             mv->has_move = move(mv);
-            if (mv->has_move) goto anim;
+            //if (mv->has_move) goto _anim;
 
 
             if (!mv->has_move && !mv->has_sum) {
-                clear_input(mv);
+                mv->dx = 0;
+                mv->dy = 0;
+                mv->dir = DIR_NONE;
                 modelview_put(mv);
             }
         }

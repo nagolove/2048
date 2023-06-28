@@ -1,2 +1,0 @@
-#!/usr/bin/env bash
-gdb --args ./2048 $1 $2 $3 $4
