@@ -1,5 +1,7 @@
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 
+#include "cimgui.h"
+#include "cimgui_impl.h"
 #include "koh_console.h"
 #include "koh_hotkey.h"
 #include "koh_logger.h"
@@ -7,6 +9,7 @@
 #include "modelview.h"
 #include "raylib.h"
 #include "raymath.h"
+#include "test_suite.h"
 #include <assert.h>
 #include <math.h>
 #include <stdbool.h>
@@ -15,8 +18,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include "cimgui.h"
-#include "cimgui_impl.h"
 
 #if defined(PLATFORM_WEB)
 #include <emscripten.h>
@@ -79,7 +80,8 @@ void input() {
         }
     } 
 
-    main_view.update(&main_view, dir);
+    modelview_put(&main_view);
+    modelview_input(&main_view, dir);
     //modelview_save_state2file(&main_view);
 }
 
@@ -258,7 +260,7 @@ static void update() {
 
     if (main_view.state != MVS_GAMEOVER)
         input();
-    main_view.draw(&main_view);
+    modelview_draw(&main_view);
 
     draw_scores();
     switch (main_view.state) {
@@ -273,21 +275,37 @@ static void update() {
         default: break;
     }
 
-    //genann_view_prepare(net_viewer, trained);
-    //genann_view_draw(net_viewer);
-
-    /*
-    Vector2 mouse_point = GetScreenToWorld2D(GetMousePosition(), camera);
-    genann_view_draw(view_test);
-    genann_view_update(view_test, mouse_point);
-    */
-
     console_update();
 
     EndMode2D();
     EndDrawing();
+}
 
-    //usleep(10000);
+
+static void test_modelviews_one() {
+    struct ModelView mv = {};
+    modelview_init(&mv, (struct Setup) {
+        .pos = NULL,
+        .cam = &camera,
+        .field_size = 5,
+    });
+    setup_field(&mv, (int[5][5]){ 
+        {0, 0, 0, 0, 0}, 
+        {0, 2, 0, 0, 0}, 
+        {0, 2, 0, 0, 0}, 
+        {0, 0, 0, 0, 0}, 
+        {0, 0, 0, 0, 0}, 
+    });
+    modelview_input(&mv, DIR_DOWN);
+    while (!modelview_draw(&mv));
+    check_field(&mv, (int[5][5]) {
+        {0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0},
+        {0, 4, 0, 0, 0},
+    });
+    modelview_shutdown(&mv);
 }
 
 int main(void) {
@@ -308,6 +326,9 @@ int main(void) {
     sc_init();
     logger_register_functions();
     sc_init_script();
+
+    test_modelviews_one();
+    test_modelviews_multiple();
 
     modelview_init(&main_view, (struct Setup) {
         .pos = NULL,

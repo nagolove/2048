@@ -23,13 +23,17 @@ enum CellAction {
     CA_SUM,
 };
 
+enum AlphaMode {
+    AM_NONE,
+    AM_FORWARD,
+    AM_BACKWARD,
+};
+
 struct Cell {
+    enum AlphaMode  anim_alpha;
     bool            dropped;    // ячейка подлежит удалению 
-    int             value;
-    //bool            anim_size;  // анимировать размер шрифта
-    int             x, y;
-    //bool            anima;      // флаг нахождения в таймере
-    bool            touched;    // что делает флаг?
+    int             x, y, value;
+    bool            touched, anim_movement, anim_size;
 };
 
 enum ModelViewState {
@@ -41,8 +45,6 @@ enum ModelViewState {
 
 typedef struct ModelView ModelView;
 
-typedef void (*ModelBoxUpdate)(struct ModelView *mb, enum Direction dir);
-
 /*
     Отображение поля. Все, что связано с анимацией.
  */
@@ -50,7 +52,6 @@ struct ModelView {
     de_ecs              *r;
     Camera2D            *camera;
     int                 scores;
-    ModelBoxUpdate      update;
     int                 dx, dy, field_size;
     float               tmr_put_time, tmr_block_time;
     enum Direction      dir;
@@ -65,23 +66,26 @@ struct ModelView {
     Vector2             pos;
     enum ModelViewState state;
     bool                dropped;    //Флаг деинициализации структуры
-    void                (*draw)(struct ModelView *mv);
 };
 
 struct Setup {
-    Vector2  *pos;
-    Camera2D *cam;
-    int      field_size;
+    Vector2     *pos;
+    Camera2D    *cam;
+    int         field_size;
+    float       tmr_put_time, tmr_block_time;
 };
 
-//void modelbox_init(struct ModelBox *mb);
 void modelview_init(struct ModelView *mv, struct Setup setup);
-//void modelbox_shutdown(struct ModelBox *mb);
 void modelview_put_manual(struct ModelView *mv, int x, int y, int value);
 void modelview_put_cell(struct ModelView *mv, struct Cell cell);
 void modelview_put(struct ModelView *mv);
 void modelview_shutdown(struct ModelView *mv);
 void modelview_save_state2file(struct ModelView *mv);
+bool modelview_draw(struct ModelView *mv);
+void modelview_input(struct ModelView *mv, enum Direction dir);
+struct Cell *modelview_get_cell(
+    struct ModelView *mv, int x, int y, de_entity *en
+);
 
 void model_global_init();
 void model_global_shutdown();
