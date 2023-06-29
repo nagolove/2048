@@ -472,6 +472,7 @@ static bool try_move(
 }
 
 static bool move(struct ModelView *mv) {
+    printf("move:\n");
     clear_touched(mv);
     bool has_move = false;
 
@@ -559,6 +560,7 @@ static bool try_sum(
 }
 
 static bool sum(struct ModelView *mv) {
+    printf("sum:\n");
     bool has_sum = false;
     for (int x = 0; x < mv->field_size; ++x)
         for (int y = 0; y < mv->field_size; ++y) {
@@ -871,8 +873,7 @@ static void gui(struct ModelView *mv) {
     rlImGuiEnd();
 }
 
-/*
-static char *state2str(enum ModelViewState state) {
+char *modelview_state2str(enum ModelViewState state) {
     static char buf[32] = {0};
     switch (state) {
         case MVS_ANIMATION: strcpy(buf, "animation"); break;
@@ -882,7 +883,6 @@ static char *state2str(enum ModelViewState state) {
     }
     return buf;
 }
-*/
 
 static void destroy_dropped(struct ModelView *mv) {
     //ecs_circ_buf_push(&ecs_buf, mv->r);
@@ -923,7 +923,8 @@ bool modelview_draw(struct ModelView *mv) {
     assert(mv);
 
 #if !defined(PLATFORM_WEB)
-    gui(mv);
+    if (mv->use_gui) 
+        gui(mv);
 #endif
     bool dir_none = false;
 
@@ -948,7 +949,7 @@ bool modelview_draw(struct ModelView *mv) {
                 mv->dy = 0;
                 mv->dir = DIR_NONE;
                 dir_none = true;
-                //modelview_put(mv);
+                modelview_put(mv);
             }
         }
     }
@@ -989,6 +990,8 @@ void modelview_init(struct ModelView *mv, const struct Setup setup) {
     // XXX: Утечка из-за глобальной переменной?
     //ecs_circ_buf_init(&ecs_buf, 2048);
 
+    assert(setup.tmr_block_time > 0.);
+    assert(setup.tmr_put_time > 0.);
     mv->tmr_block_time = setup.tmr_block_time;
     mv->tmr_put_time = setup.tmr_put_time;
 

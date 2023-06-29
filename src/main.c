@@ -41,7 +41,7 @@ float maxf(float a, float b) {
     return a > b ? a : b;
 }
 
-void input() {
+static void input() {
     // Закончилась-ли анимация?
     if (main_view.state != MVS_READY)
         return;
@@ -79,7 +79,8 @@ void input() {
         }
     } 
 
-    modelview_put(&main_view);
+    //if (main_view.dir == DIR_NONE)
+        //modelview_put(&main_view);
     modelview_input(&main_view, dir);
     //modelview_save_state2file(&main_view);
 }
@@ -281,31 +282,6 @@ static void update() {
 }
 
 
-static void test_modelviews_one() {
-    struct ModelView mv = {};
-    modelview_init(&mv, (struct Setup) {
-        .pos = NULL,
-        .cam = &camera,
-        .field_size = 5,
-    });
-    setup_field(&mv, (int[5][5]){ 
-        {0, 0, 0, 0, 0}, 
-        {0, 2, 0, 0, 0}, 
-        {0, 2, 0, 0, 0}, 
-        {0, 0, 0, 0, 0}, 
-        {0, 0, 0, 0, 0}, 
-    });
-    modelview_input(&mv, DIR_DOWN);
-    while (!modelview_draw(&mv));
-    check_field(&mv, (int[5][5]) {
-        {0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0},
-        {0, 4, 0, 0, 0},
-    });
-    modelview_shutdown(&mv);
-}
 
 int main(void) {
     camera.zoom = 1.0f;
@@ -326,14 +302,18 @@ int main(void) {
     logger_register_functions();
     sc_init_script();
 
-    test_modelviews_one();
-    test_modelviews_multiple();
+    //test_modelviews_one();
+    //exit(EXIT_SUCCESS);
+    //test_modelviews_multiple();
 
     modelview_init(&main_view, (struct Setup) {
         .pos = NULL,
         .cam = &camera,
         .field_size = 5,
+        .tmr_block_time = 0.3,
+        .tmr_put_time = 0.3,
     });
+    main_view.use_gui = true;
     modelview_put(&main_view);
 
     hotkey_init(&hk);

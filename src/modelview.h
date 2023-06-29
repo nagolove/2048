@@ -56,7 +56,7 @@ struct ModelView {
     float               tmr_put_time, tmr_block_time;
     enum Direction      dir;
     bool                has_sum, has_move;
-
+    bool                use_gui;
     // Таймеры для анимации плиток
     struct TimerMan     *timers;
 
@@ -86,6 +86,7 @@ void modelview_input(struct ModelView *mv, enum Direction dir);
 struct Cell *modelview_get_cell(
     struct ModelView *mv, int x, int y, de_entity *en
 );
+char *modelview_state2str(enum ModelViewState state);
 
 void model_global_init();
 void model_global_shutdown();

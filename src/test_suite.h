@@ -8,5 +8,6 @@ struct TestInput {
 };
 
 void test_modelviews_multiple();
-void setup_field(struct ModelView *mv, int values[5][5]);
-void check_field(struct ModelView *mv, int values[5][5]);
+void setup_field(struct ModelView *mv, const int values[5][5]);
+void check_field(struct ModelView *mv, const int values[5][5]);
+void test_modelviews_one();
