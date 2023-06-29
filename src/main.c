@@ -25,7 +25,6 @@
 
 static struct ModelView    main_view;
 
-
 #if defined(PLATFORM_WEB)
 static const int screen_width = 1920;
 static const int screen_height = 1080;

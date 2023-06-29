@@ -26,6 +26,8 @@ static void test_modelview_arr(struct TestInput *inputs, int inputs_num) {
         .pos = NULL,
         .cam = NULL,
         .field_size = 5,
+        .tmr_block_time = 0.01,
+        .tmr_put_time = 0.01,
     });
     for (int i = 0; i < inputs_num; ++i) {
         setup_field(&mv, inputs[i].field_setup);
@@ -87,13 +89,33 @@ void test_modelviews_multiple() {
                 {0, 0, 0, 0, 0,},
             },
             .field_check = {
-                {0, 0, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
+                {1, 0, 0, 0, 0,},
+                {1, 0, 0, 0, 0,},
                 {0, 0, 0, 0, 0,},
                 {0, 0, 0, 0, 0,},
                 {0, 0, 0, 0, 0,},
             },
-            .dir = DIR_UP,
+            .dir = DIR_LEFT,
+        },
+    }, 1);
+
+    test_modelview_arr((struct TestInput[]){
+        {
+            .field_setup = {
+                {0, 2, 0, 0, 0,},
+                {0, 2, 0, 0, 0,},
+                {0, 0, 0, 0, 0,},
+                {0, 2, 0, 0, 0,},
+                {0, 2, 0, 0, 0,},
+            },
+            .field_check = {
+                {0, 0, 0, 0, 0,},
+                {0, 0, 0, 0, 0,},
+                {0, 0, 0, 0, 0,},
+                {0, 0, 0, 0, 0,},
+                {0, 8, 0, 0, 0,},
+            },
+            .dir = DIR_DOWN,
         },
     }, 1);
 }

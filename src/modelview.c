@@ -31,73 +31,8 @@ static struct Cell global_cells[GLOBAL_CELLS_CAP] = {0};
 static int global_cells_num = 0;
 static struct Cell cell_zero = {0};
 
-struct ecs_circ_buf {
-    de_ecs  **ecs;
-    int     num, cap;
-    int     i, j, cur;
-};
-
-static struct ecs_circ_buf  ecs_buf = {0};
-static struct de_ecs        *ecs_tmp = NULL;
+//static struct ecs_circ_buf  ecs_buf = {0};
 static struct ModelTest     model_checker = {0};
-
-static void ecs_circ_buf_init(struct ecs_circ_buf *b, int cap) {
-    assert(cap > 0);
-    assert(b);
-    b->cap = cap;
-    b->ecs = calloc(b->cap, sizeof(b->ecs[0]));
-    b->num = 0;
-    b->cur = 0;
-}
-
-static void ecs_circ_buf_shutdown(struct ecs_circ_buf *b) {
-    assert(b);
-    for (int j = 0; j < b->num; ++j) {
-        if (b->ecs[j]) {
-            de_ecs_destroy(b->ecs[j]);
-            b->ecs[j] = NULL;
-        }
-    }
-    if (b->ecs) {
-        free(b->ecs);
-        b->ecs = NULL;
-    }
-}
-
-static void ecs_circ_buf_push(struct ecs_circ_buf *b, de_ecs *r) {
-    if (b->ecs[b->i]) {
-        de_ecs_destroy(b->ecs[b->i]);
-    }
-    b->ecs[b->i] = de_ecs_clone(r);
-    b->i = (b->i + 1) % b->cap;
-    b->num++;
-    if (b->num >= b->cap)
-        b->num = b->cap;
-}
-
-static de_ecs *ecs_circ_buf_prev(struct ecs_circ_buf *b) {
-    assert(b);
-    de_ecs *ret = NULL;
-    if (b->cur > 0) {
-        if (b->ecs[b->cur - 1]) {
-            ret = b->ecs[b->cur - 1];
-            b->cur--;
-        }
-    }
-    return ret;
-}
-
-static de_ecs *ecs_circ_buf_next(struct ecs_circ_buf *b) {
-    assert(b);
-    de_ecs *ret = NULL;
-    if (b->cur < b->cap) {
-        if (b->ecs[b->cur + 1]) {
-            ret = b->ecs[b->cur + 1];
-            b->cur++;
-        }
-    }
-    return ret;
-}
 
 struct TimerData {
     struct ModelView    *mv;
@@ -855,35 +790,6 @@ static void movements_window() {
     igEnd();
 }
 
-static void ecs_window(struct ModelView *mv) {
-    bool open = true;
-    ImGuiWindowFlags flags = 0;
-    igBegin("ecs", &open, flags);
-
-    if (igButton("|<<", (ImVec2) {0})) {
-    }
-    igSameLine(0, 10);
-    if (igButton("<<", (ImVec2) {0})) {
-        mv->r = ecs_circ_buf_prev(&ecs_buf);
-    }
-    igSameLine(0, 10);
-    if (igButton("restore", (ImVec2) {0})) {
-        if (ecs_tmp)
-            mv->r = ecs_tmp;
-    }
-    igSameLine(0, 10);
-    if (igButton(">>", (ImVec2) {0})) {
-        mv->r = ecs_circ_buf_next(&ecs_buf);
-    }
-    igSameLine(0, 10);
-    if (igButton(">>|", (ImVec2) {0})) {
-    }
-    igText("captured %d systems", ecs_buf.num);
-    igText("cur %d system", ecs_buf.cur);
-
-    igEnd();
-}
-
 static void removed_entities_window() {
     bool open = true;
     ImGuiWindowFlags flags = 0;
@@ -959,7 +865,7 @@ static void gui(struct ModelView *mv) {
     entities_window(mv);
     timerman_window(mv->timers);
     options_window(mv);
-    ecs_window(mv);
+    //ecs_window(mv);
     bool open = false;
     igShowDemoWindow(&open);
     rlImGuiEnd();
@@ -979,7 +885,7 @@ static char *state2str(enum ModelViewState state) {
 */
 
 static void destroy_dropped(struct ModelView *mv) {
-    ecs_circ_buf_push(&ecs_buf, mv->r);
+    //ecs_circ_buf_push(&ecs_buf, mv->r);
     for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
                 cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
         assert(de_valid(mv->r, de_view_entity(&v)));
@@ -1079,7 +985,9 @@ void modelview_init(struct ModelView *mv, const struct Setup setup) {
     mv->dropped = false;
     mv->r = de_ecs_make();
     mv->camera = setup.cam;
-    ecs_circ_buf_init(&ecs_buf, 2048);
+
+    // XXX: Утечка из-за глобальной переменной?
+    //ecs_circ_buf_init(&ecs_buf, 2048);
 
     mv->tmr_block_time = setup.tmr_block_time;
     mv->tmr_put_time = setup.tmr_put_time;
@@ -1108,7 +1016,7 @@ void modelview_shutdown(struct ModelView *mv) {
         free(mv->sorted);
         mv->sorted = NULL;
     }
-    ecs_circ_buf_shutdown(&ecs_buf);
+    //ecs_circ_buf_shutdown(&ecs_buf);
     modeltest_shutdown(&model_checker);
     mv->dropped = true;
 }
