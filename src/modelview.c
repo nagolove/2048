@@ -112,16 +112,16 @@ enum AlphaMode {
 
 struct DrawOpts {
     int                 fontsize;
-    Vector2             offset_coef; // 1. is default value
+    Vector2             caption_offset_coef; // 1. is default value
     bool                custom_color;
     Color               color;
-    double              amount;
+    double              amount;             // 0 .. 1.
     bool                anim_size;
     enum    AlphaMode   anim_alpha;
 };
 
 static const struct DrawOpts dflt_draw_opts = {
-    .offset_coef = {
+    .caption_offset_coef = {
         1.,
         1.,
     },
@@ -287,20 +287,6 @@ static int get_cell_count(struct ModelView *mv) {
     return num;
 }
 
-static void fill_guards(struct Cell *cell) {
-    assert(cell);
-    int8_t v = rand() % 127;
-    memset(cell->guard1, v, sizeof(cell->guard1));
-    memset(cell->guard2, v, sizeof(cell->guard2));
-}
-
-static void check_guards(struct Cell *cell) {
-    assert(cell);
-    for (int i = 0; i < sizeof(cell->guard1); ++i) {
-        assert(cell->guard1[i] == cell->guard2[i]);
-    }
-}
-
 static struct Cell *create_cell(
     struct ModelView *mv, int x, int y, de_entity *_en
 ) {
@@ -317,12 +303,9 @@ static struct Cell *create_cell(
     de_entity en = de_create(mv->r);
     struct Cell *cell = de_emplace(mv->r, en, cmp_cell);
     assert(cell);
-    fill_guards(cell);
     cell->x = x;
     cell->y = y;
     cell->value = -1;
-    check_guards(cell);
-    //trace("create_cell: en %ld at (%d, %d)\n", en, cell->from_x, cell->from_y);
     if (_en)
         *_en = en;
     return cell;
@@ -366,7 +349,6 @@ static bool tmr_cell_draw_drop(struct Timer *t) {
     assert(cell);
 
     opts.amount = t->amount;
-    opts.color = MAGENTA;
     opts.anim_alpha = AM_BACKWARD;
     cell_draw(timer_data->mv, cell, opts);
     return false;
@@ -486,20 +468,73 @@ static void global_cell_push(struct Cell *cell) {
     global_cells[global_cells_num++] = *cell;
 }
 
-static bool move(struct ModelView *mv) {
-    /*int cells_num = de_typeof_num(mv->r, cmp_cell);*/
-
+static void clear_touched(struct ModelView *mv) {
     for (int x = 0; x < mv->field_size; ++x)
         for (int y = 0; y < mv->field_size; ++y) {
             de_entity cell_en = de_null;
             struct Cell *cell = get_cell(mv, x, y, &cell_en);
             if (cell)
                 cell->touched = false;
-    }
+        }
+}
 
+static bool try_move(
+    struct ModelView *mv, struct Cell *cell, de_entity cell_en, 
+    int x, int y, bool *touched
+) {
+    bool has_move = false;
+    
+    if (cell->touched)
+        return has_move;
+
+    if (cell->dropped)
+        return has_move;
+
+    struct Cell *neighbour = get_cell(
+        mv, x + mv->dx, y + mv->dy, NULL
+    );
+    if (neighbour) 
+        return has_move;
+
+    if (cell->x + mv->dx >= mv->field_size)
+        return has_move;
+    if (cell->x + mv->dx < 0)
+        return has_move;
+
+    if (cell->y + mv->dy >= mv->field_size)
+        return has_move;
+    if (cell->y + mv->dy < 0)
+        return has_move;
+
+    cell->anima = true;
+    has_move = true;
+
+    assert(cell_en != de_null);
+    struct TimerData td = {
+        .mv = mv,
+        .cell = cell_en,
+    };
+
+    cell->x += mv->dx;
+    cell->y += mv->dy;
+    cell->touched = true;
+    *touched = true;
+
+    timerman_add(mv->timers, (struct TimerDef) {
+        .duration = mv->tmr_block_time,
+        .sz = sizeof(struct TimerData),
+        .on_update = tmr_cell_draw,
+        .on_stop = tmr_cell_draw_stop,
+        .udata = &td,
+    });
+
+    return has_move;
+}
+
+static bool move(struct ModelView *mv) {
+    clear_touched(mv);
     bool has_move = false;
 
-    /*for (int i = 0; i <= cells_num; ++i) {*/
     bool touched = false;
     do {
         touched = false;
@@ -508,50 +543,10 @@ static bool move(struct ModelView *mv) {
                 de_entity cell_en = de_null;
                 struct Cell *cell = get_cell(mv, x, y, &cell_en);
                 if (!cell) continue;
-
-                if (cell->touched)
-                    continue;
-
-                if (cell->dropped)
-                    continue;
-
-                struct Cell *neighbour = get_cell(
-                    mv, x + mv->dx, y + mv->dy, NULL
+                has_move = has_move || try_move(
+                    mv, cell, cell_en, x, y, &touched
                 );
-                if (neighbour) continue;
-
-                if (cell->x + mv->dx >= mv->field_size)
-                    continue;
-                if (cell->x + mv->dx < 0)
-                    continue;
-
-                if (cell->y + mv->dy >= mv->field_size)
-                    continue;
-                if (cell->y + mv->dy < 0)
-                    continue;
-
-                cell->anima = true;
-                has_move = true;
-
-                assert(cell_en != de_null);
-                struct TimerData td = {
-                    .mv = mv,
-                    .cell = cell_en,
-                };
-
-                cell->x += mv->dx;
-                cell->y += mv->dy;
-                cell->touched = true;
-                touched = true;
-
-                timerman_add(mv->timers, (struct TimerDef) {
-                    .duration = mv->tmr_block_time,
-                    .sz = sizeof(struct TimerData),
-                    .on_update = tmr_cell_draw,
-                    .on_stop = tmr_cell_draw_stop,
-                    .udata = &td,
-                });
-            }
+        }
     } while (touched);
 
     return has_move;
@@ -747,8 +742,8 @@ static void cell_draw(
     Vector2 pos = mv->pos;
 
     Vector2 offset = {
-        opts.offset_coef.x * (quad_width - textw) / 2.,
-        opts.offset_coef.x * (quad_width - fontsize) / 2.,
+        opts.caption_offset_coef.x * (quad_width - textw) / 2.,
+        opts.caption_offset_coef.y * (quad_width - fontsize) / 2.,
     };
 
     Vector2 disp = Vector2Add(Vector2Scale(base_pos, quad_width), offset);
@@ -990,7 +985,7 @@ static void destroy_dropped(struct ModelView *mv) {
         struct Cell *c = de_view_get_safe(&v, cmp_cell);
         assert(c);
         if (c->dropped) {
-            check_guards(c);
+            /*check_guards(c);*/
             trace(
                 "destroy_dropped: cell val %d, (%d, %d)\n",
                 c->value, c->x, c->x
@@ -1043,7 +1038,6 @@ static void model_draw(struct ModelView *mv) {
 
     draw_field(mv);
 
-//_anim:
     timerman_update(mv->timers);
     int infinite_num = 0;
     int timersnum = timerman_num(mv->timers, &infinite_num);
@@ -1055,11 +1049,8 @@ static void model_draw(struct ModelView *mv) {
         anima_clear(mv);
         if (mv->dx || mv->dy) {
 
-            mv->has_sum = sum(mv);
-            //if (mv->has_sum) goto _anim;
             mv->has_move = move(mv);
-            //if (mv->has_move) goto _anim;
-
+            mv->has_sum = sum(mv);
 
             if (!mv->has_move && !mv->has_sum) {
                 mv->dx = 0;

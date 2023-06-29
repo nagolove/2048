@@ -52,6 +52,7 @@ bool timerman_add(struct TimerMan *tm, struct TimerDef td) {
     static size_t id = 0;
     tmr->id = id++;
     tmr->start_time = GetTime();
+    assert(td.duration > 0);
     tmr->duration = td.duration;;
 
     if (td.sz) {
@@ -66,30 +67,6 @@ bool timerman_add(struct TimerMan *tm, struct TimerDef td) {
     tmr->on_stop = td.on_stop;
     return true;
 }
-
-/*
-int timerman_remove_expired(struct TimerMan *tm) {
-    assert(tm);
-    // Хранилище для неистекщих таймеров
-    struct Timer tmp[tm->timers_cap];
-
-    memset(tmp, 0, sizeof(tmp));
-    int tmp_size = 0;
-    for (int i = 0; i < tm->timers_size; i++) {
-        if (tm->timers[i].expired) {
-            if (tm->timers[i].data) {
-                free(tm->timers[i].data);
-                tm->timers[i].data = NULL;
-            }
-        } else {
-            tmp[tmp_size++] = tm->timers[i];
-        }
-    }
-    memmove(tm->timers, tmp, sizeof(tmp[0]) * tmp_size);
-    tm->timers_size = tmp_size;
-    return tm->timers_size;
-}
-*/
 
 static void timer_shutdown(struct Timer *timer) {
     if (timer->on_stop) 
@@ -116,7 +93,6 @@ int timerman_update(struct TimerMan *tm) {
         // Сделать установку паузы и снятие с нее
 
         if (now - timer->start_time > timer->duration) {
-            //timer->expired = true;
             timer_shutdown(timer);
         } else {
             if (timer->on_update) {

@@ -24,14 +24,12 @@ enum CellAction {
 };
 
 struct Cell {
-    int8_t          guard1[5];
-    bool            dropped;    // подлежит удалению 
+    bool            dropped;    // ячейка подлежит удалению 
     int             value;
-    bool            anim_size;  // анимировать размер шрифта
+    //bool            anim_size;  // анимировать размер шрифта
     int             x, y;
-    bool            anima;      // флаг нахождения в таймере
-    bool            touched;
-    int8_t          guard2[5];
+    //bool            anima;      // флаг нахождения в таймере
+    bool            touched;    // что делает флаг?
 };
 
 enum ModelViewState {
