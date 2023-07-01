@@ -77,6 +77,18 @@ static Color colors[] = {
     GRAY,
 };
 
+const char *dir2str(enum Direction dir) {
+    static char buf[32] = {0};
+    switch (dir) {
+        case DIR_LEFT: sprintf(buf, "%s", "LEFT"); break;
+        case DIR_RIGHT: sprintf(buf, "%s", "RIGHT"); break;
+        case DIR_DOWN: sprintf(buf, "%s", "DOWN"); break;
+        case DIR_UP: sprintf(buf, "%s", "UP"); break;
+        case DIR_NONE: sprintf(buf, "%s", "NONE"); break;
+    }
+    return buf;
+};
+
 /*
 void modelview_save_state2file(struct ModelView *mv) {
     static struct Cell prev_state[FIELD_SIZE * FIELD_SIZE] = {0};
@@ -404,6 +416,7 @@ static void global_cell_push(struct Cell *cell) {
     global_cells[global_cells_num++] = *cell;
 }
 
+/*
 static void clear_touched(struct ModelView *mv) {
     for (int x = 0; x < mv->field_size; ++x)
         for (int y = 0; y < mv->field_size; ++y) {
@@ -413,6 +426,9 @@ static void clear_touched(struct ModelView *mv) {
                 cell->touched = false;
         }
 }
+*/
+
+static int move_call_counter = 0;
 
 static bool try_move(
     struct ModelView *mv, struct Cell *cell, de_entity cell_en, 
@@ -448,24 +464,23 @@ static bool try_move(
     has_move = true;
 
     assert(cell_en != de_null);
-    struct TimerData td = {
-        .mv = mv,
-        .cell = cell_en,
-    };
 
     cell->x += mv->dx;
     cell->y += mv->dy;
-    cell->touched = true;
     cell->anim_movement = true;
 
-    *touched = touched && true;
+    *touched = true;
+    trace("try_move: move_call_counter %d\n", move_call_counter);
 
     timerman_add(mv->timers, (struct TimerDef) {
         .duration = mv->tmr_block_time,
         .sz = sizeof(struct TimerData),
         .on_update = tmr_cell_draw_move,
         .on_stop = tmr_cell_draw_stop,
-        .udata = &td,
+        .udata = &(struct TimerData) {
+            .mv = mv,
+            .cell = cell_en,
+        },
     });
 
     return has_move;
@@ -473,14 +488,14 @@ static bool try_move(
 
 static bool move(struct ModelView *mv) {
     printf("move:\n");
-    clear_touched(mv);
+    /*clear_touched(mv);*/
     bool has_move = false;
 
     bool touched = false;
-    do {
+    //do {
         touched = false;
-        for (int x = 0; x < mv->field_size; ++x)
-            for (int y = 0; y < mv->field_size; ++y) {
+        for (int y = 0; y < mv->field_size; ++y) 
+            for (int x = 0; x < mv->field_size; ++x) {
                 de_entity cell_en = de_null;
                 struct Cell *cell = modelview_get_cell(mv, x, y, &cell_en);
                 if (!cell) continue;
@@ -488,7 +503,12 @@ static bool move(struct ModelView *mv) {
                     mv, cell, cell_en, x, y, &touched
                 ) || has_move;
         }
-    } while (touched);
+    //} while (touched);
+    trace(
+        "move: timerman_num %d, move_call_counter %d\n",
+        timerman_num(mv->timers, NULL),
+        move_call_counter++
+    );
 
     return has_move;
 }
@@ -566,8 +586,7 @@ static bool sum(struct ModelView *mv) {
             de_entity cell_en = de_null;
             struct Cell *cell = modelview_get_cell(mv, x, y, &cell_en);
             if (!cell) continue;
-            // XXX: применение ||
-            has_sum = has_sum || try_sum(mv, cell, cell_en, x, y);
+            has_sum = try_sum(mv, cell, cell_en, x, y) || has_sum;
         }
     return has_sum;
 }
@@ -580,8 +599,12 @@ void modelview_input(struct ModelView *mv, enum Direction dir) {
         case DIR_DOWN: mv->dy = 1; break;
         case DIR_LEFT: mv->dx = -1; break;
         case DIR_RIGHT: mv->dx = 1; break;
-        default: break;
+        default: 
+            //mv->dx = 0;
+            //mv->dy = 0;
+            break;
     }
+    //trace("modelview_input: dir %s\n", dir2str(dir));
 }
 
 static int cmp(const void *pa, const void *pb) {
@@ -653,8 +676,8 @@ static void cell_draw(
     int textw = 0;
 
     assert(opts.amount >= 0 && opts.amount <= 1.);
-    Vector2 base_pos;
 
+    Vector2 base_pos;
     if (cell->anim_movement) {
         base_pos = (Vector2) {
             //Lerp(cell->x, cell->x + mv->dx, opts.amount),
@@ -708,23 +731,13 @@ static void draw_numbers(struct ModelView *mv) {
     for (int y = 0; y < mv->field_size; y++) {
         for (int x = 0; x < mv->field_size; x++) {
             struct Cell *cell = modelview_get_cell(mv, x, y, NULL);
-            if (cell && !cell->anim_movement)
-                cell_draw(mv, cell, dflt_draw_opts);
+            bool can_draw = cell && !cell->anim_movement && 
+                            !cell->anim_size && cell->anim_alpha == AM_NONE;
+            if (can_draw)
+                    cell_draw(mv, cell, dflt_draw_opts);
         }
     }
 }
-
-const char *dir2str(enum Direction dir) {
-    static char buf[32] = {0};
-    switch (dir) {
-        case DIR_LEFT: sprintf(buf, "%s", "LEFT"); break;
-        case DIR_RIGHT: sprintf(buf, "%s", "RIGHT"); break;
-        case DIR_DOWN: sprintf(buf, "%s", "DOWN"); break;
-        case DIR_UP: sprintf(buf, "%s", "UP"); break;
-        case DIR_NONE: sprintf(buf, "%s", "NONE"); break;
-    }
-    return buf;
-};
 
 static void movements_window() {
     bool open = true;
@@ -891,7 +904,6 @@ static void destroy_dropped(struct ModelView *mv) {
         struct Cell *c = de_view_get_safe(&v, cmp_cell);
         assert(c);
         if (c->dropped) {
-            /*check_guards(c);*/
             trace(
                 "destroy_dropped: cell val %d, (%d, %d)\n",
                 c->value, c->x, c->x
@@ -903,21 +915,6 @@ static void destroy_dropped(struct ModelView *mv) {
     }
 }
 
-/*
-static void check_model(struct ModelView *mv, struct ModelTest *mb) {
-    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
-                cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
-        if (de_valid(mv->r, de_view_entity(&v))) {
-            struct Cell *c = de_view_get_safe(&v, cmp_cell);
-            assert(c);
-            if (mb->field[c->x][c->y].value != c->value) {
-                abort();
-            }
-        }
-    }
-}
-*/
-
 bool modelview_draw(struct ModelView *mv) {
     assert(mv);
 
@@ -928,22 +925,32 @@ bool modelview_draw(struct ModelView *mv) {
     bool dir_none = false;
 
     modeltest_update(&model_checker, mv->dir);
-    /*check_model(mv, &model_checker);*/
-
-    draw_field(mv);
 
     int timersnum = timerman_update(mv->timers);
     mv->state = timersnum ? MVS_ANIMATION : MVS_READY;
 
+    static enum ModelViewState prev_state = 0;
+    if (mv->state != prev_state) {
+        trace("modelview_draw: state %s\n", modelview_state2str(mv->state));
+        prev_state = mv->state;
+        trace("modelview_draw: dir %s\n", dir2str(mv->dir));
+    }
+
     if (mv->state == MVS_READY) {
-        // TODO: удаляет неправильно
+        // TODO: удаляет неправильно?
         destroy_dropped(mv);
         if (mv->dx || mv->dy) {
 
             mv->has_move = move(mv);
             mv->has_sum = sum(mv);
+            trace(
+                "modelview_draw: has_move %s, has_sum %s\n",
+                mv->has_move ? "t" : "f",
+                mv->has_sum ? "t" : "f"
+            );
 
             if (!mv->has_move && !mv->has_sum) {
+                printf("modelview_draw: clear input flags\n");
                 mv->dx = 0;
                 mv->dy = 0;
                 mv->dir = DIR_NONE;
@@ -953,9 +960,6 @@ bool modelview_draw(struct ModelView *mv) {
         }
     }
 
-    sort_numbers(mv);
-    draw_numbers(mv);
-
     if (is_over(mv)) {
         mv->state = MVS_GAMEOVER;
     }
@@ -963,6 +967,10 @@ bool modelview_draw(struct ModelView *mv) {
     if (find_max(mv) == WIN_VALUE) {
         mv->state = MVS_WIN;
     }
+
+    sort_numbers(mv);
+    draw_numbers(mv);
+    draw_field(mv);
 
     return dir_none;
 }
@@ -1025,6 +1033,12 @@ void modelview_shutdown(struct ModelView *mv) {
 
 void modelview_put_cell(struct ModelView *mv, struct Cell cell) {
     assert(mv);
+
+    assert(cell.x >= 0);
+    assert(cell.y >= 0);
+    assert(cell.x < mv->field_size);
+    assert(cell.y < mv->field_size);
+
     struct Cell *new_cell = modelview_get_cell(mv, cell.x, cell.y, NULL);
     if (!new_cell) {
         new_cell = create_cell(mv, cell.x, cell.y, NULL);
