@@ -35,10 +35,28 @@ static const int screen_height = 1080 * 2;
 
 static Camera2D camera = { 0 };
 static HotkeyStorage hk = {0};
-static Vector2 handle1 = {0}, handle2 = {0};
 
 float maxf(float a, float b) {
     return a > b ? a : b;
+}
+
+void mouse_swipe_cell(enum Direction *dir) {
+    assert(dir);
+    static Vector2 handle1 = {0}, handle2 = {0};
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        handle1 = GetMousePosition();
+    }
+    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        handle2 = GetMousePosition();
+        Vector2 diff = Vector2Subtract(handle1, handle2);
+        if (fabs(diff.x) > fabs(diff.y)) {
+            if (diff.x < 0) *dir = DIR_RIGHT;
+            else if (diff.x > 0) *dir = DIR_LEFT;
+        } else { 
+            if (diff.y > 0) *dir = DIR_UP;
+            else if (diff.y < 0) *dir = DIR_DOWN;
+        }
+    }
 }
 
 static void input() {
@@ -47,20 +65,7 @@ static void input() {
         return;
 
     enum Direction dir = {0};
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        handle1 = GetMousePosition();
-    }
-    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
-        handle2 = GetMousePosition();
-        Vector2 diff = Vector2Subtract(handle1, handle2);
-        if (fabs(diff.x) > fabs(diff.y)) {
-            if (diff.x < 0) dir = DIR_RIGHT;
-            else if (diff.x > 0) dir = DIR_LEFT;
-        } else { 
-            if (diff.y > 0) dir = DIR_UP;
-            else if (diff.y < 0) dir = DIR_DOWN;
-        }
-    }
+    mouse_swipe_cell(&dir);
 
     struct {
         enum Direction  dir;
@@ -79,8 +84,11 @@ static void input() {
         }
     } 
 
+    // TODO: куда лучше переместить проверку так, что-бы была возможность
+    // запускать автоматические тесты, без создания новой плитки каждый ход
     //if (main_view.dir == DIR_NONE)
         //modelview_put(&main_view);
+
     modelview_input(&main_view, dir);
     //modelview_save_state2file(&main_view);
 }
@@ -183,23 +191,6 @@ void camera_process() {
 
 bool is_paused = false;
 
-static void parse_data(struct ModelView *mv, const char *data, bool hard) {
-    char buf[1024] = {0};
-    strcat(buf, data);
-    char *tok = strtok(buf, "\n");
-    while (tok) {
-        struct Cell cell = {0};
-        printf("parse_data: tok %s\n", tok);
-        //sscanf(tok, "%*s%d%*s%d%*s%d%*s%d%*s%d", 
-        sscanf(tok, "%d%*s%d%*s%d", &cell.x, &cell.y, &cell.value);
-        if (hard)
-            modelview_put_cell(mv, cell);
-        else
-            modelview_put_manual(mv, cell.x, cell.y, cell.value);
-        tok = strtok(NULL, "\n");
-    }
-}
-
 static void update() {
     camera_process();
 
@@ -210,46 +201,17 @@ static void update() {
     //timerman_pause(main_view.timers, is_paused);
 
     if (IsKeyPressed(KEY_R)) {
-        /*modelbox_shutdown(&main_model);*/
         modelview_shutdown(&main_view);
-        /*modelbox_init(&main_model);*/
         modelview_init(&main_view, (struct Setup) {
             .cam = &camera,
             .field_size = 5,
             .pos = NULL,
+            .tmr_block_time = 0.3,
+            .tmr_put_time = 0.3,
         });
+        main_view.use_gui = true;
         modelview_put(&main_view);
-
-        /*main_view.start(&main_view, &main_view);*/
     }
-
-
-    if (IsKeyPressed(KEY_L)) {
-        const char *data = 
-"0, 3 val 2 anim_size false anima true dropped false \n"
-"3, 4 val 8 anim_size false anima false dropped false \n"
-"0, 4 val 32 anim_size false anima false dropped false \n"
-"4, 3 val 2 anim_size false anima false dropped false \n"
-"2, 4 val 32 anim_size false anima false dropped false \n"
-"4, 4 val 4 anim_size false anima false dropped false \n"
-"1, 4 val 64 anim_size false anima false dropped false \n";
-
-        modelview_shutdown(&main_view);
-        modelview_init(&main_view, (struct Setup) {
-            .pos = NULL,
-            .cam = &camera,
-            .field_size = 5,
-        });
-        bool hard = IsKeyDown(KEY_H);
-        parse_data(&main_view, data, hard);
-    }
-
-    /*
-    if (IsKeyPressed(KEY_SPACE)) {
-        modelbox_init(&main_model);
-        automode = false;
-    }
-    */
 
     hotkey_process(&hk);
     console_check_editor_mode();
@@ -303,7 +265,6 @@ int main(void) {
     sc_init_script();
 
     //test_modelviews_one();
-    //exit(EXIT_SUCCESS);
     //test_modelviews_multiple();
 
     modelview_init(&main_view, (struct Setup) {
