@@ -31,9 +31,10 @@ enum AlphaMode {
 
 struct Cell {
     enum AlphaMode  anim_alpha;
-    bool            dropped;    // ячейка подлежит удалению 
+    bool            dropped;        // ячейка подлежит удалению 
     int             x, y, value;
-    bool            touched, anim_movement, anim_size;
+    bool            anim_movement,  // ячейка в движении
+                    anim_size;      // ячейка меняет размер
 };
 
 enum ModelViewState {
