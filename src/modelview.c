@@ -484,10 +484,9 @@ static bool move(struct ModelView *mv) {
                 de_entity cell_en = de_null;
                 struct Cell *cell = modelview_get_cell(mv, x, y, &cell_en);
                 if (!cell) continue;
-                //has_move = has_move || try_move(
                 has_move = try_move(
                     mv, cell, cell_en, x, y, &touched
-                );
+                ) || has_move;
         }
     } while (touched);
 
