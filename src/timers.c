@@ -1,4 +1,5 @@
 #include "timers.h"
+#include <unistd.h>
 
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 
@@ -13,6 +14,7 @@ struct TimerMan {
     struct Timer        *timers;
     int                 timers_cap, timers_size;
     bool                paused;
+    double              pause_time; // время начала паузы
 };
 
 struct TimerMan *timerman_new(int cap) {
@@ -51,7 +53,7 @@ bool timerman_add(struct TimerMan *tm, struct TimerDef td) {
     struct Timer *tmr = &tm->timers[tm->timers_size++];
     static size_t id = 0;
     tmr->id = id++;
-    tmr->start_time = GetTime();
+    tmr->start_time = tmr->last_now = GetTime();
     assert(td.duration > 0);
     tmr->duration = td.duration;;
 
@@ -78,6 +80,8 @@ static void timer_shutdown(struct Timer *timer) {
 }
 
 int timerman_update(struct TimerMan *tm) {
+    assert(tm);
+
     struct Timer tmp[tm->timers_cap];
 
     memset(tmp, 0, sizeof(tmp));
@@ -87,8 +91,16 @@ int timerman_update(struct TimerMan *tm) {
         struct Timer *timer = &tm->timers[i];
         if (timer->duration < 0) continue;
 
-        double now = GetTime();
-        timer->amount = (now - timer->start_time) / timer->duration;
+        double now;
+        // TODO: снятие и установка паузы
+        if (tm->paused) {
+            now = timer->last_now;
+            timer->amount = (now - timer->start_time) / timer->duration;
+        } else {
+            now = GetTime();
+            timer->amount = (now - timer->start_time) / timer->duration;
+            timer->last_now = now;
+        }
 
         // Сделать установку паузы и снятие с нее
 
@@ -112,6 +124,16 @@ int timerman_update(struct TimerMan *tm) {
 }
 
 void timerman_pause(struct TimerMan *tm, bool is_paused) {
+    if (tm->paused && !is_paused) {
+        // enable -> disable
+        tm->pause_time = GetTime();
+    } else if (!tm->paused && is_paused) {
+        // disable -> enable
+        double shift = GetTime() - tm->pause_time;
+        for (int i = 0; i < tm->timers_size; ++i) {
+            tm->timers[i].start_time += shift;
+        }
+    }
     tm->paused = is_paused;
 }
 

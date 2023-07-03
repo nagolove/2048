@@ -10,6 +10,7 @@ struct Timer {
     double          start_time; // GetTime()
     double          duration;   // in seconds
     double          amount;     // 0..1
+    double          last_now;
     size_t          id;         // уникальный номер
     size_t          sz;         // если == 0, то для data не выделяется память
     void            *data;      // 
