@@ -2,10 +2,21 @@
 #include "modelview.h"
 #include "raylib.h"
 
+#include <math.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+
+static struct Setup modelview_test_setup = {
+    .pos = NULL,
+    .cam = NULL,
+    .field_size = 5,
+    .tmr_block_time = 0.01,
+    .tmr_put_time = 0.01,
+    .use_gui = false,
+    .auto_put = false,
+};
 
 void setup_field(struct ModelView *mv, const int values[5][5]) {
     assert(mv);
@@ -66,6 +77,7 @@ void check_field(struct ModelView *mv, const int values[5][5]) {
                         cell->value, y, x, values[y][x]
                     );
                     print_field(mv);
+                    print_field5(values);
                     abort();
                 }
             }
@@ -75,14 +87,7 @@ void check_field(struct ModelView *mv, const int values[5][5]) {
 static void test_modelview_arr(struct TestInput *inputs, int inputs_num) {
     printf("test_modelview_arr:\n");
     struct ModelView mv = {};
-    modelview_init(&mv, (struct Setup) {
-        .pos = NULL,
-        .cam = NULL,
-        .field_size = 5,
-        .tmr_block_time = 0.01,
-        .tmr_put_time = 0.01,
-    });
-    mv.use_gui = false;
+    modelview_init(&mv, modelview_test_setup);
     for (int i = 0; i < inputs_num; ++i) {
         print_field5(inputs[i].field_setup);
         setup_field(&mv, inputs[i].field_setup);
@@ -182,13 +187,7 @@ void test_modelviews_multiple() {
 
 void test_modelviews_one() {
     struct ModelView mv = {};
-    modelview_init(&mv, (struct Setup) {
-        .pos = NULL,
-        .cam = NULL,
-        .field_size = 5,
-        .tmr_block_time = 0.01,
-        .tmr_put_time = 0.01,
-    });
+    modelview_init(&mv, modelview_test_setup);
     mv.use_gui = false;
     printf("test_modelviews_one:\n");
     const int field_1[5][5] = { 
@@ -207,8 +206,9 @@ void test_modelviews_one() {
         "test_modelviews_one: mv->state %s\n",
         modelview_state2str(mv.state)
     );
-    while (mv.dir != DIR_NONE) {
-        printf("test_modelviews_one: i %d\n", i++);
+    /*while (mv.dir != DIR_NONE) {*/
+    for (i = 0; i < 1000; ++i) {
+        /*printf("test_modelviews_one: i %d\n", i++);*/
         modelview_draw(&mv);
         usleep(1000000 / 100); // 100Hz
     }
