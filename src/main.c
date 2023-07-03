@@ -271,7 +271,7 @@ int main(void) {
     logger_register_functions();
     sc_init_script();
 
-    //test_modelviews_one();
+    /*test_modelviews_one();*/
     //test_modelviews_multiple();
 
     modelview_init(&main_view, main_view_setup);
