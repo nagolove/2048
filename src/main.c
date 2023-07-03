@@ -36,6 +36,16 @@ static const int screen_height = 1080 * 2;
 static Camera2D camera = { 0 };
 static HotkeyStorage hk = {0};
 
+static struct Setup main_view_setup = {
+    .pos = NULL,
+    .cam = &camera,
+    .field_size = 5,
+    .tmr_block_time = 0.3,
+    .tmr_put_time = 0.3,
+    .use_gui = true,
+    .auto_put = true,
+};
+
 float maxf(float a, float b) {
     return a > b ? a : b;
 }
@@ -202,14 +212,7 @@ static void update() {
 
     if (IsKeyPressed(KEY_R)) {
         modelview_shutdown(&main_view);
-        modelview_init(&main_view, (struct Setup) {
-            .cam = &camera,
-            .field_size = 5,
-            .pos = NULL,
-            .tmr_block_time = 0.3,
-            .tmr_put_time = 0.3,
-        });
-        main_view.use_gui = true;
+        modelview_init(&main_view, main_view_setup);
         modelview_put(&main_view);
     }
 
@@ -267,14 +270,7 @@ int main(void) {
     //test_modelviews_one();
     //test_modelviews_multiple();
 
-    modelview_init(&main_view, (struct Setup) {
-        .pos = NULL,
-        .cam = &camera,
-        .field_size = 5,
-        .tmr_block_time = 0.3,
-        .tmr_put_time = 0.3,
-    });
-    main_view.use_gui = true;
+    modelview_init(&main_view, main_view_setup);
     modelview_put(&main_view);
 
     hotkey_init(&hk);
