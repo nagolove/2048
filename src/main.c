@@ -69,14 +69,7 @@ void mouse_swipe_cell(enum Direction *dir) {
     }
 }
 
-static void input() {
-    // Закончилась-ли анимация?
-    if (main_view.state != MVS_READY)
-        return;
-
-    enum Direction dir = {0};
-    mouse_swipe_cell(&dir);
-
+static void keyboard_swipe_cell(enum Direction *dir) {
     struct {
         enum Direction  dir;
         int             key;
@@ -89,10 +82,21 @@ static void input() {
 
     for (int j = 0; j < sizeof(keys_dirs) / sizeof(keys_dirs[0]); ++j) {
         if (IsKeyPressed(keys_dirs[j].key)) {
-            dir = keys_dirs[j].dir;
+            *dir = keys_dirs[j].dir;
             break;
         }
     } 
+}
+
+static void input() {
+    // Закончилась-ли анимация?
+    if (main_view.state != MVS_READY)
+        return;
+
+    enum Direction dir = {0};
+
+    mouse_swipe_cell(&dir);
+    keyboard_swipe_cell(&dir);
 
     // TODO: куда лучше переместить проверку так, что-бы была возможность
     // запускать автоматические тесты, без создания новой плитки каждый ход
