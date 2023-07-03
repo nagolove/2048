@@ -39,7 +39,7 @@ static HotkeyStorage hk = {0};
 static struct Setup main_view_setup = {
     .pos = NULL,
     .cam = &camera,
-    .field_size = 5,
+    .field_size = 6,
     .tmr_block_time = 0.3,
     .tmr_put_time = 0.3,
     .use_gui = true,
@@ -95,7 +95,7 @@ static void input() {
 
     enum Direction dir = {0};
 
-    mouse_swipe_cell(&dir);
+    //mouse_swipe_cell(&dir);
     keyboard_swipe_cell(&dir);
 
     // TODO: куда лучше переместить проверку так, что-бы была возможность
@@ -212,7 +212,7 @@ static void update() {
         is_paused = !is_paused;
     }
 
-    //timerman_pause(main_view.timers, is_paused);
+    timerman_pause(main_view.timers, is_paused);
 
     if (IsKeyPressed(KEY_R)) {
         modelview_shutdown(&main_view);
