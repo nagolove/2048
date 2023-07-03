@@ -478,7 +478,7 @@ static bool do_action(struct ModelView *mv, Action action) {
 
     printf("do_action:\n");
 
-    /*clear_touched(mv);*/
+    //clear_touched(mv);
     bool has_action = false;
     bool touched = false;
 
@@ -587,7 +587,6 @@ static void cell_draw(
 
     char msg[64] = {0};
     sprintf(msg, "%d", cell->value);
-    int textw = 0;
 
     assert(opts.amount >= 0 && opts.amount <= 1.);
 
@@ -605,6 +604,12 @@ static void cell_draw(
         };
     }
 
+    Vector2 textsize = {};
+    do {
+        Font f = GetFontDefault();
+        textsize = MeasureTextEx(f, msg, fontsize--, spacing);
+    } while (textsize.x > mv->quad_width || textsize.y > mv->quad_width);
+
     if (cell->anim_size) {
         const float font_scale = 6.;
         if (opts.amount <= 0.5)
@@ -613,13 +618,8 @@ static void cell_draw(
             fontsize = Lerp(fontsize * font_scale, fontsize, opts.amount);
     }
 
-    do {
-        Font f = GetFontDefault();
-        textw = MeasureTextEx(f, msg, fontsize--, spacing).x;
-    } while (textw > mv->quad_width);
-
     Vector2 offset = {
-        opts.caption_offset_coef.x * (mv->quad_width - textw) / 2.,
+        opts.caption_offset_coef.x * (mv->quad_width - textsize.x) / 2.,
         opts.caption_offset_coef.y * (mv->quad_width - fontsize) / 2.,
     };
 
@@ -718,6 +718,23 @@ static void movements_window() {
     igEnd();
 }
 
+static void print_cell_node(struct Cell *c, int *idx, de_entity en) {
+    assert(c);
+    assert(idx);
+    if (igTreeNode_Ptr((void*)(uintptr_t)*idx, "en %d", *idx)) {
+        igText("en      %ld", en);
+        igText("pos     %d, %d", c->x, c->y);
+        //igText("to      %d, %d", c->to_x, c->to_y);
+        //igText("act     %s", action2str(c->action));
+        igText("val     %d", c->value);
+        igText("dropped %s", c->dropped ? "t" : "f");
+        igText("anim_movement   %s", c->anim_movement ? "t" : "f");
+        igText("anim_size %s", c->anim_size ? "t" : "f");
+        igText("anim_alpha %d", c->anim_alpha);
+        igTreePop();
+    }
+}
+
 static void removed_entities_window() {
     bool open = true;
     ImGuiWindowFlags flags = 0;
@@ -726,22 +743,11 @@ static void removed_entities_window() {
     for (int i = 0; i < global_cells_num; i++) {
             struct Cell *c = &global_cells[i];
             igSetNextItemOpen(false, ImGuiCond_Once);
-            if (igTreeNode_Ptr((void*)(uintptr_t)i, "i %d", i)) {
-                //igText("en      %ld", de_view_entity(&v));
-                igText("p       %d, %d", c->x, c->y);
-                //igText("to      %d, %d", c->to_x, c->to_y);
-                //igText("act     %s", action2str(c->action));
-                igText("val     %d", c->value);
-                //igText("anima   %s", c->anima ? "true" : "false");
-                //igText("anim_sz %s", c->anim_size ? "true" : "false");
-                igText("dropped %s", c->dropped ? "true" : "false");
-                igTreePop();
-        }
+            print_cell_node(c, &i, de_null);
     }
 
     igEnd();
 }
-
 
 static void entities_window(struct ModelView *mv) {
     bool open = true;
@@ -757,18 +763,7 @@ static void entities_window(struct ModelView *mv) {
             struct Cell *c = de_view_get_safe(&v, cmp_cell);
             if (c) {
                 igSetNextItemOpen(true, ImGuiCond_Once);
-                if (igTreeNode_Ptr((void*)(uintptr_t)idx, "en %d", idx)) {
-                    igText("en      %ld", de_view_entity(&v));
-                    igText("pos     %d, %d", c->x, c->y);
-                    //igText("to      %d, %d", c->to_x, c->to_y);
-                    //igText("act     %s", action2str(c->action));
-                    igText("val     %d", c->value);
-                    igText("dropped %s", c->dropped ? "t" : "f");
-                    igText("anim_movement   %s", c->anim_movement ? "t" : "f");
-                    igText("anim_size %s", c->anim_size ? "t" : "f");
-                    igText("anim_alpha %d", c->anim_alpha);
-                    igTreePop();
-                }
+                print_cell_node(c, &idx, de_view_entity(&v));
                 idx++;
             } else {
                 printf("bad entity: without cmp_cell component\n");
@@ -861,7 +856,7 @@ bool modelview_draw(struct ModelView *mv) {
 
             mv->has_move = do_action(mv, move);
             mv->has_sum = do_action(mv, sum);
-            mv->has_move = do_action(mv, move);
+            //mv->has_move = do_action(mv, move);
             
             trace(
                 "modelview_draw: has_move %s, has_sum %s\n",
@@ -870,14 +865,15 @@ bool modelview_draw(struct ModelView *mv) {
             );
 
             printf("modelview_draw: clear input flags\n");
-            if (!mv->has_sum && !mv->has_move) {
-                mv->dx = 0;
-                mv->dy = 0;
-                mv->dir = DIR_NONE;
-                dir_none = true;
-                if (mv->auto_put)
-                    modelview_put(mv);
-            }
+        }
+
+        if (!mv->has_sum && !mv->has_move && (mv->dx || mv->dy)) {
+            mv->dx = 0;
+            mv->dy = 0;
+            mv->dir = DIR_NONE;
+            dir_none = true;
+            if (mv->auto_put)
+                modelview_put(mv);
         }
     }
 
@@ -936,6 +932,8 @@ void modelview_init(struct ModelView *mv, const struct Setup setup) {
     FILE *file = fopen("state.txt", "w");
     if (file)
         fclose(file);
+
+    global_cells_num = 0;
 }
 
 void modelview_shutdown(struct ModelView *mv) {
