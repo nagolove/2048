@@ -54,10 +54,15 @@ struct ModelView {
     Camera2D            *camera;
     int                 scores;
     int                 dx, dy, field_size;
-    float               tmr_put_time, tmr_block_time;
+    float               tmr_put_time,   // появление плитки в секундах
+                        tmr_block_time; // движение плитки в секундах
     enum Direction      dir;
     bool                has_sum, has_move;
-    bool                use_gui;
+    bool                use_gui,        // рисовать imgui
+                        auto_put;       // класть новую плитку на след. ход
+
+    int quad_width;
+
     // Таймеры для анимации плиток
     struct TimerMan     *timers;
 
@@ -74,6 +79,7 @@ struct Setup {
     Camera2D    *cam;
     int         field_size;
     float       tmr_put_time, tmr_block_time;
+    bool        use_gui, auto_put;
 };
 
 void modelview_init(struct ModelView *mv, struct Setup setup);
