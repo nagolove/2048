@@ -66,6 +66,24 @@ de_ecs *ecs_circ_buf_next(struct ecs_circ_buf *b) {
     return ret;
 }
 
+de_ecs *ecs_circ_buf_first(struct ecs_circ_buf *ecs_buf) {
+    de_ecs *cur = NULL, *prev = NULL;
+    do {
+        prev = cur;
+        cur = ecs_circ_buf_next(ecs_buf);
+    } while (cur);
+    return prev;
+}
+
+de_ecs *ecs_circ_buf_last(struct ecs_circ_buf *ecs_buf) {
+    de_ecs *cur = NULL, *prev = NULL;
+    do {
+        prev = cur;
+        cur = ecs_circ_buf_prev(ecs_buf);
+    } while (cur);
+    return prev;
+}
+
 void ecs_circ_buf_window(struct ecs_circ_buf *ecs_buf, de_ecs **r) {
     assert(ecs_buf);
     assert(r);
@@ -75,13 +93,14 @@ void ecs_circ_buf_window(struct ecs_circ_buf *ecs_buf, de_ecs **r) {
     igBegin("ecs", &open, flags);
 
     if (igButton("|<<", (ImVec2) {0})) {
+        *r = ecs_circ_buf_last(ecs_buf);
     }
     igSameLine(0, 10);
     if (igButton("<<", (ImVec2) {0})) {
         *r = ecs_circ_buf_prev(ecs_buf);
     }
     igSameLine(0, 10);
-    if (igButton("restore", (ImVec2) {0})) {
+    if (igButton("play/pause", (ImVec2) {0})) {
         if (ecs_buf->ecs_tmp)
             *r = ecs_buf->ecs_tmp;
     }
@@ -91,6 +110,7 @@ void ecs_circ_buf_window(struct ecs_circ_buf *ecs_buf, de_ecs **r) {
     }
     igSameLine(0, 10);
     if (igButton(">>|", (ImVec2) {0})) {
+        *r = ecs_circ_buf_first(ecs_buf);
     }
     igText("captured %d systems", ecs_buf->num);
     igText("cur %d system", ecs_buf->cur);

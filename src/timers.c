@@ -1,4 +1,5 @@
 #include "timers.h"
+#include <stddef.h>
 #include <unistd.h>
 
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
@@ -91,16 +92,9 @@ int timerman_update(struct TimerMan *tm) {
         struct Timer *timer = &tm->timers[i];
         if (timer->duration < 0) continue;
 
-        double now;
-        // TODO: снятие и установка паузы
-        if (tm->paused) {
-            now = timer->last_now;
-            timer->amount = (now - timer->start_time) / timer->duration;
-        } else {
-            now = GetTime();
-            timer->amount = (now - timer->start_time) / timer->duration;
-            timer->last_now = now;
-        }
+        double now = tm->paused ? timer->last_now : GetTime();
+        timer->amount = (now - timer->start_time) / timer->duration;
+        timer->last_now = now;
 
         // Сделать установку паузы и снятие с нее
 
@@ -124,17 +118,27 @@ int timerman_update(struct TimerMan *tm) {
 }
 
 void timerman_pause(struct TimerMan *tm, bool is_paused) {
-    if (tm->paused && !is_paused) {
-        // enable -> disable
-        tm->pause_time = GetTime();
-    } else if (!tm->paused && is_paused) {
-        // disable -> enable
-        double shift = GetTime() - tm->pause_time;
-        for (int i = 0; i < tm->timers_size; ++i) {
-            tm->timers[i].start_time += shift;
+    if (is_paused) {
+        if (!tm->paused) {
+            // enable -> disable
+            trace("timerman_pause: enable -> disable\n");
+            tm->pause_time = GetTime();
+            for (int i = 0; i < tm->timers_size; ++i) {
+                tm->timers[i].last_now = tm->pause_time;
+            }
+            tm->paused = is_paused;
+        }
+    } else {
+        if (tm->paused) {
+            // disable -> enable
+            double shift = GetTime() - tm->pause_time;
+            trace("timerman_pause: disable -> enable, shift %f\n", shift);
+            for (int i = 0; i < tm->timers_size; ++i) {
+                tm->timers[i].start_time += shift;
+            }
+            tm->paused = is_paused;
         }
     }
-    tm->paused = is_paused;
 }
 
 void timerman_window(struct TimerMan *tm) {
@@ -288,4 +292,14 @@ copy:
         memcpy(tm->timers, tmp, sizeof(struct Timer) * tmp_num);
     }
     tm->timers_size = tmp_num;
+}
+
+struct TimerMan timerman_clone(struct TimerMan *tm) {
+    assert(tm);
+    struct TimerMan ret = *tm;
+    ret.timers = calloc(ret.timers_cap, sizeof(ret.timers[0]));
+    assert(ret.timers);
+    size_t sz = sizeof(tm->timers[0]) * tm->timers_size;
+    memcpy(ret.timers, tm->timers, sz);
+    return ret;
 }

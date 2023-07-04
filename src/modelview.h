@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "ecs_circ_buf.h"
 
 #define WIN_VALUE   2048
 
@@ -50,6 +51,7 @@ typedef struct ModelView ModelView;
     Отображение поля. Все, что связано с анимацией.
  */
 struct ModelView {
+    ecs_circ_buf        ecs_circ_buf;
     de_ecs              *r;
     Camera2D            *camera;
     int                 scores;

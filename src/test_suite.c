@@ -207,6 +207,7 @@ void test_modelviews_one() {
         modelview_state2str(mv.state)
     );
     /*while (mv.dir != DIR_NONE) {*/
+    /*while (mv.state == MVS_ANIMATION) {*/
     for (i = 0; i < 1000; ++i) {
         /*printf("test_modelviews_one: i %d\n", i++);*/
         modelview_draw(&mv);
