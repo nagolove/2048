@@ -31,23 +31,13 @@ enum AlphaMode {
 };
 
 struct Cell {
-    enum AlphaMode  anim_alpha;
-    bool            dropped;        // ячейка подлежит удалению 
-    int             x, y, value;
-    bool            anim_movement,  // ячейка в движении
-                    anim_size;      // ячейка меняет размер
-};
-
-/*
-
-struct Cell {
     bool            dropped;        // ячейка подлежит удалению 
     int             x, y, value;
 };
 
 enum BonusType {
     BT_DOUBLE = 0, 
-}
+};
 
 struct Bonus {
     enum BonusType  type;
@@ -58,8 +48,6 @@ struct Effect {
     bool            anim_movement,  // ячейка в движении
                     anim_size;      // ячейка меняет размер
 };
-
-*/
 
 enum ModelViewState {
     MVS_ANIMATION,

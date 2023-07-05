@@ -63,6 +63,20 @@ static const de_cp_type cmp_cell = {
     .initial_cap = 1000,
 };
 
+static const de_cp_type cmp_bonus = {
+    .cp_id = 1,
+    .cp_sizeof = sizeof(struct Bonus),
+    .name = "bonus",
+    .initial_cap = 1000,
+};
+
+static const de_cp_type cmp_effect = {
+    .cp_id = 2,
+    .cp_sizeof = sizeof(struct Effect),
+    .name = "effect",
+    .initial_cap = 1000,
+};
+
 static Color colors[] = {
     RED,
     ORANGE,
@@ -149,7 +163,7 @@ void modelview_save_state2file(struct ModelView *mv) {
 */
 
 static void cell_draw(
-    struct ModelView *mv, struct Cell *cell, struct DrawOpts opts
+    struct ModelView *mv, de_entity cell_en, struct DrawOpts opts
 );
 
 static int find_max(struct ModelView *mv) {
@@ -235,7 +249,10 @@ static struct Cell *create_cell(
     cell->x = x;
     cell->y = y;
     cell->value = -1;
-    cell->anim_movement = false;
+
+    struct Effect *ef = de_emplace(mv->r, en, cmp_effect);
+    ef->anim_movement = false;
+
     if (_en)
         *_en = en;
     return cell;
@@ -249,9 +266,12 @@ static void tmr_cell_draw_stop(struct Timer *t) {
     struct Cell *cell = de_try_get(mv->r, timer_data->cell, cmp_cell);
     assert(cell);
 
-    cell->anim_movement = false;
-    cell->anim_alpha = AM_NONE;
-    cell->anim_size = false;
+    struct Effect *ef = de_try_get(mv->r, timer_data->cell, cmp_effect);
+    assert(ef);
+
+    ef->anim_movement = false;
+    ef->anim_alpha = AM_NONE;
+    ef->anim_size = false;
 }
 
 // какой эффект рисует функция и для какой плитки?
@@ -262,11 +282,8 @@ static bool tmr_cell_draw(struct Timer *t) {
 
     assert(de_valid(mv->r, timer_data->cell));
 
-    struct Cell *cell = de_try_get(mv->r, timer_data->cell, cmp_cell);
-
-    assert(cell);
     opts.amount = t->amount;
-    cell_draw(timer_data->mv, cell, opts);
+    cell_draw(timer_data->mv, timer_data->cell, opts);
     return false;
 }
 
@@ -310,7 +327,10 @@ void modelview_put(struct ModelView *mv) {
     cell->y = y;
     //cell->anima = true;
     cell->dropped = false;
-    cell->anim_alpha = AM_FORWARD;
+
+    struct Effect *ef = de_try_get(mv->r, cell_en, cmp_effect);
+    assert(ef);
+    ef->anim_alpha = AM_FORWARD;
 
     modeltest_put(&model_checker, cell->x, cell->y, cell->value);
 
@@ -347,15 +367,20 @@ static void clear_touched(struct ModelView *mv) {
 static int move_call_counter = 0;
 
 static bool move(
-    struct ModelView *mv, struct Cell *cell, de_entity cell_en, 
-    int x, int y, bool *touched
+    struct ModelView *mv, de_entity cell_en, int x, int y, bool *touched
 ) {
     bool has_move = false;
-    
+
+    struct Cell *cell = de_try_get(mv->r, cell_en, cmp_cell);
+    assert(cell);
+
+    struct Effect *ef = de_try_get(mv->r, cell_en, cmp_effect);
+    assert(ef);
+
     //if (cell->touched)
         //return has_move;
 
-    if (cell->anim_movement)
+    if (ef->anim_movement)
         return has_move;
 
     if (cell->dropped)
@@ -383,7 +408,7 @@ static bool move(
 
     cell->x += mv->dx;
     cell->y += mv->dy;
-    cell->anim_movement = true;
+    ef->anim_movement = true;
 
     *touched = true;
     trace("try_move: move_call_counter %d\n", move_call_counter);
@@ -403,18 +428,25 @@ static bool move(
 }
 
 static bool sum(
-    struct ModelView *mv, struct Cell *cell, de_entity cell_en, 
+    struct ModelView *mv, de_entity cell_en, 
     int x, int y, bool *touched
 ) {
-    bool has_sum = false;
     assert(mv);
-    assert(cell);
     assert(cell_en != de_null);
+
+    bool has_sum = false;
+
+    struct Cell *cell = de_try_get(mv->r, cell_en, cmp_cell);
+    assert(cell);
+
+    struct Effect *ef = de_try_get(mv->r, cell_en, cmp_effect);
+    assert(ef);
 
     if (cell->dropped) 
         return has_sum;
 
     de_entity neighbour_en = de_null;
+
     struct Cell *neighbour = modelview_get_cell(
         mv, x + mv->dx, y + mv->dy, &neighbour_en
     );
@@ -422,6 +454,8 @@ static bool sum(
         return has_sum;
     if (neighbour->dropped) 
         return has_sum;
+
+    struct Effect *neighbour_ef = de_try_get(mv->r, neighbour_en, cmp_effect);
 
     assert(cell_en != de_null);
     assert(neighbour_en != de_null);
@@ -439,7 +473,7 @@ static bool sum(
 
     // cell_en уничтожается
     cell->dropped = true;
-    cell->anim_alpha = AM_BACKWARD;
+    ef->anim_alpha = AM_BACKWARD;
     timerman_add(mv->timers, (struct TimerDef) {
         .duration = mv->tmr_block_time,
         .on_stop = tmr_cell_draw_stop,
@@ -452,7 +486,7 @@ static bool sum(
     });
 
     // neighbour_en увеличивается 
-    neighbour->anim_size = true;
+    neighbour_ef->anim_size = true;
     timerman_add(mv->timers, (struct TimerDef) {
         .duration = mv->tmr_block_time,
         //.on_stop = tmr_cell_draw_stop_drop,
@@ -469,8 +503,7 @@ static bool sum(
 }
 
 typedef bool (*Action)(
-    struct ModelView *mv, struct Cell *cell, de_entity cell_en, 
-    int x, int y, bool *touched
+    struct ModelView *mv, de_entity cell_en, int x, int y, bool *touched
 );
 
 static bool do_action(struct ModelView *mv, Action action) {
@@ -491,7 +524,7 @@ static bool do_action(struct ModelView *mv, Action action) {
                 de_entity cell_en = de_null;
                 struct Cell *cell = modelview_get_cell(mv, x, y, &cell_en);
                 if (!cell) continue;
-                if (action(mv, cell, cell_en, x, y, &touched))
+                if (action(mv, cell_en, x, y, &touched))
                     has_action = true;
         }
     //}
@@ -575,12 +608,17 @@ static Color get_color(struct ModelView *mv, int cell_value) {
     return colors[colors_num - 1];
 }
 
-static void 
-cell_draw(struct ModelView *mv, struct Cell *cell, struct DrawOpts opts) {
+static void cell_draw(
+    struct ModelView *mv, de_entity cell_en, struct DrawOpts opts
+) {
     assert(mv);
+
+    struct Cell *cell = de_try_get(mv->r, cell_en, cmp_cell);
 
     if (!cell)
         return;
+
+    struct Effect *ef = de_try_get(mv->r, cell_en, cmp_effect);
 
     int fontsize = opts.fontsize;
     float spacing = 2.;
@@ -591,7 +629,7 @@ cell_draw(struct ModelView *mv, struct Cell *cell, struct DrawOpts opts) {
     assert(opts.amount >= 0 && opts.amount <= 1.);
 
     Vector2 base_pos;
-    if (cell->anim_movement) {
+    if (ef->anim_movement) {
         base_pos = (Vector2) {
             //Lerp(cell->x, cell->x + mv->dx, opts.amount),
             //Lerp(cell->y, cell->y + mv->dy, opts.amount),
@@ -610,7 +648,7 @@ cell_draw(struct ModelView *mv, struct Cell *cell, struct DrawOpts opts) {
         textsize = MeasureTextEx(f, msg, fontsize--, spacing);
     } while (textsize.x > mv->quad_width || textsize.y > mv->quad_width);
 
-    if (cell->anim_size) {
+    if (ef->anim_size) {
         const float font_scale = 6.;
         if (opts.amount <= 0.5)
             fontsize = Lerp(fontsize, fontsize * font_scale, opts.amount);
@@ -627,7 +665,7 @@ cell_draw(struct ModelView *mv, struct Cell *cell, struct DrawOpts opts) {
     Vector2 pos = Vector2Add(mv->pos, disp);
 
     Color color = opts.custom_color ? opts.color : get_color(mv, cell->value);
-    switch (cell->anim_alpha) {
+    switch (ef->anim_alpha) {
         case AM_FORWARD:
             color.a = Lerp(10., 255., opts.amount);
             break;
@@ -644,11 +682,16 @@ static void draw_numbers(struct ModelView *mv) {
     assert(mv);
     for (int y = 0; y < mv->field_size; y++) {
         for (int x = 0; x < mv->field_size; x++) {
-            struct Cell *cell = modelview_get_cell(mv, x, y, NULL);
-            bool can_draw = cell && !cell->anim_movement && 
-                            !cell->anim_size && cell->anim_alpha == AM_NONE;
+            de_entity en = de_null;
+            struct Cell *cell = modelview_get_cell(mv, x, y, &en);
+            assert(en != de_null);
+            struct Effect *ef = de_try_get(mv->r, en, cmp_effect);
+            assert(ef);
+
+            bool can_draw = cell && !ef->anim_movement && 
+                            !ef->anim_size && ef->anim_alpha == AM_NONE;
             if (can_draw)
-                    cell_draw(mv, cell, dflt_draw_opts);
+                    cell_draw(mv, en, dflt_draw_opts);
         }
     }
 }
@@ -718,19 +761,28 @@ static void movements_window() {
     igEnd();
 }
 
-static void print_cell_node(struct Cell *c, int *idx, de_entity en) {
-    assert(c);
+static void print_cell_node(struct ModelView *mv, int *idx, de_entity en) {
+    assert(en != de_null);
     assert(idx);
     if (igTreeNode_Ptr((void*)(uintptr_t)*idx, "en %d", *idx)) {
-        igText("en      %ld", en);
-        igText("pos     %d, %d", c->x, c->y);
-        //igText("to      %d, %d", c->to_x, c->to_y);
-        //igText("act     %s", action2str(c->action));
-        igText("val     %d", c->value);
-        igText("dropped %s", c->dropped ? "t" : "f");
-        igText("anim_movement   %s", c->anim_movement ? "t" : "f");
-        igText("anim_size %s", c->anim_size ? "t" : "f");
-        igText("anim_alpha %d", c->anim_alpha);
+        struct Cell *c = de_try_get(mv->r, en, cmp_cell);
+
+        if (c) {
+            igText("en      %ld", en);
+            igText("pos     %d, %d", c->x, c->y);
+            //igText("to      %d, %d", c->to_x, c->to_y);
+            //igText("act     %s", action2str(c->action));
+            igText("val     %d", c->value);
+            igText("dropped %s", c->dropped ? "t" : "f");
+        }
+
+        struct Effect *ef = de_try_get(mv->r, en, cmp_effect);
+        if (ef) {
+            igText("anim_movement   %s", ef->anim_movement ? "t" : "f");
+            igText("anim_size %s", ef->anim_size ? "t" : "f");
+            igText("anim_alpha %d", ef->anim_alpha);
+        }
+
         igTreePop();
     }
 }
