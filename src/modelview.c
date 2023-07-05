@@ -50,7 +50,7 @@ struct DrawOpts {
 
 static const struct DrawOpts dflt_draw_opts = {
     .caption_offset_coef = { 1., 1., },
-    .fontsize            = 440,
+    .fontsize            = 500,
     .custom_color        = false,
     .amount              = 0.,
     .color               = BLACK,
@@ -777,8 +777,32 @@ _exit:
 }
 
 static void options_window(struct ModelView *mv) {
+    assert(mv);
     bool wnd_open = true;
     igBegin("options_window", &wnd_open, 0);
+
+    static int field_size = 0;
+
+    if (!field_size)
+        field_size = mv->field_size;
+
+    if (igSliderInt("field size", &field_size, 3, 20, "%d", 0)) {
+    }
+
+    if (igButton("restart", (ImVec2) {0, 0})) {
+        modelview_shutdown(mv);
+        struct Setup setup = {
+            .auto_put = true,
+            .cam = mv->camera,
+            .field_size = field_size,
+            .tmr_block_time = mv->tmr_block_time,
+            .tmr_put_time = mv->tmr_put_time,
+            .pos = &mv->pos,
+            .use_gui = mv->use_gui,
+        };
+        modelview_init(mv, setup);
+        modelview_put(mv);
+    }
     igEnd();
 }
 
@@ -793,7 +817,6 @@ static void gui(struct ModelView *mv) {
     //ecs_window(mv);
     bool open = false;
     igShowDemoWindow(&open);
-    ecs_circ_buf_window(&mv->ecs_circ_buf, &mv->r);
     rlImGuiEnd();
 }
 
@@ -809,7 +832,6 @@ char *modelview_state2str(enum ModelViewState state) {
 }
 
 static void destroy_dropped(struct ModelView *mv) {
-    ecs_circ_buf_push(&mv->ecs_circ_buf, mv->r);
     for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
                 cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
         assert(de_valid(mv->r, de_view_entity(&v)));
@@ -936,7 +958,6 @@ void modelview_init(struct ModelView *mv, const struct Setup setup) {
 
     global_cells_num = 0;
 
-    ecs_circ_buf_init(&mv->ecs_circ_buf, 1024);
 }
 
 void modelview_shutdown(struct ModelView *mv) {
@@ -956,7 +977,6 @@ void modelview_shutdown(struct ModelView *mv) {
         free(mv->sorted);
         mv->sorted = NULL;
     }
-    ecs_circ_buf_shutdown(&mv->ecs_circ_buf);
     modeltest_shutdown(&model_checker);
     mv->dropped = true;
 }

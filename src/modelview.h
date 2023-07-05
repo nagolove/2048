@@ -38,6 +38,29 @@ struct Cell {
                     anim_size;      // ячейка меняет размер
 };
 
+/*
+
+struct Cell {
+    bool            dropped;        // ячейка подлежит удалению 
+    int             x, y, value;
+};
+
+enum BonusType {
+    BT_DOUBLE = 0, 
+}
+
+struct Bonus {
+    enum BonusType  type;
+};
+
+struct Effect {
+    enum AlphaMode  anim_alpha;
+    bool            anim_movement,  // ячейка в движении
+                    anim_size;      // ячейка меняет размер
+};
+
+*/
+
 enum ModelViewState {
     MVS_ANIMATION,
     MVS_READY,
@@ -51,7 +74,6 @@ typedef struct ModelView ModelView;
     Отображение поля. Все, что связано с анимацией.
  */
 struct ModelView {
-    ecs_circ_buf        ecs_circ_buf;
     de_ecs              *r;
     Camera2D            *camera;
     int                 scores;

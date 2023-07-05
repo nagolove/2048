@@ -18,12 +18,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include "undosys.h"
 
 #if defined(PLATFORM_WEB)
 #include <emscripten.h>
 #endif
 
 static struct ModelView    main_view;
+static UndoSys *undo_system = NULL;
 
 #if defined(PLATFORM_WEB)
 static const int screen_width = 1920;
@@ -212,6 +214,13 @@ static void update() {
         is_paused = !is_paused;
     }
 
+    undosys_push(undo_system, (struct UndoState) {
+        .r = main_view.r,
+        .tm = main_view.timers,
+        .udata = &main_view,
+        .sz = sizeof(main_view),
+    });
+
     timerman_pause(main_view.timers, is_paused);
 
     if (IsKeyPressed(KEY_R)) {
@@ -245,6 +254,17 @@ static void update() {
     }
 
     console_update();
+
+    undosys_window(undo_system);
+
+    // восстановление состояния
+    if (undosys_get(undo_system)) {
+        struct UndoState *st = undosys_get(undo_system);
+        assert(sizeof(main_view) == st->sz);
+        memcpy(&main_view, st->udata, sizeof(main_view));
+        main_view.r = st->r;
+        main_view.timers = st->tm;
+    }
 
     EndMode2D();
     EndDrawing();
@@ -290,6 +310,8 @@ int main(void) {
     });
     console_immediate_buffer_enable(true);
 
+    undo_system = undosys_new(2048);
+
     //view_test = printing_test();
 #if defined(PLATFORM_WEB)
     emscripten_set_main_loop_arg(update, NULL, 60, 1);
@@ -306,6 +328,8 @@ int main(void) {
 
     // TODO: Падает тут 
     rlImGuiShutdown();
+
+    undosys_free(undo_system);
 
     hotkey_shutdown(&hk);
     sc_shutdown();
