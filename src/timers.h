@@ -42,7 +42,7 @@ void timerman_free(struct TimerMan *tm);
 
 bool timerman_add(struct TimerMan *tm, struct TimerDef td);
 int timerman_update(struct TimerMan *tm);
-struct TimerMan timerman_clone(struct TimerMan *tm);
+struct TimerMan *timerman_clone(struct TimerMan *tm);
 void timerman_pause(struct TimerMan *tm, bool is_paused);
 void timerman_window(struct TimerMan *tm);
 void timerman_clear(struct TimerMan *tm);

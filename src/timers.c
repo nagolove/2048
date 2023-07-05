@@ -294,12 +294,14 @@ copy:
     tm->timers_size = tmp_num;
 }
 
-struct TimerMan timerman_clone(struct TimerMan *tm) {
+struct TimerMan *timerman_clone(struct TimerMan *tm) {
     assert(tm);
-    struct TimerMan ret = *tm;
-    ret.timers = calloc(ret.timers_cap, sizeof(ret.timers[0]));
-    assert(ret.timers);
+    struct TimerMan *ret = calloc(1, sizeof(*tm));
+    assert(ret);
+    *ret = *tm;
+    ret->timers = calloc(ret->timers_cap, sizeof(ret->timers[0]));
+    assert(ret->timers);
     size_t sz = sizeof(tm->timers[0]) * tm->timers_size;
-    memcpy(ret.timers, tm->timers, sz);
+    memcpy(ret->timers, tm->timers, sz);
     return ret;
 }
