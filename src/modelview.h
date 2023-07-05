@@ -73,7 +73,8 @@ struct ModelView {
     bool                use_gui,        // рисовать imgui
                         auto_put;       // класть новую плитку на след. ход
 
-    int quad_width;
+    int                 quad_width;
+    Font                font;
 
     // Таймеры для анимации плиток
     struct TimerMan     *timers;
@@ -84,6 +85,8 @@ struct ModelView {
     Vector2             pos;
     enum ModelViewState state;
     bool                dropped;    //Флаг деинициализации структуры
+    bool                use_bonus;
+    float               font_spacing;
 };
 
 struct Setup {
@@ -92,11 +95,12 @@ struct Setup {
     int         field_size;
     float       tmr_put_time, tmr_block_time;
     bool        use_gui, auto_put;
+    bool        use_bonus;
 };
 
 void modelview_init(struct ModelView *mv, struct Setup setup);
 void modelview_put_manual(struct ModelView *mv, int x, int y, int value);
-void modelview_put_cell(struct ModelView *mv, struct Cell cell);
+//void modelview_put_cell(struct ModelView *mv, struct Cell cell);
 void modelview_put(struct ModelView *mv);
 void modelview_shutdown(struct ModelView *mv);
 void modelview_save_state2file(struct ModelView *mv);

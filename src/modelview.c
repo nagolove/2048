@@ -3,6 +3,7 @@
 // TODO: Отказаться от блокировки ввода что-бы можно было играть на скорости выше скорости анимации, то есть до 60 герц.
 
 #include "ecs_circ_buf.h"
+#include <math.h>
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 
 #include "cimgui.h"
@@ -48,6 +49,12 @@ struct DrawOpts {
     double              amount;             // 0 .. 1.
 };
 
+struct ColoredText {
+    const char  *text;
+    float       font_scale;
+    Color       color;
+};
+
 static const struct DrawOpts dflt_draw_opts = {
     .caption_offset_coef = { 1., 1., },
     .fontsize            = 500,
@@ -69,6 +76,7 @@ static const de_cp_type cmp_bonus = {
     .name = "bonus",
     .initial_cap = 1000,
 };
+// */
 
 static const de_cp_type cmp_effect = {
     .cp_id = 2,
@@ -297,21 +305,14 @@ void modelview_put_manual(struct ModelView *mv, int x, int y, int value) {
     cell->value = value;
 }
 
-void modelview_put(struct ModelView *mv) {
+static void modelview_put_cell(struct ModelView *mv, int x, int y) {
     assert(mv);
-    int x = rand() % mv->field_size;
-    int y = rand() % mv->field_size;
-
-    struct Cell *cell = modelview_get_cell(mv, x, y, NULL);
-    while (cell) {
-        x = rand() % mv->field_size;
-        y = rand() % mv->field_size;
-        cell = modelview_get_cell(mv, x, y, NULL);
-    }
-
-    assert(!cell);
+    assert(x >= 0);
+    assert(x < mv->field_size);
+    assert(y >= 0);
+    assert(y < mv->field_size);
     de_entity cell_en = de_null;
-    cell = create_cell(mv, x, y, &cell_en);
+    struct Cell *cell = create_cell(mv, x, y, &cell_en);
 
     assert(cell);
 
@@ -347,6 +348,75 @@ void modelview_put(struct ModelView *mv) {
     });
 }
 
+static void modelview_put_bonus(
+    struct ModelView *mv, int x, int y, enum BonusType type
+) {
+    assert(mv);
+    assert(x >= 0);
+    assert(x < mv->field_size);
+    assert(y >= 0);
+    assert(y < mv->field_size);
+    de_entity cell_en = de_null;
+    struct Cell *cell = create_cell(mv, x, y, &cell_en);
+
+    assert(cell);
+
+    float v = (float)rand() / (float)RAND_MAX;
+    if (v >= 0. && v < 0.9) {
+        cell->value = 2;
+    } else {
+        cell->value = 4;
+    }
+
+    assert(cell->value > 0);
+    cell->x = x;
+    cell->y = y;
+    cell->dropped = false;
+
+    struct Effect *ef = de_try_get(mv->r, cell_en, cmp_effect);
+    assert(ef);
+    ef->anim_alpha = AM_FORWARD;
+
+    struct Bonus *bonus = de_emplace(mv->r, cell_en, cmp_bonus);
+    assert(bonus);
+    bonus->type = type;
+
+    /*modeltest_put(&model_checker, cell->x, cell->y, cell->value);*/
+
+    struct TimerData td = {
+        .mv = mv,
+        .cell = cell_en,
+    };
+    timerman_add(mv->timers, (struct TimerDef) {
+        .duration = mv->tmr_put_time,
+        .sz = sizeof(struct TimerData),
+        .on_update = tmr_cell_draw,
+        .on_stop = tmr_cell_draw_stop,
+        .udata = &td,
+    });
+}
+
+void modelview_put(struct ModelView *mv) {
+    assert(mv);
+    int x = rand() % mv->field_size;
+    int y = rand() % mv->field_size;
+
+    struct Cell *cell = modelview_get_cell(mv, x, y, NULL);
+    while (cell) {
+        x = rand() % mv->field_size;
+        y = rand() % mv->field_size;
+        cell = modelview_get_cell(mv, x, y, NULL);
+    }
+
+    if (mv->use_bonus) {
+        if ((double)rand() / (double)RAND_MAX > 0.5)
+            modelview_put_cell(mv, x, y);
+        else
+            modelview_put_bonus(mv, x, y, BT_DOUBLE);
+    } else
+        modelview_put_cell(mv, x, y);
+}
+
 static void global_cell_push(struct Cell *cell) {
     assert(cell);
     global_cells[global_cells_num++] = *cell;
@@ -366,6 +436,21 @@ static void clear_touched(struct ModelView *mv) {
 
 static int move_call_counter = 0;
 
+static bool cell_in_bounds(struct ModelView *mv, struct Cell *cell) {
+    assert(mv);
+    assert(cell);
+    if (cell->x + mv->dx >= mv->field_size)
+        return false;
+    if (cell->x + mv->dx < 0)
+        return false;
+
+    if (cell->y + mv->dy >= mv->field_size)
+        return false;
+    if (cell->y + mv->dy < 0)
+        return false;
+    return true;
+}
+
 static bool move(
     struct ModelView *mv, de_entity cell_en, int x, int y, bool *touched
 ) {
@@ -376,6 +461,8 @@ static bool move(
 
     struct Effect *ef = de_try_get(mv->r, cell_en, cmp_effect);
     assert(ef);
+
+    //struct Bonus *bonus = de_try_get(mv->r, cell_en, cmp_bonus);
 
     //if (cell->touched)
         //return has_move;
@@ -392,14 +479,7 @@ static bool move(
     if (neighbour) 
         return has_move;
 
-    if (cell->x + mv->dx >= mv->field_size)
-        return has_move;
-    if (cell->x + mv->dx < 0)
-        return has_move;
-
-    if (cell->y + mv->dy >= mv->field_size)
-        return has_move;
-    if (cell->y + mv->dy < 0)
+    if (!cell_in_bounds(mv, cell))
         return has_move;
 
     has_move = true;
@@ -608,27 +688,128 @@ static Color get_color(struct ModelView *mv, int cell_value) {
     return colors[colors_num - 1];
 }
 
-static void cell_draw(
-    struct ModelView *mv, de_entity cell_en, struct DrawOpts opts
+/*
+static Vector2 decrease_font_size_colored(
+    struct ModelView *mv, const struct ColoredText *texts, int texts_num,
+    int *fontsize, Vector2 text_bound
+) {
+    Vector2 textsize = {};
+    do {
+        textsize = MeasureTextEx(
+            mv->font, msg, (*fontsize)--, mv->font_spacing
+        );
+    } while (textsize.x > text_bound.x || textsize.y > text_bound.y);
+    return textsize;
+}
+*/
+
+static Vector2 measure_colored(
+    Font *font, int base_size, struct ColoredText *text, int text_num
+) {
+    Vector2 textsize = {};
+    for (int i = 0; i < text_num; ++i) {
+            Vector2 m = MeasureTextEx(
+                *font, text[i].text, base_size * text[i].font_scale, 0.
+            );
+        textsize.x += m.x;
+        if (m.y > textsize.y)
+            textsize.y = m.y;
+    }
+    return textsize;
+}
+
+static Vector2 decrease_font_size(
+    struct ModelView *mv, const char *msg, int *fontsize, Vector2 text_bound
+) {
+    Vector2 textsize = {};
+    do {
+        textsize = MeasureTextEx(
+            mv->font, msg, (*fontsize)--, mv->font_spacing
+        );
+    } while (textsize.x > text_bound.x || textsize.y > text_bound.y);
+    return textsize;
+}
+
+static void print_colored(
+    Vector2 pos, Font *font, int base_size, 
+    struct ColoredText *text, int text_num
+) {
+    assert(font);
+    assert(text);
+
+    Vector2 measures[text_num];
+    for (int i = 0; i < text_num; ++i) {
+        measures[i] = MeasureTextEx(
+            *font, text[i].text, base_size * text[i].font_scale, 0.
+        );
+    }
+
+    float max_height = 0;
+    for (int j = 0; j < text_num; j++) {
+        if (measures[j].y > max_height)
+            max_height = measures[j].y;
+    }
+
+    //float starty = pos.y;
+
+    for (int i = 0; i < text_num; ++i) {
+        int font_size = base_size * text[i].font_scale;
+        Vector2 m = measures[i];
+        //Vector2 disp = {0, -(font_size - m.y) / 2.};
+        Vector2 disp = {0, (max_height - m.y) / 2.};
+        DrawTextEx(
+            *font, text[i].text, Vector2Add(pos, disp), font_size,
+            0., text[i].color
+        );
+        pos.x += m.x;
+    }
+}
+
+static int calc_font_size_anim(
+    struct ModelView *mv, de_entity en, struct DrawOpts opts
+) {
+    int fontsize = opts.fontsize;
+    struct Effect *ef = de_try_get(mv->r, en, cmp_effect);
+    assert(ef);
+    if (ef->anim_size) {
+        const float font_scale = 6.;
+        if (opts.amount <= 0.5)
+            fontsize = Lerp(fontsize, fontsize * font_scale, opts.amount);
+        else
+            fontsize = Lerp(fontsize * font_scale, fontsize, opts.amount);
+    }
+    return fontsize;
+}
+
+static Color calc_alpha(
+    struct ModelView *mv, de_entity en, Color color, struct DrawOpts opts
 ) {
     assert(mv);
+    struct Effect *ef = de_try_get(mv->r, en, cmp_effect);
+    assert(ef);
+    switch (ef->anim_alpha) {
+        case AM_FORWARD:
+            color.a = Lerp(10., 255., opts.amount);
+            break;
+        case AM_BACKWARD:
+            color.a = Lerp(255., 10., opts.amount);
+            break;
+        default:
+            break;
+    }
+    return color;
+}
 
-    struct Cell *cell = de_try_get(mv->r, cell_en, cmp_cell);
-
-    if (!cell)
-        return;
-
-    struct Effect *ef = de_try_get(mv->r, cell_en, cmp_effect);
-
-    int fontsize = opts.fontsize;
-    float spacing = 2.;
-
-    char msg[64] = {0};
-    sprintf(msg, "%d", cell->value);
-
-    assert(opts.amount >= 0 && opts.amount <= 1.);
-
+static Vector2 calc_base_pos(
+    struct ModelView *mv, de_entity en, struct DrawOpts opts
+) {
     Vector2 base_pos;
+
+    struct Cell *cell = de_try_get(mv->r, en, cmp_cell);
+    assert(cell);
+    struct Effect *ef = de_try_get(mv->r, en, cmp_effect);
+    assert(ef);
+
     if (ef->anim_movement) {
         base_pos = (Vector2) {
             //Lerp(cell->x, cell->x + mv->dx, opts.amount),
@@ -642,19 +823,73 @@ static void cell_draw(
         };
     }
 
-    Vector2 textsize = {};
-    do {
-        Font f = GetFontDefault();
-        textsize = MeasureTextEx(f, msg, fontsize--, spacing);
-    } while (textsize.x > mv->quad_width || textsize.y > mv->quad_width);
+    return base_pos;
+}
 
-    if (ef->anim_size) {
-        const float font_scale = 6.;
-        if (opts.amount <= 0.5)
-            fontsize = Lerp(fontsize, fontsize * font_scale, opts.amount);
-        else
-            fontsize = Lerp(fontsize * font_scale, fontsize, opts.amount);
+static void cell_draw(
+    struct ModelView *mv, de_entity cell_en, struct DrawOpts opts
+) {
+    assert(mv);
+
+    struct Cell *cell = de_try_get(mv->r, cell_en, cmp_cell);
+
+    if (!cell)
+        return;
+
+    // TODO: падает при проверке наличия компоненты в сущности если ни одной
+    // сущности такого типа не создано
+    struct Bonus *bonus = de_try_get(mv->r, cell_en, cmp_bonus);
+
+    char msg[64] = {0};
+    if (!bonus)
+        sprintf(msg, "%d", cell->value);
+    else if (bonus->type == BT_DOUBLE)
+        sprintf(msg, "x2");
+    else {
+        trace("cell_draw: bad bonus type %d\n", bonus->type);
+        abort();
     }
+
+    assert(opts.amount >= 0 && opts.amount <= 1.);
+
+    Vector2 base_pos = calc_base_pos(mv, cell_en, opts);
+    int fontsize = calc_font_size_anim(mv, cell_en, opts);
+    Color color = opts.custom_color ? opts.color : get_color(mv, cell->value);
+
+    color = calc_alpha(mv, cell_en, color, opts);
+
+    const int thick = 8;
+
+    Vector2 text_bound;
+    if (!bonus) {
+        text_bound.x = mv->quad_width;
+        text_bound.y = mv->quad_width;
+    } else {
+        text_bound.x = mv->quad_width - thick * 6.;
+        text_bound.y = mv->quad_width - thick * 6.;
+    }
+
+    Vector2 textsize = decrease_font_size(mv, msg, &fontsize, text_bound);
+
+    struct ColoredText text_cell[] = {
+        { 
+            .text = msg,
+            .font_scale = 1.,
+            .color = color,
+        },
+    };
+    struct ColoredText text_bonus[] =  {
+        { 
+            .text = "x",
+            .font_scale = 0.5,
+            .color = (Color) { 0, 0, 0, color.a },
+        },
+        { 
+            .text = "2",
+            .font_scale = 1.,
+            .color = color,
+        },
+    };
 
     Vector2 offset = {
         opts.caption_offset_coef.x * (mv->quad_width - textsize.x) / 2.,
@@ -664,18 +899,64 @@ static void cell_draw(
     Vector2 disp = Vector2Add(Vector2Scale(base_pos, mv->quad_width), offset);
     Vector2 pos = Vector2Add(mv->pos, disp);
 
-    Color color = opts.custom_color ? opts.color : get_color(mv, cell->value);
-    switch (ef->anim_alpha) {
-        case AM_FORWARD:
-            color.a = Lerp(10., 255., opts.amount);
-            break;
-        case AM_BACKWARD:
-            color.a = Lerp(255., 10., opts.amount);
-            break;
-        default:
-            break;
+    struct ColoredText *texts;
+    int texts_num;
+    if (!bonus) {
+        texts = text_cell;
+        texts_num = sizeof(text_cell) / sizeof(text_cell[0]);
+    } else {
+        texts = text_bonus;
+        texts_num = sizeof(text_bonus) / sizeof(text_bonus[0]);
     }
-    DrawTextEx(GetFontDefault(), msg, pos, fontsize, 0, color);
+
+    print_colored(pos, &mv->font, fontsize, texts, texts_num);
+    //DrawTextEx(mv->font, msg, pos, fontsize, 0, color);
+
+    if (bonus) {
+        Vector2 _offset = {
+            opts.caption_offset_coef.x * (mv->quad_width - text_bound.x) / 2.,
+            opts.caption_offset_coef.y * (mv->quad_width - text_bound.y) / 2.,
+        };
+        Vector2 _disp = Vector2Add(Vector2Scale(base_pos, mv->quad_width), _offset);
+        Vector2 _pos = Vector2Add(mv->pos, _disp);
+
+        Rectangle rect = {
+            .x = _pos.x + thick * 0.,
+            .y = _pos.y + thick * 0.,
+            .width = mv->quad_width - thick * 6.,
+            .height = mv->quad_width - thick * 6.,
+        };
+
+        //const float roundness = 0.5;
+    }
+    print_colored(pos, &mv->font, fontsize, text_cell, texts_num);
+    //DrawTextEx(mv->font, msg, pos, fontsize, 0, color);
+
+    if (bonus) {
+        Vector2 _offset = {
+            opts.caption_offset_coef.x * (mv->quad_width - text_bound.x) / 2.,
+            opts.caption_offset_coef.y * (mv->quad_width - text_bound.y) / 2.,
+        };
+        Vector2 _disp = Vector2Add(Vector2Scale(base_pos, mv->quad_width), _offset);
+        Vector2 _pos = Vector2Add(mv->pos, _disp);
+
+        Rectangle rect = {
+            .x = _pos.x + thick * 0.,
+            .y = _pos.y + thick * 0.,
+            .width = mv->quad_width - thick * 6.,
+            .height = mv->quad_width - thick * 6.,
+        };
+
+        //const float roundness = 0.5;
+        //const int segments = 10;
+        //Color color = BLACK;
+        //DrawRectangleRoundedLines(rect, roundness, segments, thick, color);
+        
+        DrawRectangleLinesEx(rect, thick, BLUE);
+    }
+
+    //DrawText("PRIVET", 100, 100, 200, BLUE);
+    //DrawText("PRIVET", 100, 600, 40, GREEN);
 }
 
 static void draw_numbers(struct ModelView *mv) {
@@ -684,6 +965,7 @@ static void draw_numbers(struct ModelView *mv) {
         for (int x = 0; x < mv->field_size; x++) {
             de_entity en = de_null;
             struct Cell *cell = modelview_get_cell(mv, x, y, &en);
+            if (!cell) continue;
             assert(en != de_null);
             struct Effect *ef = de_try_get(mv->r, en, cmp_effect);
             assert(ef);
@@ -761,30 +1043,20 @@ static void movements_window() {
     igEnd();
 }
 
-static void print_cell_node(struct ModelView *mv, int *idx, de_entity en) {
-    assert(en != de_null);
-    assert(idx);
-    if (igTreeNode_Ptr((void*)(uintptr_t)*idx, "en %d", *idx)) {
-        struct Cell *c = de_try_get(mv->r, en, cmp_cell);
+static void print_node_cell(struct Cell *c) {
+    assert(c);
+    igText("pos     %d, %d", c->x, c->y);
+    //igText("to      %d, %d", c->to_x, c->to_y);
+    //igText("act     %s", action2str(c->action));
+    igText("val     %d", c->value);
+    igText("dropped %s", c->dropped ? "t" : "f");
+}
 
-        if (c) {
-            igText("en      %ld", en);
-            igText("pos     %d, %d", c->x, c->y);
-            //igText("to      %d, %d", c->to_x, c->to_y);
-            //igText("act     %s", action2str(c->action));
-            igText("val     %d", c->value);
-            igText("dropped %s", c->dropped ? "t" : "f");
-        }
-
-        struct Effect *ef = de_try_get(mv->r, en, cmp_effect);
-        if (ef) {
-            igText("anim_movement   %s", ef->anim_movement ? "t" : "f");
-            igText("anim_size %s", ef->anim_size ? "t" : "f");
-            igText("anim_alpha %d", ef->anim_alpha);
-        }
-
-        igTreePop();
-    }
+static void print_node_effect(struct Effect *ef) {
+    assert(ef);
+    igText("anim_movement   %s", ef->anim_movement ? "t" : "f");
+    igText("anim_size %s", ef->anim_size ? "t" : "f");
+    igText("anim_alpha %d", ef->anim_alpha);
 }
 
 static void removed_entities_window() {
@@ -795,7 +1067,10 @@ static void removed_entities_window() {
     for (int i = 0; i < global_cells_num; i++) {
             struct Cell *c = &global_cells[i];
             igSetNextItemOpen(false, ImGuiCond_Once);
-            print_cell_node(c, &i, de_null);
+            if (igTreeNode_Ptr((void*)(uintptr_t)i, "i %d", i)) {
+                print_node_cell(c);
+                igTreePop();
+            }
     }
 
     igEnd();
@@ -813,14 +1088,23 @@ static void entities_window(struct ModelView *mv) {
                 cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
         if (de_valid(mv->r, de_view_entity(&v))) {
             struct Cell *c = de_view_get_safe(&v, cmp_cell);
-            if (c) {
-                igSetNextItemOpen(true, ImGuiCond_Once);
-                print_cell_node(c, &idx, de_view_entity(&v));
+            struct Effect *ef = de_view_get_safe(&v, cmp_effect);
+
+            igSetNextItemOpen(true, ImGuiCond_Once);
+
+            if (igTreeNode_Ptr((void*)(uintptr_t)idx, "i %d", idx)) {
+                igText("en      %ld", de_view_entity(&v));
+                if (c)
+                    print_node_cell(c);
+                if (ef)
+                    print_node_effect(ef);
+
                 idx++;
-            } else {
-                printf("bad entity: without cmp_cell component\n");
-                exit(EXIT_FAILURE);
+                igTreePop();
             }
+        } else {
+            printf("bad entity: without cmp_cell component\n");
+            exit(EXIT_FAILURE);
         }
     }
 
@@ -838,8 +1122,10 @@ static void options_window(struct ModelView *mv) {
     if (!field_size)
         field_size = mv->field_size;
 
-    if (igSliderInt("field size", &field_size, 3, 20, "%d", 0)) {
-    }
+    igSliderInt("field size", &field_size, 3, 20, "%d", 0);
+
+    static bool use_bonus = false;
+    igCheckbox("use bonuses", &use_bonus);
 
     if (igButton("restart", (ImVec2) {0, 0})) {
         modelview_shutdown(mv);
@@ -851,6 +1137,7 @@ static void options_window(struct ModelView *mv) {
             .tmr_put_time = mv->tmr_put_time,
             .pos = &mv->pos,
             .use_gui = mv->use_gui,
+            .use_bonus = use_bonus,
         };
         modelview_init(mv, setup);
         modelview_put(mv);
@@ -972,7 +1259,6 @@ void modelview_init(struct ModelView *mv, const struct Setup setup) {
     assert(setup.field_size > 1);
     mv->field_size = setup.field_size;
     const int cells_num = mv->field_size * mv->field_size;
-    mv->sorted = calloc(cells_num, sizeof(mv->sorted[0]));
 
     const int gap = 300;
     mv->quad_width = (GetScreenHeight() - gap) / setup.field_size;
@@ -993,6 +1279,8 @@ void modelview_init(struct ModelView *mv, const struct Setup setup) {
     mv->camera = setup.cam;
     mv->use_gui = setup.use_gui;
     mv->auto_put = setup.auto_put;
+    mv->use_bonus = setup.use_bonus;
+    mv->font_spacing = 2.;
 
     // XXX: Утечка из-за глобальной переменной?
     //ecs_circ_buf_init(&ecs_buf, 2048);
@@ -1003,10 +1291,15 @@ void modelview_init(struct ModelView *mv, const struct Setup setup) {
     mv->tmr_put_time = setup.tmr_put_time;
 
     modeltest_init(&model_checker, mv->field_size);
-
+    /*
     FILE *file = fopen("state.txt", "w");
     if (file)
         fclose(file);
+    */
+    mv->font = load_font_unicode(
+        "assets/jetbrains_mono.ttf", dflt_draw_opts.fontsize
+    );
+    mv->sorted = calloc(cells_num, sizeof(mv->sorted[0]));
 
     global_cells_num = 0;
 
@@ -1033,6 +1326,7 @@ void modelview_shutdown(struct ModelView *mv) {
     mv->dropped = true;
 }
 
+/*
 void modelview_put_cell(struct ModelView *mv, struct Cell cell) {
     assert(mv);
 
@@ -1050,3 +1344,4 @@ void modelview_put_cell(struct ModelView *mv, struct Cell cell) {
     new_cell->y = cell.y;
     new_cell->value = cell.value;
 }
+*/
