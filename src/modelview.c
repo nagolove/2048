@@ -2,12 +2,12 @@
 
 // TODO: Отказаться от блокировки ввода что-бы можно было играть на скорости выше скорости анимации, то есть до 60 герц.
 
-#include "ecs_circ_buf.h"
-#include <math.h>
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 
 #include "cimgui.h"
 #include "cimgui_impl.h"
+#include "colored_text.h"
+#include "ecs_circ_buf.h"
 #include "koh_common.h"
 #include "koh_console.h"
 #include "koh_destral_ecs.h"
@@ -19,6 +19,7 @@
 #include "raymath.h"
 #include "timers.h"
 #include <assert.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -47,12 +48,6 @@ struct DrawOpts {
     bool                custom_color;
     Color               color;
     double              amount;             // 0 .. 1.
-};
-
-struct ColoredText {
-    const char  *text;
-    float       font_scale;
-    Color       color;
 };
 
 static const struct DrawOpts dflt_draw_opts = {
@@ -703,21 +698,6 @@ static Vector2 decrease_font_size_colored(
 }
 */
 
-static Vector2 measure_colored(
-    Font *font, int base_size, struct ColoredText *text, int text_num
-) {
-    Vector2 textsize = {};
-    for (int i = 0; i < text_num; ++i) {
-            Vector2 m = MeasureTextEx(
-                *font, text[i].text, base_size * text[i].font_scale, 0.
-            );
-        textsize.x += m.x;
-        if (m.y > textsize.y)
-            textsize.y = m.y;
-    }
-    return textsize;
-}
-
 static Vector2 decrease_font_size(
     struct ModelView *mv, const char *msg, int *fontsize, Vector2 text_bound
 ) {
@@ -728,41 +708,6 @@ static Vector2 decrease_font_size(
         );
     } while (textsize.x > text_bound.x || textsize.y > text_bound.y);
     return textsize;
-}
-
-static void print_colored(
-    Vector2 pos, Font *font, int base_size, 
-    struct ColoredText *text, int text_num
-) {
-    assert(font);
-    assert(text);
-
-    Vector2 measures[text_num];
-    for (int i = 0; i < text_num; ++i) {
-        measures[i] = MeasureTextEx(
-            *font, text[i].text, base_size * text[i].font_scale, 0.
-        );
-    }
-
-    float max_height = 0;
-    for (int j = 0; j < text_num; j++) {
-        if (measures[j].y > max_height)
-            max_height = measures[j].y;
-    }
-
-    //float starty = pos.y;
-
-    for (int i = 0; i < text_num; ++i) {
-        int font_size = base_size * text[i].font_scale;
-        Vector2 m = measures[i];
-        //Vector2 disp = {0, -(font_size - m.y) / 2.};
-        Vector2 disp = {0, (max_height - m.y) / 2.};
-        DrawTextEx(
-            *font, text[i].text, Vector2Add(pos, disp), font_size,
-            0., text[i].color
-        );
-        pos.x += m.x;
-    }
 }
 
 static int calc_font_size_anim(
@@ -874,22 +819,39 @@ static void cell_draw(
     struct ColoredText text_cell[] = {
         { 
             .text = msg,
-            .font_scale = 1.,
+            .scale = 1.,
             .color = color,
         },
     };
-    struct ColoredText text_bonus[] =  {
+    struct ColoredText text_double_bonus[] =  {
         { 
             .text = "x",
-            .font_scale = 0.5,
+            .scale = 0.5,
             .color = (Color) { 0, 0, 0, color.a },
         },
         { 
             .text = "2",
-            .font_scale = 1.,
+            .scale = 1.,
             .color = color,
         },
     };
+
+    struct ColoredText *texts;
+    int texts_num;
+    if (!bonus) {
+        texts = text_cell;
+        texts_num = sizeof(text_cell) / sizeof(text_cell[0]);
+    } else {
+        texts = text_double_bonus;
+        texts_num = sizeof(text_double_bonus) / sizeof(text_double_bonus[0]);
+    }
+
+    assert(texts);
+
+    fontsize = colored_text_pickup_size(
+        texts, texts_num,
+        &mv->font, text_bound
+    );
 
     Vector2 offset = {
         opts.caption_offset_coef.x * (mv->quad_width - textsize.x) / 2.,
@@ -899,37 +861,39 @@ static void cell_draw(
     Vector2 disp = Vector2Add(Vector2Scale(base_pos, mv->quad_width), offset);
     Vector2 pos = Vector2Add(mv->pos, disp);
 
-    struct ColoredText *texts;
-    int texts_num;
-    if (!bonus) {
-        texts = text_cell;
-        texts_num = sizeof(text_cell) / sizeof(text_cell[0]);
-    } else {
-        texts = text_bonus;
-        texts_num = sizeof(text_bonus) / sizeof(text_bonus[0]);
-    }
-
-    print_colored(pos, &mv->font, fontsize, texts, texts_num);
+    colored_text_print(texts, texts_num, pos, &mv->font, fontsize);
     //DrawTextEx(mv->font, msg, pos, fontsize, 0, color);
 
     if (bonus) {
+        /*
         Vector2 _offset = {
             opts.caption_offset_coef.x * (mv->quad_width - text_bound.x) / 2.,
             opts.caption_offset_coef.y * (mv->quad_width - text_bound.y) / 2.,
         };
-        Vector2 _disp = Vector2Add(Vector2Scale(base_pos, mv->quad_width), _offset);
-        Vector2 _pos = Vector2Add(mv->pos, _disp);
+        */
 
+        /*Vector2 _disp = Vector2Add(Vector2Scale(base_pos, mv->quad_width), _offset);*/
+        /*Vector2 _pos = Vector2Add(mv->pos, _disp);*/
+
+        /*
         Rectangle rect = {
             .x = _pos.x + thick * 0.,
             .y = _pos.y + thick * 0.,
             .width = mv->quad_width - thick * 6.,
             .height = mv->quad_width - thick * 6.,
         };
+        */
 
         //const float roundness = 0.5;
     }
-    print_colored(pos, &mv->font, fontsize, text_cell, texts_num);
+
+    /*
+    print_colored(
+        pos, &mv->font, fontsize, text_cell,
+        sizeof(text_cell) / sizeof(text_cell[0])
+    );
+    */
+
     //DrawTextEx(mv->font, msg, pos, fontsize, 0, color);
 
     if (bonus) {
@@ -1147,6 +1111,7 @@ static void options_window(struct ModelView *mv) {
 
 static void gui(struct ModelView *mv) {
     rlImGuiBegin(false, mv->camera);
+    //rlImGuiBegin(false, NULL);
     movements_window();
     removed_entities_window();
     //paths_window();

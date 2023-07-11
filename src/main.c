@@ -40,6 +40,7 @@ static HotkeyStorage hk = {0};
 
 static struct Setup main_view_setup = {
     .pos = NULL,
+    .use_bonus = true,
     .cam = &camera,
     .field_size = 6,
     .tmr_block_time = 0.3,
