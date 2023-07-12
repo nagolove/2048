@@ -9,13 +9,14 @@
 #include <assert.h>
 
 static struct Setup modelview_test_setup = {
-    .pos = NULL,
-    .cam = NULL,
-    .field_size = 5,
+    .pos            = NULL,
+    .cam            = NULL,
+    .field_size     = 5,
     .tmr_block_time = 0.01,
-    .tmr_put_time = 0.01,
-    .use_gui = false,
-    .auto_put = false,
+    .tmr_put_time   = 0.01,
+    .use_gui        = false,
+    .auto_put       = false,
+    .use_bonus      = false,
 };
 
 void setup_field(struct ModelView *mv, const int values[5][5]) {
@@ -84,37 +85,41 @@ void check_field(struct ModelView *mv, const int values[5][5]) {
         }
 }
 
-static void test_modelview_arr(struct TestInput *inputs, int inputs_num) {
+static void test_modelview_arr(struct TestInput input) {
+    assert(input.steps);
+    assert(input.steps_num >= 0);
+    assert(input.field_setup);
     printf("test_modelview_arr:\n");
     struct ModelView mv = {};
     modelview_init(&mv, modelview_test_setup);
-    for (int i = 0; i < inputs_num; ++i) {
-        print_field5(inputs[i].field_setup);
-        setup_field(&mv, inputs[i].field_setup);
-        modelview_input(&mv, inputs[i].dir);
+    //setup_field(&mv, input->steps[i].field);
+    print_field5(input.field_setup);
+    for (int i = 0; i < input.steps_num; ++i) {
+        modelview_input(&mv, input.steps[i].dir);
         BeginDrawing();
-        while (mv.dir != DIR_NONE) {
+        while (mv.dir != DIR_NONE) { // условие цикла DIR_NONE ?
             modelview_draw(&mv);
             usleep(1000000 / 100); // 100Hz
         }
         EndDrawing();
-        check_field(&mv, inputs[i].field_check);
+        check_field(&mv, input.steps[i].field);
     }
     modelview_shutdown(&mv);
 }
 
 void test_modelviews_multiple() {
 
-    test_modelview_arr((struct TestInput[]){
-        {
-            .field_setup = {
-                {0, 1, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
-            },
-            .field_check = {
+    test_modelview_arr((struct TestInput){
+        .field_setup = {
+            {0, 1, 0, 0, 0,},
+            {0, 0, 0, 0, 0,},
+            {0, 0, 0, 0, 0,},
+            {0, 0, 0, 0, 0,},
+            {0, 0, 0, 0, 0,},
+        },
+        .steps = (struct Step[]) 
+        {{
+            .field = {
                 {0, 1, 0, 0, 0,},
                 {0, 0, 0, 0, 0,},
                 {0, 0, 0, 0, 0,},
@@ -123,38 +128,44 @@ void test_modelviews_multiple() {
             },
             .dir = DIR_NONE,
         },
-    }, 1);
-
-    test_modelview_arr((struct TestInput[]){
-        {
-            .field_setup = {
-                {0, 1, 0, 0, 0,},
-                {0, 1, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
-            },
-            .field_check = {
-                {0, 2, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
-            },
-            .dir = DIR_UP,
         },
-    }, 1);
+        .steps_num = 1,
+    });
 
-    test_modelview_arr((struct TestInput[]){
-        {
-            .field_setup = {
-                {0, 1, 0, 0, 0,},
-                {0, 1, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
+    test_modelview_arr((struct TestInput){
+        .field_setup = {
+            {0, 1, 0, 0, 0,},
+            {0, 1, 0, 0, 0,},
+            {0, 0, 0, 0, 0,},
+            {0, 0, 0, 0, 0,},
+            {0, 0, 0, 0, 0,},
+        },
+        .steps = (struct Step[]) {
+            {
+                .field = {
+                    {0, 2, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                },
+                .dir = DIR_UP,
             },
-            .field_check = {
+        },
+        .steps_num = 1,
+    });
+
+    test_modelview_arr((struct TestInput){
+        .field_setup = {
+            {0, 1, 0, 0, 0,},
+            {0, 1, 0, 0, 0,},
+            {0, 0, 0, 0, 0,},
+            {0, 0, 0, 0, 0,},
+            {0, 0, 0, 0, 0,},
+        },
+        .steps = (struct Step[]) {
+        {
+            .field = {
                 {1, 0, 0, 0, 0,},
                 {1, 0, 0, 0, 0,},
                 {0, 0, 0, 0, 0,},
@@ -163,18 +174,43 @@ void test_modelviews_multiple() {
             },
             .dir = DIR_LEFT,
         },
-    }, 1);
+    },
+    });
 
-    test_modelview_arr((struct TestInput[]){
+    test_modelview_arr((struct TestInput){
+        .field_setup = {
+            {0, 2, 0, 0, 0,},
+            {0, 2, 0, 0, 0,},
+            {0, 0, 0, 0, 0,},
+            {0, 2, 0, 0, 0,},
+            {0, 2, 0, 0, 0,},
+        },
+        .steps = (struct Step[]) {
         {
-            .field_setup = {
-                {0, 2, 0, 0, 0,},
-                {0, 2, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
-                {0, 2, 0, 0, 0,},
-                {0, 2, 0, 0, 0,},
+            .field = {
+            {0, 0, 0, 0, 0,},
+            {0, 0, 0, 0, 0,},
+            {0, 0, 0, 0, 0,},
+            {0, 0, 0, 0, 0,},
+            {0, 8, 0, 0, 0,},
             },
-            .field_check = {
+            .dir = DIR_DOWN,
+        },
+        },
+        .steps_num = 1,
+    });
+
+    test_modelview_arr((struct TestInput){
+        .field_setup = {
+            {0, 2, 0, 0, 0,},
+            {0, 2, 0, 0, 0,},
+            {0, 0, 0, 0, 0,},
+            {0, 2, 0, 0, 0,},
+            {0, 2, 0, 0, 0,},
+        },
+        .steps = (struct Step[]) {
+        {
+            .field = {
                 {0, 0, 0, 0, 0,},
                 {0, 0, 0, 0, 0,},
                 {0, 0, 0, 0, 0,},
@@ -182,65 +218,11 @@ void test_modelviews_multiple() {
                 {0, 8, 0, 0, 0,},
             },
             .dir = DIR_DOWN,
+        }
         },
-    }, 1);
+        .steps_num = 1,
+    });
 
-    test_modelview_arr((struct TestInput[]){
-        {
-            .field_setup = {
-                {0, 2, 0, 0, 0,},
-                {0, 2, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
-                {0, 2, 0, 0, 0,},
-                {0, 2, 0, 0, 0,},
-            },
-            .field_check = {
-                {0, 0, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
-                {0, 8, 0, 0, 0,},
-            },
-            .dir = DIR_DOWN,
-        },
-    }, 1);
-
-    /*
-    test_modelview_arr((struct TestInput[]){
-        {
-            .field_setup = {
-                {0, 2, 0, 0, 0,},
-                {0, 2, 0, 0, 0,},
-                {0, 0, 0, 0, 0,},
-                {0, 2, 0, 0, 0,},
-                {0, 2, 0, 0, 0,},
-            },
-        },
-        .steps = {
-            {
-                .field_check = {
-                    {0, 0, 0, 0, 0,},
-                    {0, 0, 0, 0, 0,},
-                    {0, 0, 0, 0, 0,},
-                    {0, 0, 0, 0, 0,},
-                    {0, 8, 0, 0, 0,},
-                },
-                .dir = DIR_DOWN,
-            },
-            {
-                .field_check = {
-                    {0, 0, 0, 0, 0,},
-                    {0, 0, 0, 0, 0,},
-                    {0, 0, 0, 0, 0,},
-                    {0, 0, 0, 0, 0,},
-                    {0, 8, 0, 0, 0,},
-                },
-                .dir = DIR_DOWN,
-            },
-        },
-
-    }, 1);
-    */
 }
 
 void test_modelviews_one() {
