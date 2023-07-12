@@ -398,7 +398,33 @@ static void modelview_put_bonus(
         .on_stop = tmr_cell_draw_stop,
         .udata = &td,
     });
+
+    /*
+    timerman_add(mv->timers_effects, (struct TimerDef) {
+        .duration = 0.5,
+        .sz = sizeof(struct TimerData),
+        .on_update = tmr_bonus_border_color_update,
+        .udata = &td,
+    });
+    */
+
 }
+
+/*
+static bool tmr_bonus_border_color_update(struct Timer *t) {
+    assert(t);
+    struct TimerData *td = t->data;
+    assert(td);
+    assert(td->mv);
+    assert(td->mv->r);
+    assert(td->cell != de_null);
+    struct Bonus *bonus = de_try_get(td->mv->r, td->cell, cmp_bonus);
+    assert(bonus);
+    bonus->border_color.a = 
+    return false;
+}
+*/
+
 
 void modelview_put(struct ModelView *mv) {
     assert(mv);
@@ -815,7 +841,7 @@ static void cell_draw(
 
     color = calc_alpha(mv, cell_en, color, opts);
 
-    const int thick = 8;
+    const float thick = 8.;
 
     Vector2 text_bound;
     if (!bonus) {
@@ -884,19 +910,23 @@ static void cell_draw(
         Vector2 _disp = Vector2Add(Vector2Scale(base_pos, mv->quad_width), _offset);
         Vector2 _pos = Vector2Add(mv->pos, _disp);
 
+        //float cur_thick = (-1. + sin(GetTime())) * 1.5 + 0.5;
+        const float cur_thick = thick;
         Rectangle rect = {
-            .x = _pos.x + thick * 0.,
-            .y = _pos.y + thick * 0.,
-            .width = mv->quad_width - thick * 6.,
-            .height = mv->quad_width - thick * 6.,
+            .x = _pos.x + cur_thick * 0.,
+            .y = _pos.y + cur_thick * 0.,
+            .width = mv->quad_width - cur_thick * 6.,
+            .height = mv->quad_width - cur_thick * 6.,
         };
 
         //const float roundness = 0.5;
         //const int segments = 10;
         //Color color = BLACK;
         //DrawRectangleRoundedLines(rect, roundness, segments, thick, color);
-        
-        DrawRectangleLinesEx(rect, thick, BLUE);
+       
+        Color border_color = BLUE;
+        border_color.a = 128. + (0. + sin(GetTime())) * 128.;
+        DrawRectangleLinesEx(rect, thick, border_color);
     }
 
     //DrawText("PRIVET", 100, 100, 200, BLUE);
@@ -1068,7 +1098,7 @@ static void options_window(struct ModelView *mv) {
 
     igSliderInt("field size", &field_size, 3, 20, "%d", 0);
 
-    static bool use_bonus = false;
+    static bool use_bonus = true;
     igCheckbox("use bonuses", &use_bonus);
 
     static bool theme_light = true;

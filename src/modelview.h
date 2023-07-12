@@ -41,6 +41,7 @@ enum BonusType {
 
 struct Bonus {
     enum BonusType  type;
+    Color           border_color;
 };
 
 struct Effect {
