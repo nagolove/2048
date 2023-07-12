@@ -1,3 +1,4 @@
+#include "timers.h"
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 
 #include "timers.h"
@@ -218,7 +219,7 @@ static void update() {
 
     undosys_push(undo_system, (struct UndoState) {
         .r = main_view.r,
-        .tm = (struct TimerMan[]){
+        .timers = (struct TimerMan*[]) {
             main_view.timers_slides,
             main_view.timers_effects,
         },
@@ -227,7 +228,8 @@ static void update() {
         .sz = sizeof(main_view),
     });
 
-    timerman_pause(main_view.timers, is_paused);
+    timerman_pause(main_view.timers_slides, is_paused);
+    timerman_pause(main_view.timers_effects, is_paused);
 
     if (IsKeyPressed(KEY_R)) {
         modelview_shutdown(&main_view);
@@ -268,7 +270,8 @@ static void update() {
         assert(sizeof(main_view) == st->sz);
         memcpy(&main_view, st->udata, sizeof(main_view));
         main_view.r = st->r;
-        main_view.timers = st->tm;
+        main_view.timers_slides = st->timers[0];
+        main_view.timers_effects = st->timers[1];
     }
 
     EndMode2D();

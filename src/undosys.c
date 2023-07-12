@@ -30,11 +30,13 @@ void undosys_free(UndoSys *us) {
             de_ecs_destroy(us->states[j].r);
             us->states[j].r = NULL;
         }
-
         if (us->states[j].timers) {
-            for (int i = 0; i < us->states[i].timers_num; ++i) {
-                timerman_free(us->states[j].timers[i]);
-                us->states[j].timers[i] = NULL;
+            assert(us->states[j].timers_num >= 0);
+            for (int i = 0; i < us->states[j].timers_num; ++i) {
+                if (us->states[j].timers && us->states[j].timers[i]) {
+                    timerman_free(us->states[j].timers[i]);
+                    us->states[j].timers = NULL;
+                }
             }
         }
 
