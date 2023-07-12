@@ -1,3 +1,4 @@
+#include "timers.h"
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 
 #include "cimgui.h"
@@ -217,7 +218,11 @@ static void update() {
 
     undosys_push(undo_system, (struct UndoState) {
         .r = main_view.r,
-        .tm = main_view.timers,
+        .timers = (struct TimerMan*[]) {
+            main_view.timers_slides,
+            main_view.timers_effects,
+        },
+        .timers_num = 2,
         .udata = &main_view,
         .sz = sizeof(main_view),
     });

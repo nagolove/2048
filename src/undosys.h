@@ -8,7 +8,8 @@ typedef struct UndoSys UndoSys;
 
 struct UndoState {
     de_ecs      *r;
-    TimerMan    *tm;
+    TimerMan    **timers;
+    int         timers_num;
     void        *udata;
     size_t      sz;
 };
