@@ -1,5 +1,6 @@
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 
+#include "timers.h"
 #include "cimgui.h"
 #include "cimgui_impl.h"
 #include "koh_console.h"
@@ -217,7 +218,11 @@ static void update() {
 
     undosys_push(undo_system, (struct UndoState) {
         .r = main_view.r,
-        .tm = main_view.timers,
+        .tm = (struct TimerMan[]){
+            main_view.timers_slides,
+            main_view.timers_effects,
+        },
+        .timers_num = 2,
         .udata = &main_view,
         .sz = sizeof(main_view),
     });
@@ -235,7 +240,6 @@ static void update() {
 
     BeginDrawing();
     BeginMode2D(camera);
-    ClearBackground(RAYWHITE);
 
     if (main_view.state != MVS_GAMEOVER)
         input();
@@ -274,6 +278,9 @@ static void update() {
 
 
 int main(void) {
+
+    main_view_setup.color_theme = color_theme_light,
+
     camera.zoom = 1.0f;
     srand(time(NULL));
     InitWindow(screen_width, screen_height, "2048");

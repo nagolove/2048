@@ -58,6 +58,10 @@ enum ModelViewState {
 
 typedef struct ModelView ModelView;
 
+struct ColorTheme {
+    Color   background, foreground;
+};
+
 /*
     Отображение поля. Все, что связано с анимацией.
  */
@@ -76,8 +80,8 @@ struct ModelView {
     int                 quad_width;
     Font                font;
 
-    // Таймеры для анимации плиток
-    struct TimerMan     *timers;
+    struct TimerMan     *timers_slides,     // Таймеры анимации плиток
+                        *timers_effects;    // Таймеры эффектов
 
     struct Cell         *sorted;
     int                 sorted_num;
@@ -87,15 +91,19 @@ struct ModelView {
     bool                dropped;    //Флаг деинициализации структуры
     bool                use_bonus;
     float               font_spacing;
+    struct ColorTheme   color_theme;
 };
 
+extern const struct ColorTheme color_theme_dark, color_theme_light;
+
 struct Setup {
-    Vector2     *pos;
-    Camera2D    *cam;
-    int         field_size;
-    float       tmr_put_time, tmr_block_time;
-    bool        use_gui, auto_put;
-    bool        use_bonus;
+    Vector2             *pos;
+    Camera2D            *cam;
+    int                 field_size;
+    float               tmr_put_time, tmr_block_time;
+    bool                use_gui, auto_put;
+    bool                use_bonus;
+    struct ColorTheme   color_theme;
 };
 
 void modelview_init(struct ModelView *mv, struct Setup setup);

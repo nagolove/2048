@@ -42,6 +42,15 @@ struct TimerData {
     de_entity           cell;
 };
 
+const struct ColorTheme color_theme_dark = {
+                            .background = BLACK,
+                            .foreground = RAYWHITE,
+                        },
+                        color_theme_light = {
+                            .background = RAYWHITE,
+                            .foreground = BLACK,
+                        };
+
 struct DrawOpts {
     int                 fontsize;
     Vector2             caption_offset_coef; // 1. is default value
@@ -55,7 +64,7 @@ static const struct DrawOpts dflt_draw_opts = {
     .fontsize            = 500,
     .custom_color        = false,
     .amount              = 0.,
-    .color               = BLACK,
+    /*.color               = BLACK,*/
 };
 
 static const de_cp_type cmp_cell = {
@@ -334,7 +343,7 @@ static void modelview_put_cell(struct ModelView *mv, int x, int y) {
         .mv = mv,
         .cell = cell_en,
     };
-    timerman_add(mv->timers, (struct TimerDef) {
+    timerman_add(mv->timers_slides, (struct TimerDef) {
         .duration = mv->tmr_put_time,
         .sz = sizeof(struct TimerData),
         .on_update = tmr_cell_draw,
@@ -382,7 +391,7 @@ static void modelview_put_bonus(
         .mv = mv,
         .cell = cell_en,
     };
-    timerman_add(mv->timers, (struct TimerDef) {
+    timerman_add(mv->timers_slides, (struct TimerDef) {
         .duration = mv->tmr_put_time,
         .sz = sizeof(struct TimerData),
         .on_update = tmr_cell_draw,
@@ -488,7 +497,7 @@ static bool move(
     *touched = true;
     trace("try_move: move_call_counter %d\n", move_call_counter);
 
-    timerman_add(mv->timers, (struct TimerDef) {
+    timerman_add(mv->timers_slides, (struct TimerDef) {
         .duration = mv->tmr_block_time,
         .sz = sizeof(struct TimerData),
         .on_update = tmr_cell_draw,
@@ -549,7 +558,7 @@ static bool sum(
     // cell_en уничтожается
     cell->dropped = true;
     ef->anim_alpha = AM_BACKWARD;
-    timerman_add(mv->timers, (struct TimerDef) {
+    timerman_add(mv->timers_slides, (struct TimerDef) {
         .duration = mv->tmr_block_time,
         .on_stop = tmr_cell_draw_stop,
         .on_update = tmr_cell_draw,
@@ -562,7 +571,7 @@ static bool sum(
 
     // neighbour_en увеличивается 
     neighbour_ef->anim_size = true;
-    timerman_add(mv->timers, (struct TimerDef) {
+    timerman_add(mv->timers_slides, (struct TimerDef) {
         .duration = mv->tmr_block_time,
         //.on_stop = tmr_cell_draw_stop_drop,
         .on_stop = tmr_cell_draw_stop,
@@ -607,7 +616,7 @@ static bool do_action(struct ModelView *mv, Action action) {
 
     trace(
         "move: timerman_num %d, move_call_counter %d\n",
-        timerman_num(mv->timers, NULL),
+        timerman_num(mv->timers_slides, NULL),
         move_call_counter++
     );
 
@@ -652,6 +661,9 @@ static void sort_numbers(struct ModelView *mv) {
 }
 
 static void draw_field(struct ModelView *mv) {
+    assert(mv);
+    ClearBackground(mv->color_theme.background);
+
     const int field_width = mv->field_size * mv->quad_width;
     Vector2 start = mv->pos;
     const float thick = 8.;
@@ -660,7 +672,7 @@ static void draw_field(struct ModelView *mv) {
     for (int u = 0; u <= mv->field_size; u++) {
         Vector2 end = tmp;
         end.y += field_width;
-        DrawLineEx(tmp, end, thick, BLACK);
+        DrawLineEx(tmp, end, thick, mv->color_theme.foreground);
         tmp.x += mv->quad_width;
     }
 
@@ -668,7 +680,7 @@ static void draw_field(struct ModelView *mv) {
     for (int u = 0; u <= mv->field_size; u++) {
         Vector2 end = tmp;
         end.x += field_width;
-        DrawLineEx(tmp, end, thick, BLACK);
+        DrawLineEx(tmp, end, thick, mv->color_theme.foreground);
         tmp.y += mv->quad_width;
     }
 }
@@ -862,38 +874,6 @@ static void cell_draw(
     Vector2 pos = Vector2Add(mv->pos, disp);
 
     colored_text_print(texts, texts_num, pos, &mv->font, fontsize);
-    //DrawTextEx(mv->font, msg, pos, fontsize, 0, color);
-
-    if (bonus) {
-        /*
-        Vector2 _offset = {
-            opts.caption_offset_coef.x * (mv->quad_width - text_bound.x) / 2.,
-            opts.caption_offset_coef.y * (mv->quad_width - text_bound.y) / 2.,
-        };
-        */
-
-        /*Vector2 _disp = Vector2Add(Vector2Scale(base_pos, mv->quad_width), _offset);*/
-        /*Vector2 _pos = Vector2Add(mv->pos, _disp);*/
-
-        /*
-        Rectangle rect = {
-            .x = _pos.x + thick * 0.,
-            .y = _pos.y + thick * 0.,
-            .width = mv->quad_width - thick * 6.,
-            .height = mv->quad_width - thick * 6.,
-        };
-        */
-
-        //const float roundness = 0.5;
-    }
-
-    /*
-    print_colored(
-        pos, &mv->font, fontsize, text_cell,
-        sizeof(text_cell) / sizeof(text_cell[0])
-    );
-    */
-
     //DrawTextEx(mv->font, msg, pos, fontsize, 0, color);
 
     if (bonus) {
@@ -1091,6 +1071,13 @@ static void options_window(struct ModelView *mv) {
     static bool use_bonus = false;
     igCheckbox("use bonuses", &use_bonus);
 
+    static bool theme_light = true;
+    if (igRadioButton_Bool("color theme: light", theme_light)) {
+        theme_light = true;
+    } else if (igRadioButton_Bool("color theme: dark", !theme_light)) {
+        theme_light = false;
+    }
+
     if (igButton("restart", (ImVec2) {0, 0})) {
         modelview_shutdown(mv);
         struct Setup setup = {
@@ -1102,10 +1089,12 @@ static void options_window(struct ModelView *mv) {
             .pos = &mv->pos,
             .use_gui = mv->use_gui,
             .use_bonus = use_bonus,
+            .color_theme = theme_light ? color_theme_light : color_theme_dark,
         };
         modelview_init(mv, setup);
         modelview_put(mv);
     }
+
     igEnd();
 }
 
@@ -1116,7 +1105,12 @@ static void gui(struct ModelView *mv) {
     removed_entities_window();
     //paths_window();
     entities_window(mv);
-    timerman_window(mv->timers);
+
+    timerman_window((struct TimerMan* []) { 
+            mv->timers_slides,
+            mv->timers_effects,
+    }, 2);
+
     options_window(mv);
     //ecs_window(mv);
     bool open = false;
@@ -1156,15 +1150,12 @@ static void destroy_dropped(struct ModelView *mv) {
 bool modelview_draw(struct ModelView *mv) {
     assert(mv);
 
-#if !defined(PLATFORM_WEB)
-    if (mv->use_gui) 
-        gui(mv);
-#endif
     bool dir_none = false;
 
     modeltest_update(&model_checker, mv->dir);
 
-    int timersnum = timerman_update(mv->timers);
+    timerman_update(mv->timers_effects);
+    int timersnum = timerman_update(mv->timers_slides);
     mv->state = timersnum ? MVS_ANIMATION : MVS_READY;
 
     //destroy_dropped(mv);
@@ -1212,9 +1203,14 @@ bool modelview_draw(struct ModelView *mv) {
         mv->state = MVS_WIN;
     }
 
+    draw_field(mv);
     sort_numbers(mv);
     draw_numbers(mv);
-    draw_field(mv);
+
+#if !defined(PLATFORM_WEB)
+    if (mv->use_gui) 
+        gui(mv);
+#endif
 
     return dir_none;
 }
@@ -1237,7 +1233,14 @@ void modelview_init(struct ModelView *mv, const struct Setup setup) {
         };
     } else 
         mv->pos = *setup.pos;
-    mv->timers = timerman_new(mv->field_size * mv->field_size * 2);
+
+    mv->timers_slides = timerman_new(
+        mv->field_size * mv->field_size * 2, "slides"
+    );
+    mv->timers_effects = timerman_new(
+        mv->field_size * mv->field_size * 2, "effect"
+    );
+
     mv->state = MVS_READY;
     mv->dropped = false;
     mv->r = de_ecs_make();
@@ -1246,6 +1249,7 @@ void modelview_init(struct ModelView *mv, const struct Setup setup) {
     mv->auto_put = setup.auto_put;
     mv->use_bonus = setup.use_bonus;
     mv->font_spacing = 2.;
+    mv->color_theme = setup.color_theme;
 
     // XXX: Утечка из-за глобальной переменной?
     //ecs_circ_buf_init(&ecs_buf, 2048);
@@ -1266,18 +1270,26 @@ void modelview_init(struct ModelView *mv, const struct Setup setup) {
     );
     mv->sorted = calloc(cells_num, sizeof(mv->sorted[0]));
 
-    global_cells_num = 0;
 
+    global_cells_num = 0;
 }
 
 void modelview_shutdown(struct ModelView *mv) {
     assert(mv);
     //memset(mv, 0, sizeof(*mv));
     if (!mv->dropped) {
-        if (mv->timers) {
-            timerman_free(mv->timers);
-            mv->timers = NULL;
+
+        if (mv->timers_effects) {
+            timerman_free(mv->timers_effects);
+            mv->timers_effects = NULL;
         }
+
+        if (mv->timers_slides) {
+            timerman_free(mv->timers_slides);
+            mv->timers_slides = NULL;
+        }
+
+
         if (mv->r) {
             de_ecs_destroy(mv->r);
             mv->r = NULL;

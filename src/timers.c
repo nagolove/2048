@@ -1,5 +1,6 @@
 #include "timers.h"
 #include <stddef.h>
+#include <stdint.h>
 #include <unistd.h>
 
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
@@ -16,15 +17,17 @@ struct TimerMan {
     int                 timers_cap, timers_size;
     bool                paused;
     double              pause_time; // время начала паузы
+    char                name[128];
 };
 
-struct TimerMan *timerman_new(int cap) {
+struct TimerMan *timerman_new(int cap, const char *name) {
     struct TimerMan *tm = calloc(1, sizeof(*tm));
     assert(tm);
     assert(cap > 0);
     assert(cap < 2048 && "too many timers, 2048 is ceil");
     tm->timers = calloc(cap, sizeof(tm->timers[0]));
     tm->timers_cap = cap;
+    strncpy(tm->name, name, sizeof(tm->name));
     return tm;
 }
 
@@ -141,11 +144,7 @@ void timerman_pause(struct TimerMan *tm, bool is_paused) {
     }
 }
 
-void timerman_window(struct TimerMan *tm) {
-    bool open = true;
-    ImGuiWindowFlags flags = 0;
-    igBegin("timers", &open, flags);
-
+static void table_draw(struct TimerMan *tm) {
     ImGuiTableFlags table_flags = 
         ImGuiTableFlags_ScrollY |
         ImGuiTableFlags_ScrollX |
@@ -218,6 +217,27 @@ void timerman_window(struct TimerMan *tm) {
 
         igEndTable();
     }
+}
+
+void timerman_window(struct TimerMan **tm, int tm_num) {
+    assert(tm);
+    assert(tm_num >= 0);
+
+    bool open = true;
+    ImGuiWindowFlags flags = 0;
+    igBegin("timers", &open, flags);
+
+    int node_idx = 0;
+    igSetNextItemOpen(true, ImGuiCond_Once);
+
+    for (int i = 0; i < tm_num; ++i) {
+        if (!tm[i]) continue;
+
+        if (igTreeNode_Ptr((void*)(uintptr_t)node_idx, "%s", tm[i]->name)) {
+            table_draw(tm[i]);
+        }
+    }
+
     igEnd();
 }
 

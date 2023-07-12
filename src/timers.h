@@ -37,14 +37,14 @@ enum TimerManAction {
     TMA_REMOVE_BREAK,
 };
 
-struct TimerMan *timerman_new(int cap);
+struct TimerMan *timerman_new(int cap, const char *name);
 void timerman_free(struct TimerMan *tm);
 
 bool timerman_add(struct TimerMan *tm, struct TimerDef td);
 int timerman_update(struct TimerMan *tm);
 struct TimerMan *timerman_clone(struct TimerMan *tm);
 void timerman_pause(struct TimerMan *tm, bool is_paused);
-void timerman_window(struct TimerMan *tm);
+void timerman_window(struct TimerMan **tm, int tm_num);
 void timerman_clear(struct TimerMan *tm);
 // Возвращает количество всех(конечных и бесконечных) таймеров. 
 // infinite_num возвращает количество бесконечных таймеров
