@@ -275,6 +275,9 @@ static void update() {
     }
 
     EndMode2D();
+
+    modelview_draw_gui(&main_view);
+
     EndDrawing();
 }
 
@@ -302,8 +305,8 @@ int main(void) {
     logger_register_functions();
     sc_init_script();
 
-    /*test_modelviews_one();*/
-    //test_modelviews_multiple();
+    //test_modelviews_one();
+    test_modelviews_multiple();
 
     modelview_init(&main_view, main_view_setup);
     modelview_put(&main_view);
