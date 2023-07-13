@@ -819,8 +819,8 @@ static void cell_draw(
     if (!cell)
         return;
 
-    // TODO: падает при проверке наличия компоненты в сущности если ни одной
-    // сущности такого типа не создано
+    // TODO: падает при проверке наличия компоненты в сущности(если ни одной
+    // сущности такого типа не создано?)
     struct Bonus *bonus = de_try_get(mv->r, cell_en, cmp_bonus);
 
     char msg[64] = {0};
@@ -833,7 +833,15 @@ static void cell_draw(
         abort();
     }
 
-    assert(opts.amount >= 0 && opts.amount <= 1.);
+    if (opts.amount <= 0.) {
+        trace("cell_draw: \033[1;31m!\033[0m opts.amount %f\n", opts.amount);
+        opts.amount = 0.;
+    }
+
+    if (opts.amount >= 1.) {
+        trace("cell_draw: \033[1;31m!\033[0m opts.amount %f\n", opts.amount);
+        opts.amount = 1.;
+    }
 
     Vector2 base_pos = calc_base_pos(mv, cell_en, opts);
     int fontsize = calc_font_size_anim(mv, cell_en, opts);
@@ -861,11 +869,15 @@ static void cell_draw(
             .color = color,
         },
     };
+
+    Color multiplier_color = mv->color_theme.foreground;
+    multiplier_color. a = color.a;
+
     struct ColoredText text_double_bonus[] =  {
         { 
             .text = "x",
             .scale = 0.5,
-            .color = (Color) { 0, 0, 0, color.a },
+            .color = multiplier_color,
         },
         { 
             .text = "2",
@@ -1129,7 +1141,12 @@ static void options_window(struct ModelView *mv) {
 }
 
 static void gui(struct ModelView *mv) {
-    rlImGuiBegin(false, mv->camera);
+    //rlImGuiBegin(false, mv->camera);
+    rlImGuiBegin(false, NULL);
+
+    //if (mv->camera)
+        //trace("gui: %s\n", camera2str(*mv->camera));
+
     //rlImGuiBegin(false, NULL);
     movements_window();
     removed_entities_window();
@@ -1236,11 +1253,6 @@ bool modelview_draw(struct ModelView *mv) {
     draw_field(mv);
     sort_numbers(mv);
     draw_numbers(mv);
-
-#if !defined(PLATFORM_WEB)
-    if (mv->use_gui) 
-        gui(mv);
-#endif
 
     return dir_none;
 }
@@ -1352,3 +1364,13 @@ void modelview_put_cell(struct ModelView *mv, struct Cell cell) {
     new_cell->value = cell.value;
 }
 */
+
+void modelview_draw_gui(struct ModelView *mv) {
+    assert(mv);
+
+#if !defined(PLATFORM_WEB)
+    if (mv->use_gui) 
+        gui(mv);
+#endif
+
+}

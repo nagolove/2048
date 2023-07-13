@@ -114,6 +114,7 @@ void modelview_put(struct ModelView *mv);
 void modelview_shutdown(struct ModelView *mv);
 void modelview_save_state2file(struct ModelView *mv);
 bool modelview_draw(struct ModelView *mv);
+void modelview_draw_gui(struct ModelView *mv);
 void modelview_input(struct ModelView *mv, enum Direction dir);
 struct Cell *modelview_get_cell(
     struct ModelView *mv, int x, int y, de_entity *en
