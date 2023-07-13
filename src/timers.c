@@ -228,11 +228,12 @@ void timerman_window(struct TimerMan **tm, int tm_num) {
     igBegin("timers", &open, flags);
 
     int node_idx = 1;
-    igSetNextItemOpen(true, ImGuiCond_Once);
+    //igSetNextItemOpen(true, ImGuiCond_FirstUseEver);
 
     for (int i = 0; i < tm_num; ++i) {
         if (!tm[i]) continue;
 
+        igSetNextItemOpen(true, ImGuiCond_Once);
         if (igTreeNode_Ptr((void*)(uintptr_t)node_idx++, "%s", tm[i]->name)) {
             table_draw(tm[i]);
             igTreePop();
