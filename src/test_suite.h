@@ -3,17 +3,20 @@
 #include "modelview.h"
 
 struct Step {
-    int             field[5][5];
+    struct Cell     *new_cell;
     enum Direction  dir;
+    int             field[5][5];
 };
 
 struct TestInput {
     int         field_setup[5][5];
+    /*
+    int         **field_setup;
+    */
     struct Step *steps;
     int         steps_num;
 };
 
 void test_modelviews_multiple();
 void setup_field(struct ModelView *mv, const int values[5][5]);
-void check_field(struct ModelView *mv, const int values[5][5]);
-void test_modelviews_one();
+bool check_field(struct ModelView *mv, const int values[5][5]);
