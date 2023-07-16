@@ -41,6 +41,7 @@ void undosys_free(UndoSys *us) {
         }
 
     }
+    free(us->states);
     free(us);
 }
 
