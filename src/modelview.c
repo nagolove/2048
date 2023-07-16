@@ -1319,24 +1319,26 @@ void modelview_init(struct ModelView *mv, const struct Setup setup) {
 void modelview_shutdown(struct ModelView *mv) {
     assert(mv);
     //memset(mv, 0, sizeof(*mv));
-    if (!mv->dropped) {
+    if (mv->dropped)
+        return;
 
-        if (mv->timers_effects) {
-            timerman_free(mv->timers_effects);
-            mv->timers_effects = NULL;
-        }
-
-        if (mv->timers_slides) {
-            timerman_free(mv->timers_slides);
-            mv->timers_slides = NULL;
-        }
-
-
-        if (mv->r) {
-            de_ecs_destroy(mv->r);
-            mv->r = NULL;
-        }
+    if (mv->timers_effects) {
+        timerman_free(mv->timers_effects);
+        mv->timers_effects = NULL;
     }
+
+    if (mv->timers_slides) {
+        timerman_free(mv->timers_slides);
+        mv->timers_slides = NULL;
+    }
+
+    UnloadFont(mv->font);
+
+    if (mv->r) {
+        de_ecs_destroy(mv->r);
+        mv->r = NULL;
+    }
+
     if (mv->sorted) {
         free(mv->sorted);
         mv->sorted = NULL;
