@@ -17,6 +17,12 @@ struct TestInput {
     int         steps_num;
 };
 
+struct TestCtx {
+    int test_suite_index, test_index;
+};
+
 void test_modelviews_multiple();
 void setup_field(struct ModelView *mv, const int values[5][5]);
-bool check_field(struct ModelView *mv, const int values[5][5]);
+bool check_field(
+    struct ModelView *mv, const int values[5][5], struct TestCtx *ctx
+);

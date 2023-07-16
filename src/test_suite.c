@@ -1,3 +1,6 @@
+// vim: set colorcolumn=85
+// vim: fdm=marker
+
 #include "test_suite.h"
 #include "modelview.h"
 #include "raylib.h"
@@ -78,7 +81,8 @@ void print_field5(const int values[5][5]) {
 }
 
 static bool check_cell(
-    struct ModelView *mv, int x, int y, const int reference[5][5]
+    struct ModelView *mv, int x, int y, const int reference[5][5],
+    struct TestCtx *ctx
 ) {
     if (!reference[y][x])
         return true;
@@ -86,14 +90,21 @@ static bool check_cell(
     const struct Cell *cell = modelview_get_cell(mv, x, y, NULL);
 
     if (!cell) {
-        printf("\033[1;31mcheck_field: cell == NULL\n\033[0m");
+        if (ctx) 
+            printf(
+                    "\033[1;31mcheck_field: suite %d, test %d"
+                    ", cell == NULL\n\033[0m",
+                    ctx->test_suite_index, ctx->test_index
+            );
+        else 
+            printf("\033[1;31mcheck_field: cell == NULL\n\033[0m");
         printf(
             "check_field: reference[%d][%d] %d\n",
             y, x, reference[y][x]
         );
         print_field(mv);
         print_field5(reference);
-        abort();
+        /*abort();*/
         return false;
     }
 
@@ -110,10 +121,12 @@ static bool check_cell(
     return true;
 }
 
-bool check_field(struct ModelView *mv, const int reference[5][5]) {
+bool check_field(
+    struct ModelView *mv, const int reference[5][5], struct TestCtx *ctx
+) {
     for (int y = 0; y < 5; ++y) {
         for (int x = 0; x < 5; ++x) {
-            if (!check_cell(mv, x, y, reference))
+            if (!check_cell(mv, x, y, reference, ctx))
                 return false;
         }
     }
@@ -154,7 +167,12 @@ static void test_modelview_arr(struct TestInput input) {
         }
         EndDrawing();
 
-        if (!check_field(&mv, input.steps[i].field)) {
+        struct TestCtx ctx = {
+            .test_index = i,
+            .test_suite_index = test_index,
+        };
+
+        if (!check_field(&mv, input.steps[i].field, &ctx)) {
             printf("\033[1;31mcheck_field: step %d failed \n\033[0m", i);
             goto _exit;
         }
@@ -171,7 +189,9 @@ _exit:
 
 void test_modelviews_multiple() {
 
+    // test 0
     test_modelview_arr((struct TestInput) {
+        .name = "empty field",
         .field_setup = {
             {0, 0, 0, 0, 0,},
             {0, 0, 0, 0, 0,},
@@ -196,7 +216,9 @@ void test_modelviews_multiple() {
         .steps_num = 1,
     });
 
+    // test 1
     test_modelview_arr((struct TestInput){
+        .name = 
         .field_setup = {
             {1, 0, 0, 0, 4,},
             {0, 0, 0, 0, 0,},
@@ -220,6 +242,7 @@ void test_modelviews_multiple() {
         .steps_num = 1,
     });
 
+    // test 2
     test_modelview_arr((struct TestInput){
         .field_setup = {
             {0, 1, 0, 0, 0,},
@@ -243,6 +266,7 @@ void test_modelviews_multiple() {
         .steps_num = 1,
     });
 
+    // test 3
     test_modelview_arr((struct TestInput){
         .field_setup = {
             {0, 1, 0, 0, 0,},
@@ -301,6 +325,7 @@ void test_modelviews_multiple() {
         }
     });
 
+    // test 4
     test_modelview_arr((struct TestInput){
         .field_setup = {
             {0, 1, 0, 0, 0,},
@@ -310,7 +335,8 @@ void test_modelviews_multiple() {
             {0, 1, 0, 0, 0,},
         },
 
-        /*
+        /* {{{
+        // Предполагаемый желательный порядок
 
         .field_setup = {
             {0, 0, 0, 0, 0,},
@@ -336,7 +362,7 @@ void test_modelviews_multiple() {
             {0, 4, 0, 0, 0,},
         },
 
-         */
+        }}} */
 
         .steps_num = 4,
         .steps = (struct Step[]) {
@@ -353,8 +379,7 @@ void test_modelviews_multiple() {
         }
     });
 
-
-    /*
+    // test 5
     test_modelview_arr((struct TestInput){
         .field_setup = {
             {0, 2, 0, 0, 0,},
@@ -364,20 +389,147 @@ void test_modelviews_multiple() {
             {0, 2, 0, 0, 0,},
         },
         .steps = (struct Step[]) {
-        {
-            .field = {
-            {0, 0, 0, 0, 0,},
-            {0, 0, 0, 0, 0,},
-            {0, 0, 0, 0, 0,},
-            {0, 0, 0, 0, 0,},
-            {0, 8, 0, 0, 0,},
+            {
+                .new_cell = &(struct Cell) {
+                    .value = 5,
+                    .x = 4,
+                    .y = 1,
+                },
+                .dir = DIR_DOWN,
+                .field = {
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {0, 8, 0, 0, 5,},
+                },
             },
-            .dir = DIR_DOWN,
+            {
+                .dir = DIR_DOWN,
+                .new_cell = &(struct Cell) {
+                    .value = 5,
+                    .x = 4,
+                    .y = 0,
+                },
+                .field = {
+                    {00, 00, 00, 00, 00,},
+                    {00, 00, 00, 00, 00,},
+                    {00, 00, 00, 00, 00,},
+                    {00, 00, 00, 00, 00,},
+                    {00,  8, 00, 00, 10,},
+                },
+            },
+            {
+                .dir = DIR_DOWN,
+                .new_cell = &(struct Cell) {
+                    .value = 5,
+                    .x = 3,
+                    .y = 0,
+                },
+                .field = {
+                    {00, 00, 00, 00, 00,},
+                    {00, 00, 00, 00, 00,},
+                    {00, 00, 00, 00, 00,},
+                    {00, 00, 00, 00, 00,},
+                    {00,  8, 00,  5, 10,},
+                },
+            },
+            {
+                .dir = DIR_RIGHT,
+                /*
+                .new_cell = &(struct Cell) {
+                    .value = 5,
+                    .x = 4,
+                    .y = 1,
+                },
+                */
+                .field = {
+                    {00, 00, 00, 00, 00,},
+                    {00, 00, 00, 00, 00,},
+                    {00, 00, 00, 00, 00,},
+                    {00, 00, 00, 00, 00,},
+                    {00, 00,  8,  5, 10,},
+                },
+            },
         },
-        },
-        .steps_num = 1,
+        .steps_num = 4,
     });
-    */
+
+    // test 6
+    test_modelview_arr((struct TestInput){
+        .field_setup = {
+            {0, 2, 0, 0, 0,},
+            {0, 2, 0, 0, 0,},
+            {0, 0, 0, 0, 0,},
+            {0, 2, 0, 0, 0,},
+            {0, 2, 0, 0, 0,},
+        },
+        .steps = (struct Step[]) {
+            {
+                .new_cell = &(struct Cell) {
+                    .value = 1,
+                    .x = 0,
+                    .y = 0,
+                },
+                .dir = DIR_DOWN,
+                .field = {
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {1, 8, 0, 0, 5,},
+                },
+            },
+            {
+                .dir = DIR_DOWN,
+                .new_cell = &(struct Cell) {
+                    .value = 1,
+                    .x = 0,
+                    .y = 0,
+                },
+                .field = {
+                    {00, 00, 00, 00, 00,},
+                    {00, 00, 00, 00, 00,},
+                    {00, 00, 00, 00, 00,},
+                    {00, 00, 00, 00, 00,},
+                    {02,  8, 00, 00, 10,},
+                },
+            },
+            {
+                .dir = DIR_DOWN,
+                .new_cell = &(struct Cell) {
+                    .value = 2,
+                    .x = 0,
+                    .y = 0,
+                },
+                .field = {
+                    {00, 00, 00, 00, 00,},
+                    {00, 00, 00, 00, 00,},
+                    {00, 00, 00, 00, 00,},
+                    {00, 00, 00, 00, 00,},
+                    {04,  8, 00,  5, 10,},
+                },
+            },
+            {
+                .dir = DIR_RIGHT,
+                /*
+                .new_cell = &(struct Cell) {
+                    .value = 5,
+                    .x = 4,
+                    .y = 1,
+                },
+                */
+                .field = {
+                    {00, 00, 00, 00, 00,},
+                    {00, 00, 00, 00, 00,},
+                    {00, 00, 00, 00, 00,},
+                    {00, 00, 00, 00, 00,},
+                    {00, 04,  8,  5, 10,},
+                },
+            },
+        },
+        .steps_num = 4,
+    });
 
     /*
     test_modelview_arr((struct TestInput){
