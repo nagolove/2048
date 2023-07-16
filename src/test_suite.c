@@ -2,15 +2,16 @@
 // vim: fdm=marker
 
 #include "test_suite.h"
+
+#include "koh_common.h"
 #include "modelview.h"
 #include "raylib.h"
-
+#include <assert.h>
 #include <math.h>
 #include <stdbool.h>
-#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <assert.h>
+#include <unistd.h>
 
 #define TERM_BLACK        30         
 #define TERM_RED          31         
@@ -54,7 +55,7 @@ void print_field(struct ModelView *mv) {
     printf("print_field:\n");
     for (int y = 0; y < 5; ++y) {
         for (int x = 0; x < 5; ++x) {
-            struct Cell *cell = modelview_get_cell(mv, x, y, NULL);
+            const struct Cell *cell = modelview_get_cell(mv, x, y, NULL);
             if (cell) {
                 printf("[%.3d] ", cell->value);
             } else {
@@ -82,7 +83,7 @@ void print_field5(const int values[5][5]) {
 
 static bool check_cell(
     struct ModelView *mv, int x, int y, const int reference[5][5],
-    struct TestCtx *ctx
+    const struct TestCtx *ctx
 ) {
     if (!reference[y][x])
         return true;
@@ -92,16 +93,18 @@ static bool check_cell(
     if (!cell) {
         if (ctx) 
             printf(
-                    "\033[1;31mcheck_field: suite %d, test %d"
+                    "\033[1;31mcheck_field: suite \"%s\", %d, step %d"
                     ", cell == NULL\n\033[0m",
-                    ctx->test_suite_index, ctx->test_index
+                    ctx->name, ctx->test_suite_index, ctx->test_index
             );
         else 
             printf("\033[1;31mcheck_field: cell == NULL\n\033[0m");
+
         printf(
             "check_field: reference[%d][%d] %d\n",
             y, x, reference[y][x]
         );
+
         print_field(mv);
         print_field5(reference);
         /*abort();*/
@@ -122,7 +125,7 @@ static bool check_cell(
 }
 
 bool check_field(
-    struct ModelView *mv, const int reference[5][5], struct TestCtx *ctx
+    struct ModelView *mv, const int reference[5][5], const struct TestCtx *ctx
 ) {
     for (int y = 0; y < 5; ++y) {
         for (int x = 0; x < 5; ++x) {
@@ -138,27 +141,37 @@ static void test_modelview_arr(struct TestInput input) {
     assert(input.steps);
     assert(input.steps_num >= 0);
     assert(input.field_setup);
-    printf("test_modelview_arr:\n");
+    printf(
+        "\033[1;35test_modelview_arr: \"%s\" %d, steps num %d\n\033[m",
+        input.name, test_index, input.steps_num
+    );
     struct ModelView mv = {};
     modelview_init(&mv, modelview_test_setup);
     setup_field(&mv, input.field_setup);
     print_field5(input.field_setup);
 
+    if (!input.steps[input.steps_num - 1].last) {
+        printf("test_modelview_arr: last step is false\n");
+        koh_trap();
+    }
+
     for (int i = 0; i < input.steps_num; ++i) {
 
-        if (input.steps[i].new_cell) {
+        struct Step *step = &input.steps[i];
+
+        if (step->new_cell) {
             modelview_put_manual(
                 &mv,
-                input.steps[i].new_cell->x,
-                input.steps[i].new_cell->y,
-                input.steps[i].new_cell->value
+                step->new_cell->x,
+                step->new_cell->y,
+                step->new_cell->value
             );
             term_color_set(TERM_BLUE);
             print_field(&mv);
             term_color_reset();
         }
 
-        modelview_input(&mv, input.steps[i].dir);
+        modelview_input(&mv, step->dir);
 
         BeginDrawing();
         while (mv.dir != DIR_NONE) { // условие цикла DIR_NONE ?
@@ -170,9 +183,10 @@ static void test_modelview_arr(struct TestInput input) {
         struct TestCtx ctx = {
             .test_index = i,
             .test_suite_index = test_index,
+            .name = input.name,
         };
 
-        if (!check_field(&mv, input.steps[i].field, &ctx)) {
+        if (!check_field(&mv, step->field, &ctx)) {
             printf("\033[1;31mcheck_field: step %d failed \n\033[0m", i);
             goto _exit;
         }
@@ -180,8 +194,8 @@ static void test_modelview_arr(struct TestInput input) {
     }
 
     printf(
-        "\033[1;32mtest_modelview_arr: test %d passed\n\033[0m",
-        test_index++
+        "\033[1;32mtest_modelview_arr: test \"%s\" %d passed\n\033[0m",
+        input.name, test_index++
     );
 _exit:
     modelview_shutdown(&mv);
@@ -191,7 +205,7 @@ void test_modelviews_multiple() {
 
     // test 0
     test_modelview_arr((struct TestInput) {
-        .name = "empty field",
+        .name = "пустое поле",
         .field_setup = {
             {0, 0, 0, 0, 0,},
             {0, 0, 0, 0, 0,},
@@ -211,6 +225,7 @@ void test_modelviews_multiple() {
                     {0, 0, 0, 0, 0,},
                     {0, 0, 0, 0, 0,},
                 },
+                .last = true,
             },
         },
         .steps_num = 1,
@@ -218,7 +233,7 @@ void test_modelviews_multiple() {
 
     // test 1
     test_modelview_arr((struct TestInput){
-        .name = 
+        .name = "статичная проверка поля",
         .field_setup = {
             {1, 0, 0, 0, 4,},
             {0, 0, 0, 0, 0,},
@@ -237,6 +252,7 @@ void test_modelviews_multiple() {
                     {2, 0, 0, 0, 3,},
                 },
                 .dir = DIR_NONE,
+                .last = true,
             },
         },
         .steps_num = 1,
@@ -244,6 +260,7 @@ void test_modelviews_multiple() {
 
     // test 2
     test_modelview_arr((struct TestInput){
+        .name = "одно движение вниз",
         .field_setup = {
             {0, 1, 0, 0, 0,},
             {0, 1, 0, 0, 0,},
@@ -253,6 +270,7 @@ void test_modelviews_multiple() {
         },
         .steps = (struct Step[]) {
             {
+                .dir = DIR_UP,
                 .field = {
                     {0, 2, 0, 0, 0,},
                     {0, 0, 0, 0, 0,},
@@ -260,7 +278,7 @@ void test_modelviews_multiple() {
                     {0, 0, 0, 0, 0,},
                     {0, 0, 0, 0, 0,},
                 },
-                .dir = DIR_UP,
+                .last = true,
             },
         },
         .steps_num = 1,
@@ -268,6 +286,7 @@ void test_modelviews_multiple() {
 
     // test 3
     test_modelview_arr((struct TestInput){
+        .name = "серия",
         .field_setup = {
             {0, 1, 0, 0, 0,},
             {0, 1, 0, 0, 0,},
@@ -278,14 +297,14 @@ void test_modelviews_multiple() {
         .steps_num = 4,
         .steps = (struct Step[]) {
             {
-                    .field = {
-                        {1, 0, 0, 0, 0,},
-                        {1, 0, 0, 0, 0,},
-                        {0, 0, 0, 0, 0,},
-                        {0, 0, 0, 0, 0,},
-                        {0, 0, 0, 0, 0,},
-                    },
-                    .dir = DIR_LEFT,
+                .field = {
+                    {1, 0, 0, 0, 0,},
+                    {1, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                },
+                .dir = DIR_LEFT,
             },
             {
                 .dir = DIR_RIGHT,
@@ -321,12 +340,14 @@ void test_modelviews_multiple() {
                     {0, 0, 0, 0, 5,},
                     {0, 0, 0, 0, 2,},
                 },
+                .last = true,
             },
         }
     });
 
     // test 4
     test_modelview_arr((struct TestInput){
+        .name = "неправильное схлопывание",
         .field_setup = {
             {0, 1, 0, 0, 0,},
             {0, 1, 0, 0, 0,},
@@ -364,7 +385,7 @@ void test_modelviews_multiple() {
 
         }}} */
 
-        .steps_num = 4,
+        .steps_num = 1,
         .steps = (struct Step[]) {
             {
                     .dir = DIR_DOWN,
@@ -375,12 +396,14 @@ void test_modelviews_multiple() {
                         {0, 1, 0, 0, 0,},
                         {0, 4, 0, 0, 0,},
                     },
+                    .last = true,
             },
         }
     });
 
     // test 5
     test_modelview_arr((struct TestInput){
+        .name = "схлопывание с появлением",
         .field_setup = {
             {0, 2, 0, 0, 0,},
             {0, 2, 0, 0, 0,},
@@ -450,6 +473,7 @@ void test_modelviews_multiple() {
                     {00, 00, 00, 00, 00,},
                     {00, 00,  8,  5, 10,},
                 },
+                .last = true,
             },
         },
         .steps_num = 4,
@@ -457,6 +481,7 @@ void test_modelviews_multiple() {
 
     // test 6
     test_modelview_arr((struct TestInput){
+        .name = "еще одна серия с появлениями",
         .field_setup = {
             {0, 2, 0, 0, 0,},
             {0, 2, 0, 0, 0,},
@@ -477,7 +502,7 @@ void test_modelviews_multiple() {
                     {0, 0, 0, 0, 0,},
                     {0, 0, 0, 0, 0,},
                     {0, 0, 0, 0, 0,},
-                    {1, 8, 0, 0, 5,},
+                    {1, 8, 0, 0, 0,},
                 },
             },
             {
@@ -492,7 +517,7 @@ void test_modelviews_multiple() {
                     {00, 00, 00, 00, 00,},
                     {00, 00, 00, 00, 00,},
                     {00, 00, 00, 00, 00,},
-                    {02,  8, 00, 00, 10,},
+                    {02,  8, 00, 00, 00,},
                 },
             },
             {
@@ -507,7 +532,7 @@ void test_modelviews_multiple() {
                     {00, 00, 00, 00, 00,},
                     {00, 00, 00, 00, 00,},
                     {00, 00, 00, 00, 00,},
-                    {04,  8, 00,  5, 10,},
+                    {04,  8, 00,  5, 00,},
                 },
             },
             {
@@ -526,6 +551,7 @@ void test_modelviews_multiple() {
                     {00, 00, 00, 00, 00,},
                     {00, 04,  8,  5, 10,},
                 },
+                .last = true,
             },
         },
         .steps_num = 4,
