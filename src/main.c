@@ -327,21 +327,21 @@ int main(void) {
     undo_system = undosys_new(2048);
 
     //view_test = printing_test();
+    const int target_fps = 90;
 #if defined(PLATFORM_WEB)
-    emscripten_set_main_loop_arg(update, NULL, 60, 1);
+    emscripten_set_main_loop_arg(update, NULL, target_fps, 1);
 #else
-    SetTargetFPS(60); 
+    SetTargetFPS(target_fps); 
     while (!WindowShouldClose()) {
         update();
     }
 #endif
 
-    CloseWindow();
-
     modelview_shutdown(&main_view);
 
-    // TODO: Падает тут 
     rlImGuiShutdown();
+
+    CloseWindow();
 
     undosys_free(undo_system);
 
