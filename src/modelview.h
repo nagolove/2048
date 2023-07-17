@@ -73,7 +73,7 @@ struct ModelView {
     int                 dx, dy, field_size;
     float               tmr_put_time,   // появление плитки в секундах
                         tmr_block_time; // движение плитки в секундах
-    enum Direction      dir;
+    enum Direction      dir, prev_dir;
     bool                has_sum, has_move;
     bool                use_gui,        // рисовать imgui
                         auto_put;       // класть новую плитку на след. ход

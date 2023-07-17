@@ -28,14 +28,18 @@
 #include <string.h>
 #include <time.h>
 
+// {{{ debug shit zone
 #define GLOBAL_CELLS_CAP    100000
 
 static struct Cell global_cells[GLOBAL_CELLS_CAP] = {0};
 static int global_cells_num = 0;
 static struct Cell cell_zero = {0};
+static int *last_state = NULL;
 
 //static struct ecs_circ_buf  ecs_buf = {0};
 static struct ModelTest     model_checker = {0};
+
+// }}} end of debug shit zone
 
 struct TimerData {
     struct ModelView    *mv;
@@ -173,6 +177,93 @@ void modelview_save_state2file(struct ModelView *mv) {
     fclose(file);
 }
 */
+
+static void state_fill(struct ModelView *mv, int *last_state) {
+    assert(last_state);
+
+    for (int j = 0; j < mv->field_size * mv->field_size; ++j) {
+        last_state[j] = 0;
+    }
+
+    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { cmp_cell });
+            de_view_valid(&v); de_view_next(&v)) {
+        assert(de_valid(mv->r, de_view_entity(&v)));
+        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+        assert(c);
+
+        last_state[mv->field_size * c->y + c->x] = c->value;
+    }
+}
+
+static bool state_compare_eq(struct ModelView *mv, int *last_state) {
+    assert(mv);
+    assert(last_state);
+
+    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { cmp_cell });
+            de_view_valid(&v); de_view_next(&v)) {
+        assert(de_valid(mv->r, de_view_entity(&v)));
+        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+        assert(c);
+
+        /*if (last_state[mv->field_size * c->y + c->y] != c->value) */
+        trace(
+            "state_compare_eq: field_size %d, x %d, y %d\n",
+            mv->field_size, c->x, c->y
+        );
+        if (last_state[(mv->field_size - 0) * c->y + c->x] != c->value) 
+            return false;
+    }
+    return true;
+}
+
+void state_save(struct ModelView *mv) {
+    trace("state_save:\n");
+    assert(mv);
+
+    //trace("state_save: last_state %p\n", last_state);
+
+    if (!last_state) {
+        last_state = calloc(
+            mv->field_size * mv->field_size, sizeof(last_state[0])
+        );
+
+        /*
+        trace(
+            "state_save: last_state allocated field_size %d\n",
+            mv->field_size
+        );
+        */
+
+        assert(last_state);
+        state_fill(mv, last_state);
+    }
+
+    if (state_compare_eq(mv, last_state)) 
+        return;
+
+    state_fill(mv, last_state);
+
+    FILE *file = fopen("state.txt", "a");
+    if (!file) return;
+
+    fprintf(file, "%s\n", dir2str(mv->prev_dir));
+    fprintf(file, "{\n");
+
+    for (int y = 0; y < mv->field_size; ++y) {
+        fprintf(file, "\n    {");
+        for (int x = 0; x < mv->field_size; ++x) {
+            //trace("state_save: y %d, x %d\n", y, x);
+            fprintf(file, "%d, ", last_state[y * mv->field_size + x]);
+        }
+        //fprintf(file, "},\n");
+        fprintf(file, "},");
+    }
+
+    fprintf(file, "\n}\n\n");
+
+    fclose(file);
+
+}
 
 static void cell_draw(
     struct ModelView *mv, de_entity cell_en, struct DrawOpts opts
@@ -1214,6 +1305,9 @@ bool modelview_draw(struct ModelView *mv) {
         trace("modelview_draw: dir %s\n", dir2str(mv->dir));
     }
 
+    if (!timersnum)
+        state_save(mv);
+
     if (mv->state == MVS_READY) {
         if (mv->dx || mv->dy) {
             // TODO: удаляет неправильно?
@@ -1235,6 +1329,7 @@ bool modelview_draw(struct ModelView *mv) {
         if (!mv->has_sum && !mv->has_move && (mv->dx || mv->dy)) {
             mv->dx = 0;
             mv->dy = 0;
+            mv->prev_dir = mv->dir;
             mv->dir = DIR_NONE;
             dir_none = true;
             if (mv->auto_put)
@@ -1258,6 +1353,7 @@ bool modelview_draw(struct ModelView *mv) {
 }
 
 void modelview_init(struct ModelView *mv, const struct Setup setup) {
+    last_state = NULL;
     assert(mv);
     assert(setup.field_size > 1);
     mv->field_size = setup.field_size;
@@ -1318,6 +1414,12 @@ void modelview_init(struct ModelView *mv, const struct Setup setup) {
 
 void modelview_shutdown(struct ModelView *mv) {
     assert(mv);
+
+    if (last_state) {
+        free(last_state);
+        last_state = NULL;
+    }
+
     //memset(mv, 0, sizeof(*mv));
     if (mv->dropped)
         return;
