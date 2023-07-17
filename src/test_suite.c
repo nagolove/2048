@@ -198,6 +198,7 @@ static void test_modelview_arr(struct TestInput input) {
             io_restore();
 
             term_color_set(TERM_BLUE);
+            printf("new cell was added\n");
             print_field(&mv);
             term_color_reset();
         }
