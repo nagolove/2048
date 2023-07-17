@@ -42,6 +42,26 @@ static struct Setup modelview_test_setup = {
 };
 static int test_index = 0;
 
+static const bool use_io_supression = true;
+
+static void io_2null() {
+    if (!use_io_supression) 
+        return;
+    stdout = freopen("/dev/null", "w", stdout);
+    assert(stdout);
+    stderr = freopen("/dev/null", "w", stderr);
+    assert(stderr);
+}
+
+static void io_restore() {
+    if (!use_io_supression) 
+        return;
+    stdout = freopen("/dev/tty", "w", stdout);
+    assert(stdout);
+    stderr = freopen("/dev/tty", "w", stderr);
+    assert(stderr);
+}
+
 void setup_field(struct ModelView *mv, const int values[5][5]) {
     assert(mv);
     for (int y = 0; y < 5; ++y)
@@ -146,7 +166,11 @@ static void test_modelview_arr(struct TestInput input) {
         input.name, test_index, input.steps_num
     );
     struct ModelView mv = {};
+
+    io_2null();
     modelview_init(&mv, modelview_test_setup);
+    io_restore();
+
     setup_field(&mv, input.field_setup);
     print_field5(input.field_setup);
 
@@ -163,18 +187,23 @@ static void test_modelview_arr(struct TestInput input) {
             printf("step '%s'\n", step->msg);
 
         if (step->new_cell) {
+
+            io_2null();
             modelview_put_manual(
                 &mv,
                 step->new_cell->x,
                 step->new_cell->y,
                 step->new_cell->value
             );
+            io_restore();
+
             term_color_set(TERM_BLUE);
             print_field(&mv);
             term_color_reset();
         }
 
         modelview_input(&mv, step->dir);
+        io_2null();
 
         BeginDrawing();
         while (mv.dir != DIR_NONE) { // условие цикла DIR_NONE ?
@@ -182,6 +211,8 @@ static void test_modelview_arr(struct TestInput input) {
             usleep(1000000 / 100); // 100Hz
         }
         EndDrawing();
+
+        io_restore();
 
         struct TestCtx ctx = {
             .test_index = i,
@@ -201,7 +232,9 @@ static void test_modelview_arr(struct TestInput input) {
         input.name, test_index++
     );
 _exit:
+    io_2null();
     modelview_shutdown(&mv);
+    io_restore();
 }
 
 void test_modelviews_multiple() {
