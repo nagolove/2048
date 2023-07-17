@@ -159,6 +159,9 @@ static void test_modelview_arr(struct TestInput input) {
 
         struct Step *step = &input.steps[i];
 
+        if (step->msg)
+            printf("step '%s'\n", step->msg);
+
         if (step->new_cell) {
             modelview_put_manual(
                 &mv,

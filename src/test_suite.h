@@ -5,6 +5,7 @@
 #include "stdbool.h"
 
 struct Step {
+    const char      *msg;
     struct Cell     *new_cell;
     enum Direction  dir;
     int             field[5][5];
