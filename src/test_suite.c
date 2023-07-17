@@ -108,6 +108,9 @@ static bool check_cell(
     if (!reference[y][x])
         return true;
 
+    if (ctx && ctx->trap && ctx->trap->x == x && ctx->trap->y == y)
+        koh_trap();
+
     const struct Cell *cell = modelview_get_cell(mv, x, y, NULL);
 
     if (!cell) {
@@ -219,6 +222,7 @@ static void test_modelview_arr(struct TestInput input) {
             .test_index = i,
             .test_suite_index = test_index,
             .name = input.name,
+            .trap = step->trap,
         };
 
         if (!check_field(&mv, step->field, &ctx)) {
@@ -229,8 +233,8 @@ static void test_modelview_arr(struct TestInput input) {
     }
 
     printf(
-        "\033[1;32mtest_modelview_arr: test \"%s\" %d passed\n\033[0m",
-        input.name, test_index++
+        "\033[1;32mtest_modelview_arr: test %d \"%s\" passed\n\033[0m",
+        test_index++, input.name 
     );
 _exit:
     io_2null();
@@ -736,6 +740,10 @@ void test_modelviews_multiple() {
             },
             {
                 .msg = "двойка на позиции (4, 3) исчезает",
+                .trap = &(struct Pair) {
+                    .x = 4,
+                    .y = 3,
+                },
                 .field = {
                     {0, 0, 0, 0, 0,},
                     {0, 0, 0, 0, 0,},
@@ -751,9 +759,10 @@ void test_modelviews_multiple() {
     });
     // */
 
+    /*
     test_modelview_arr((struct TestInput){
         .name = "плитка пропадает при движении вправо"
-                ", попытка изменить поведение",
+                ", попытка изменить поведение, поле выставлено сразу",
         .field_setup = {
             {0, 0, 0, 0, 0,},
             {0, 0, 0, 0, 0,},
@@ -774,7 +783,6 @@ void test_modelviews_multiple() {
                 .dir = DIR_NONE,
             },
             {
-                .msg = "двойка на позиции (4, 3) исчезает",
                 .field = {
                     {0, 0, 0, 0, 0,},
                     {0, 0, 0, 0, 0,},
@@ -787,6 +795,94 @@ void test_modelviews_multiple() {
             },
         },
         .steps_num = 2,
+    });
+    // */
+
+    /*
+    test_modelview_arr((struct TestInput){
+        .name = "плитка пропадает при движении вправо"
+                ", попытка изменить поведение, поле выставлено по шагам",
+        .field_setup = {
+            {0, 0, 0, 0, 0,},
+            {0, 0, 0, 0, 0,},
+            {0, 0, 0, 0, 0,},
+            {0, 0, 0, 0, 0,},
+            {0, 0, 0, 0, 0,},
+        },
+        .steps = (struct Step[]) {
+            {
+                .new_cell = &(struct Cell) {
+                    .x = 3,
+                    .y = 3,
+                    .value = 2,
+                },
+                .field = {
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 2, 0,},
+                    {0, 0, 0, 0, 0,},
+                },
+                .dir = DIR_NONE,
+            },
+            {
+                .new_cell = &(struct Cell) {
+                    .x = 4,
+                    .y = 4,
+                    .value = 8,
+                },
+                .field = {
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 2, 0,},
+                    {0, 0, 0, 0, 8,},
+                },
+                .dir = DIR_NONE,
+            },
+            {
+                .new_cell = &(struct Cell) {
+                    .x = 3,
+                    .y = 4,
+                    .value = 4,
+                },
+                .field = {
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 2, 0,},
+                    {0, 0, 0, 4, 8,},
+                },
+                .dir = DIR_NONE,
+            },
+            {
+                .new_cell = &(struct Cell) {
+                    .x = 1,
+                    .y = 4,
+                    .value = 2,
+                },
+                .field = {
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 2, 0,},
+                    {0, 2, 0, 4, 8,},
+                },
+                .dir = DIR_NONE,
+            },
+            {
+                .field = {
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 0,},
+                    {0, 0, 0, 0, 2,},
+                    {0, 0, 0, 4, 8,},
+                },
+                .dir = DIR_RIGHT,
+                .last = true,
+            },
+        },
+        .steps_num = 5,
     });
     // */
 

@@ -4,12 +4,17 @@
 
 #include "stdbool.h"
 
+struct Pair {
+    int x, y;
+};
+
 struct Step {
     const char      *msg;
     struct Cell     *new_cell;
     enum Direction  dir;
     int             field[5][5];
     bool            last;
+    struct Pair     *trap;
 };
 
 struct TestInput {
@@ -25,6 +30,7 @@ struct TestInput {
 struct TestCtx {
     int         test_suite_index, test_index;
     const char  *name;
+    struct Pair *trap;
 };
 
 void test_modelviews_multiple();

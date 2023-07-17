@@ -102,6 +102,29 @@ static Color colors[] = {
     GRAY,
 };
 
+static void _field_print(struct ModelView *mv, int x, int y) {
+    char buf[1024] = {};
+    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
+        cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
+        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+        assert(c);
+        char cell_str[32] = {};
+        snprintf(
+            cell_str, sizeof(cell_str),
+            "   (%d, %d, %d, %s)\n",
+            c->x, c->y, 
+            c->value, 
+            c->dropped ? "true" : "false"
+        );
+        strcat(buf, cell_str);
+    }
+    trace(
+        "modelview_get_cell: (%d, %d)"
+        "    field : \n%s\n",
+        x, y, buf
+    );
+}
+
 const char *dir2str(enum Direction dir) {
     static char buf[32] = {0};
     switch (dir) {
@@ -303,6 +326,8 @@ struct Cell *modelview_get_cell(
     assert(mv->r);
 
     if (en) *en = de_null;
+
+    _field_print(mv, x, y);
 
     for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
         cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
@@ -1268,6 +1293,8 @@ char *modelview_state2str(enum ModelViewState state) {
 }
 
 static void destroy_dropped(struct ModelView *mv) {
+    _field_print(mv, -1, -1);
+
     for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
                 cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
         assert(de_valid(mv->r, de_view_entity(&v)));
@@ -1313,8 +1340,11 @@ bool modelview_draw(struct ModelView *mv) {
             // TODO: удаляет неправильно?
             destroy_dropped(mv);
 
+            _field_print(mv, -4, -4);
             mv->has_move = do_action(mv, move);
+            _field_print(mv, -3, -3);
             mv->has_sum = do_action(mv, sum);
+            _field_print(mv, -2, -2);
             //mv->has_move = do_action(mv, move);
             
             trace(
