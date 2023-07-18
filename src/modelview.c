@@ -93,6 +93,8 @@ static const de_cp_type cmp_effect = {
     .initial_cap = 1000,
 };
 
+bool _use_field_printing = true;
+
 static Color colors[] = {
     RED,
     ORANGE,
@@ -102,7 +104,9 @@ static Color colors[] = {
     GRAY,
 };
 
-static void _field_print(struct ModelView *mv, int x, int y) {
+void _field_print(struct ModelView *mv, char **msg) {
+}
+/*
     char buf[1024] = {};
     for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
         cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
@@ -118,12 +122,16 @@ static void _field_print(struct ModelView *mv, int x, int y) {
         );
         strcat(buf, cell_str);
     }
-    trace(
-        "modelview_get_cell: (%d, %d)"
-        "    field : \n%s\n",
-        x, y, buf
-    );
+
+    char buf_msg[2048] = {};
+    char **cur = (char**)msg;
+    while (*cur) {
+        strcat(buf_msg, *cur++);
+    }
+    trace("_field_print: %s\n", buf_msg);
+    trace("_field_print: %s\n", buf);
 }
+// */
 
 const char *dir2str(enum Direction dir) {
     static char buf[32] = {0};
@@ -327,7 +335,8 @@ struct Cell *modelview_get_cell(
 
     if (en) *en = de_null;
 
-    _field_print(mv, x, y);
+    if (_use_field_printing)
+        _FIELD_PRINT(mv);
 
     for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
         cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
@@ -736,12 +745,14 @@ static bool do_action(struct ModelView *mv, Action action) {
     assert(mv);
     assert(action);
 
-    printf("do_action:\n");
+    const char *action_name = action == sum ? "sum" : "move";
+    printf("do_action: %s\n", action_name);
 
     //clear_touched(mv);
     bool has_action = false;
     bool touched = false;
 
+    modelview_field_print(mv);
     do {
     //for (int i = 0; i < 3; ++i) {
         touched = false;
@@ -755,6 +766,7 @@ static bool do_action(struct ModelView *mv, Action action) {
         }
     //}
     } while (touched);
+    modelview_field_print(mv);
 
     trace(
         "move: timerman_num %d, move_call_counter %d\n",
@@ -1293,8 +1305,12 @@ char *modelview_state2str(enum ModelViewState state) {
 }
 
 static void destroy_dropped(struct ModelView *mv) {
-    _field_print(mv, -1, -1);
+    printf("destroy_dropped:\n");
+    modelview_field_print(mv);
 
+    de_entity destroy_arr[mv->field_size * mv->field_size];
+    int destroy_num = 0;
+    
     for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
                 cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
         assert(de_valid(mv->r, de_view_entity(&v)));
@@ -1303,13 +1319,27 @@ static void destroy_dropped(struct ModelView *mv) {
         if (c->dropped) {
             trace(
                 "destroy_dropped: cell val %d, (%d, %d)\n",
-                c->value, c->x, c->x
+                c->value, c->x, c->y
             );
-            global_cell_push(c);
-            memset(c, 0, sizeof(*c));
-            de_destroy(mv->r, de_view_entity(&v));
+            //global_cell_push(c);
+            //memset(c, 0, sizeof(*c));
+            //de_destroy(mv->r, de_view_entity(&v));
+
+            assert(
+                destroy_num + 1 < sizeof(destroy_arr) / sizeof(destroy_arr[0])
+            );
+            destroy_arr[destroy_num++] = de_view_entity(&v);
         }
     }
+
+    printf("destroy_dropped: before destroy\n");
+    modelview_field_print(mv);
+
+    for (int j = 0; j < destroy_num; ++j)
+        de_destroy(mv->r, destroy_arr[j]);
+
+    printf("destroy_dropped: after destroy\n");
+    modelview_field_print(mv);
 }
 
 bool modelview_draw(struct ModelView *mv) {
@@ -1340,11 +1370,11 @@ bool modelview_draw(struct ModelView *mv) {
             // TODO: удаляет неправильно?
             destroy_dropped(mv);
 
-            _field_print(mv, -4, -4);
+            _FIELD_PRINT(mv);
             mv->has_move = do_action(mv, move);
-            _field_print(mv, -3, -3);
+            _FIELD_PRINT(mv);
             mv->has_sum = do_action(mv, sum);
-            _field_print(mv, -2, -2);
+            _FIELD_PRINT(mv);
             //mv->has_move = do_action(mv, move);
             
             trace(
@@ -1507,4 +1537,59 @@ void modelview_draw_gui(struct ModelView *mv) {
         gui(mv);
 #endif
 
+}
+
+void modelview_field_print(struct ModelView *mv) {
+    assert(mv);
+
+    int cells_num = mv->field_size * mv->field_size;
+    int field[cells_num];
+    memset(field, 0, sizeof(field));
+    bool dropped[cells_num];
+    memset(dropped, 0, sizeof(dropped));
+
+    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
+        cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
+        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+        assert(c);
+        if (c) {
+            field[c->y * mv->field_size + c->x] = c->value;
+            dropped[c->y * mv->field_size + c->x] = c->dropped;
+        }
+    }
+
+    printf("\n");
+    for (int y = 0; y < mv->field_size; ++y) {
+        for (int x = 0; x < mv->field_size; ++x) {
+            int cell_value = field[mv->field_size * y + x];
+            bool is_dropped = dropped[mv->field_size * y + x];
+            if (cell_value) {
+
+                /*
+                char digits_buf_in[12] = {};
+                char digits_buf_out[12] = {};
+                sprintf(digits_buf_in, "%.3d", cell_value);
+                for (int i = 0; i < strlen(digits_buf_in); i++) {
+                    char digit[6] = {};
+                    sprintf(digit, "%c", digits_buf_in[i]);
+                    strcat(digits_buf_out, digit);
+                    //strcat(digits_buf_out, u8"\u0303");
+                    if (is_dropped) {
+                        //koh_trap();
+                        strcat(digits_buf_out, u8"\u035A");
+                    }
+                }
+                */
+
+                //printf("[%s] ", digits_buf_out);
+                printf("[%c%.3d] ", is_dropped ? 'x' : ' ', cell_value);
+                //if (is_dropped)
+                    //koh_trap();
+            } else {
+                printf("[----] ");
+            }
+        }
+        printf("\n");
+    }
+        printf("\n");
 }

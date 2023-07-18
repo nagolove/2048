@@ -1,14 +1,39 @@
 #pragma once
 
+#include "ecs_circ_buf.h"
 #include "koh_destral_ecs.h"
-#include "timers.h"
 #include "raylib.h"
+#include "timers.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include "ecs_circ_buf.h"
+#include <stdio.h>
+#include <stdlib.h>
 
 #define WIN_VALUE   2048
+
+#define _FIELD_PRINT(modelview)    \
+    __FIELD_PRINT(modelview, __FILE__, __FUNCTION__, __LINE__) 
+
+#define __FIELD_PRINT(modelview, file, function, line)    \
+    do {                                \
+        char line_str[32] = {};         \
+        sprintf(line_str, "%d\n", line);\
+        _field_print(                   \
+            modelview,                  \
+            (char*[]){                  \
+                (char*)file,            \
+                " ",                    \
+                (char*)function,        \
+                " ",                    \
+                (char*)line_str,        \
+                NULL                    \
+            }                           \
+        );                              \
+    } while (0); 
+
+            //(struct ModelView*)modelview,
+            //(char*[]){ file, function, line_str, NULL }   
 
 enum Direction {
     DIR_NONE,
@@ -120,8 +145,12 @@ struct Cell *modelview_get_cell(
     struct ModelView *mv, int x, int y, de_entity *en
 );
 char *modelview_state2str(enum ModelViewState state);
+void modelview_field_print(struct ModelView *mv);
 
 void model_global_init();
 void model_global_shutdown();
 
 void test_divide_slides();
+
+extern bool _use_field_printing;
+void _field_print(struct ModelView *mv, char **msg);
