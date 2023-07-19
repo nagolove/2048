@@ -13,24 +13,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#define TERM_BLACK        30         
-#define TERM_RED          31         
-#define TERM_GREEN        32         
-#define TERM_YELLOW       33         
-#define TERM_BLUE         34         
-#define TERM_MAGENTA      35         
-#define TERM_CYAN         36         
-#define TERM_WHITE        37         
-
-static void term_color_set(int color) {
-    assert(color >= 30 && color <= 37);
-    printf("\033[1;%dm", color);
-}
-
-static void term_color_reset() {
-    printf("\033[0m");
-}
-
 static struct Setup modelview_test_setup = {
     .pos            = NULL,
     .cam            = NULL,
@@ -210,10 +192,12 @@ static void test_modelview_arr(struct TestInput input) {
             );
             io_restore();
 
-            term_color_set(TERM_BLUE);
+            char buf[1024] = {};
+            modelview_field_print_s(&mv, buf, sizeof(buf));
+            koh_term_color_set(KOH_TERM_BLUE);
             printf("new cell was added\n");
-            modelview_field_print(&mv);
-            term_color_reset();
+            printf("%s\n", buf);
+            koh_term_color_reset();
         }
 
         io_2null();
@@ -225,8 +209,17 @@ static void test_modelview_arr(struct TestInput input) {
             .trap = step->trap,
         };
 
-        if (ctx.trap && ctx.trap->x == -1 && ctx.trap->y == -1)
-            koh_trap();
+        mv.test_payload = NULL;
+        struct TestPayload payload = {};
+
+        if (ctx.trap) {
+            if (ctx.trap->x == -1 && ctx.trap->y == -1) {
+                koh_trap();
+            } else if (ctx.trap->x == -11 && ctx.trap->y == -11) {
+                payload.do_trap = true;
+                mv.test_payload = &payload;
+            }
+        }
 
         io_restore();
         /*itoa();*/
@@ -263,6 +256,7 @@ _exit:
 
 void test_modelviews_multiple() {
 
+    /*
     // test 0
     test_modelview_arr((struct TestInput) {
         .name = "пустое поле",
@@ -290,7 +284,9 @@ void test_modelviews_multiple() {
         },
         .steps_num = 1,
     });
+    */
 
+    /*
     // test 1
     test_modelview_arr((struct TestInput){
         .name = "статичная проверка поля",
@@ -317,7 +313,9 @@ void test_modelviews_multiple() {
         },
         .steps_num = 1,
     });
+    */
 
+    /*
     // test 2
     test_modelview_arr((struct TestInput){
         .name = "одно движение вниз",
@@ -343,7 +341,9 @@ void test_modelviews_multiple() {
         },
         .steps_num = 1,
     });
+    */
 
+    /*
     // test 3
     test_modelview_arr((struct TestInput){
         .name = "серия",
@@ -404,7 +404,9 @@ void test_modelviews_multiple() {
             },
         }
     });
+    */
 
+    /*
     // test 4
     test_modelview_arr((struct TestInput){
         .name = "неправильное схлопывание",
@@ -415,36 +417,28 @@ void test_modelviews_multiple() {
             {0, 1, 0, 0, 0,},
             {0, 1, 0, 0, 0,},
         },
-
-        /* {{{
         // Предполагаемый желательный порядок
-
-        .field_setup = {
-            {0, 0, 0, 0, 0,},
-            {0, 1, 0, 0, 0,},
-            {0, 1, 0, 0, 0,},
-            {0, 1, 0, 0, 0,},
-            {0, 2, 0, 0, 0,},
-        },
-
-        .field_setup = {
-            {0, 0, 0, 0, 0,},
-            {0, 0, 0, 0, 0,},
-            {0, 1, 0, 0, 0,},
-            {0, 2, 0, 0, 0,},
-            {0, 2, 0, 0, 0,},
-        },
-
-        .field_setup = {
-            {0, 0, 0, 0, 0,},
-            {0, 0, 0, 0, 0,},
-            {0, 0, 0, 0, 0,},
-            {0, 1, 0, 0, 0,},
-            {0, 4, 0, 0, 0,},
-        },
-
-        }}} */
-
+        //.field_setup = {
+            //{0, 0, 0, 0, 0,},
+            //{0, 1, 0, 0, 0,},
+            //{0, 1, 0, 0, 0,},
+            //{0, 1, 0, 0, 0,},
+            //{0, 2, 0, 0, 0,},
+        //},
+        //.field_setup = {
+            //{0, 0, 0, 0, 0,},
+            //{0, 0, 0, 0, 0,},
+            //{0, 1, 0, 0, 0,},
+            //{0, 2, 0, 0, 0,},
+            //{0, 2, 0, 0, 0,},
+        //},
+        //.field_setup = {
+            //{0, 0, 0, 0, 0,},
+            //{0, 0, 0, 0, 0,},
+            //{0, 0, 0, 0, 0,},
+            //{0, 1, 0, 0, 0,},
+            //{0, 4, 0, 0, 0,},
+        //},
         .steps_num = 1,
         .steps = (struct Step[]) {
             {
@@ -460,7 +454,9 @@ void test_modelviews_multiple() {
             },
         }
     });
+    // */
 
+    /*
     // test 5
     test_modelview_arr((struct TestInput){
         .name = "схлопывание с появлением",
@@ -519,13 +515,11 @@ void test_modelviews_multiple() {
             },
             {
                 .dir = DIR_RIGHT,
-                /*
-                .new_cell = &(struct Cell) {
-                    .value = 5,
-                    .x = 4,
-                    .y = 1,
-                },
-                */
+                //.new_cell = &(struct Cell) {
+                    //.value = 5,
+                    //.x = 4,
+                    //.y = 1,
+                //},
                 .field = {
                     {00, 00, 00, 00, 00,},
                     {00, 00, 00, 00, 00,},
@@ -538,7 +532,9 @@ void test_modelviews_multiple() {
         },
         .steps_num = 4,
     });
+    // */
 
+    /*
     // test 6
     test_modelview_arr((struct TestInput){
         .name = "еще одна серия с появлениями",
@@ -597,13 +593,11 @@ void test_modelviews_multiple() {
             },
             {
                 .dir = DIR_RIGHT,
-                /*
-                .new_cell = &(struct Cell) {
-                    .value = 5,
-                    .x = 4,
-                    .y = 1,
-                },
-                */
+                //.new_cell = &(struct Cell) {
+                    //.value = 5,
+                    //.x = 4,
+                    //.y = 1,
+                //},
                 .field = {
                     {00, 00, 00, 00, 00,},
                     {00, 00, 00, 00, 00,},
@@ -616,6 +610,7 @@ void test_modelviews_multiple() {
         },
         .steps_num = 4,
     });
+    // */
 
     /*
     test_modelview_arr((struct TestInput){
@@ -822,6 +817,7 @@ void test_modelviews_multiple() {
     });
     //*/
 
+    /*
     test_modelview_arr((struct TestInput){
         .name = "плитка пропадает при движении вправо, укороченный случай",
         .field_setup = {
@@ -888,11 +884,6 @@ void test_modelviews_multiple() {
                     .y = 3,
                     .value = 4,
                 },
-                .msg = "trap ловушка",
-                .trap = &(struct Pair) {
-                    .x = -1,
-                    .y = -1,
-                },
                 .field = {
                     {00, 00, 00, 00, 00,},
                     {00, 00, 00, 00, 00,},
@@ -904,12 +895,10 @@ void test_modelviews_multiple() {
             },
             {
                 .msg = "двойка на позиции (4, 3) исчезает",
-                /*
                 .trap = &(struct Pair) {
-                    .x = 4,
-                    .y = 3,
+                    .x = -11,
+                    .y = -11,
                 },
-                */
                 .field = {
                     {00, 00, 00, 00, 00,},
                     {00, 00, 00, 00, 00,},
@@ -924,6 +913,7 @@ void test_modelviews_multiple() {
         .steps_num = 6,
     });
     // */
+
     /*
     test_modelview_arr((struct TestInput){
         .name = "плитка пропадает при движении вправо",
@@ -1086,7 +1076,6 @@ void test_modelviews_multiple() {
     });
     // */
 
-    /*
     test_modelview_arr((struct TestInput){
         .name = "плитка пропадает при движении вправо"
                 ", попытка изменить поведение, поле выставлено сразу",

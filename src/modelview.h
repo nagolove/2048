@@ -118,6 +118,7 @@ struct ModelView {
     bool                use_bonus;
     float               font_spacing;
     struct ColorTheme   color_theme;
+    void                *test_payload;
 };
 
 extern const struct ColorTheme color_theme_dark, color_theme_light;
@@ -146,6 +147,7 @@ struct Cell *modelview_get_cell(
 );
 char *modelview_state2str(enum ModelViewState state);
 void modelview_field_print(struct ModelView *mv);
+void modelview_field_print_s(struct ModelView *mv, char *str, size_t str_sz);
 
 void model_global_init();
 void model_global_shutdown();

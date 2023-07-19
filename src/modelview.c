@@ -2,6 +2,7 @@
 
 // TODO: Отказаться от блокировки ввода что-бы можно было играть на скорости выше скорости анимации, то есть до 60 герц.
 
+#include "test_suite.h"
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 
 #include "cimgui.h"
@@ -335,8 +336,7 @@ struct Cell *modelview_get_cell(
 
     if (en) *en = de_null;
 
-    if (_use_field_printing)
-        _FIELD_PRINT(mv);
+    /*modelview_field_print(mv);*/
 
     for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
         cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
@@ -572,10 +572,12 @@ void modelview_put(struct ModelView *mv) {
         modelview_put_cell(mv, x, y);
 }
 
+/*
 static void global_cell_push(struct Cell *cell) {
     assert(cell);
     global_cells[global_cells_num++] = *cell;
 }
+*/
 
 /*
 static void clear_touched(struct ModelView *mv) {
@@ -1335,6 +1337,11 @@ static void destroy_dropped(struct ModelView *mv) {
     printf("destroy_dropped: before destroy\n");
     modelview_field_print(mv);
 
+    if (mv->test_payload && ((struct TestPayload*)mv->test_payload)->do_trap) {
+        printf("test_payload trap\n");
+        koh_trap();
+    }
+
     for (int j = 0; j < destroy_num; ++j)
         de_destroy(mv->r, destroy_arr[j]);
 
@@ -1540,6 +1547,12 @@ void modelview_draw_gui(struct ModelView *mv) {
 }
 
 void modelview_field_print(struct ModelView *mv) {
+    char buf[1024] = {};
+    modelview_field_print_s(mv, buf, sizeof(buf));
+    printf("%s\n", buf);
+}
+
+void modelview_field_print_s(struct ModelView *mv, char *str, size_t str_sz) {
     assert(mv);
 
     int cells_num = mv->field_size * mv->field_size;
@@ -1558,7 +1571,8 @@ void modelview_field_print(struct ModelView *mv) {
         }
     }
 
-    printf("\n");
+    // TODO: Проверка достаточности длины буфера str
+    str += sprintf(str, "\n");
     for (int y = 0; y < mv->field_size; ++y) {
         for (int x = 0; x < mv->field_size; ++x) {
             int cell_value = field[mv->field_size * y + x];
@@ -1581,15 +1595,15 @@ void modelview_field_print(struct ModelView *mv) {
                 }
                 */
 
-                //printf("[%s] ", digits_buf_out);
-                printf("[%c%.3d] ", is_dropped ? 'x' : ' ', cell_value);
+                //sprinf("[%s] ", digits_buf_out);
+                str += sprintf(str, "[%c%.3d] ", is_dropped ? 'x' : ' ', cell_value);
                 //if (is_dropped)
                     //koh_trap();
             } else {
-                printf("[----] ");
+                str += sprintf(str, "[----] ");
             }
         }
-        printf("\n");
+        str += sprintf(str, "\n");
     }
-        printf("\n");
+    str += sprintf(str, "\n");
 }

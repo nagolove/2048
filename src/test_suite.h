@@ -4,6 +4,14 @@
 
 #include "stdbool.h"
 
+struct TestPayload {
+    bool do_trap;
+};
+
+/*
+ .x == -1, .y == -1 - koh_trap()
+ .x == -11, .y == -11 - koh_trap() через test_payload
+*/
 struct Pair {
     int x, y;
 };
