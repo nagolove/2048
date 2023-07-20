@@ -338,6 +338,7 @@ struct Cell *modelview_get_cell(
 
     /*modelview_field_print(mv);*/
 
+    /*
     for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
         cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
         struct Cell *c = de_view_get_safe(&v, cmp_cell);
@@ -350,6 +351,21 @@ struct Cell *modelview_get_cell(
             return c;
         }
     }
+    */
+
+    for (de_view_single v = de_create_view_single(mv->r, cmp_cell);
+        de_view_single_valid(&v); de_view_single_next(&v)) {
+        struct Cell *c = de_view_single_get(&v);
+        assert(c);
+        if (c && c->x == x && c->y == y) {
+            if (en) {
+                assert(de_valid(mv->r, de_view_single_entity(&v)));
+                *en = de_view_single_entity(&v);
+            }
+            return c;
+        }
+    }
+
     return NULL;
 }
 
@@ -1342,8 +1358,18 @@ static void destroy_dropped(struct ModelView *mv) {
         koh_trap();
     }
 
-    for (int j = 0; j < destroy_num; ++j)
-        de_destroy(mv->r, destroy_arr[j]);
+    for (int j = 0; j < destroy_num; ++j) {
+        de_entity e = destroy_arr[j];
+
+        /*
+        if (de_has(mv->r, e, cmp_cell))
+            de_remove(mv->r, e, cmp_cell);
+        if (de_has(mv->r, e, cmp_effect))
+            de_remove(mv->r, e, cmp_effect);
+        */
+
+        de_destroy(mv->r, e);
+    }
 
     printf("destroy_dropped: after destroy\n");
     modelview_field_print(mv);
@@ -1552,31 +1578,46 @@ void modelview_field_print(struct ModelView *mv) {
     printf("%s\n", buf);
 }
 
+void _modelview_field_print(de_ecs *r, int field_size) {
+    assert(r);
+    char buf[1024] = {};
+    _modelview_field_print_s(r, field_size, buf, sizeof(buf));
+    printf("%s\n", buf);
+}
+
 void modelview_field_print_s(struct ModelView *mv, char *str, size_t str_sz) {
     assert(mv);
+    _modelview_field_print_s(mv->r, mv->field_size, str, str_sz);
+}
 
-    int cells_num = mv->field_size * mv->field_size;
+void _modelview_field_print_s(
+    de_ecs *r, int field_size, char *str, size_t str_sz
+) {
+    assert(r);
+
+    int cells_num = field_size * field_size;
+    assert(cells_num > 0);
     int field[cells_num];
     memset(field, 0, sizeof(field));
     bool dropped[cells_num];
     memset(dropped, 0, sizeof(dropped));
 
-    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
+    for (de_view v = de_create_view(r, 1, (de_cp_type[1]) { 
         cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
         struct Cell *c = de_view_get_safe(&v, cmp_cell);
         assert(c);
         if (c) {
-            field[c->y * mv->field_size + c->x] = c->value;
-            dropped[c->y * mv->field_size + c->x] = c->dropped;
+            field[c->y * field_size + c->x] = c->value;
+            dropped[c->y * field_size + c->x] = c->dropped;
         }
     }
 
     // TODO: Проверка достаточности длины буфера str
     str += sprintf(str, "\n");
-    for (int y = 0; y < mv->field_size; ++y) {
-        for (int x = 0; x < mv->field_size; ++x) {
-            int cell_value = field[mv->field_size * y + x];
-            bool is_dropped = dropped[mv->field_size * y + x];
+    for (int y = 0; y < field_size; ++y) {
+        for (int x = 0; x < field_size; ++x) {
+            int cell_value = field[field_size * y + x];
+            bool is_dropped = dropped[field_size * y + x];
             if (cell_value) {
 
                 /*
@@ -1606,4 +1647,27 @@ void modelview_field_print_s(struct ModelView *mv, char *str, size_t str_sz) {
         str += sprintf(str, "\n");
     }
     str += sprintf(str, "\n");
+}
+
+static void iter_entity(de_ecs *r, de_entity e, void *udata) {
+    printf("%u ", e);
+}
+
+struct Cell *modelview_find_by_value(de_ecs *r, int value) {
+    for (de_view_single v = de_create_view_single(r, cmp_cell);
+        de_view_single_valid(&v); de_view_single_next(&v)) {
+        struct Cell *c = de_view_single_get(&v);
+        assert(c);
+        if (c && c->value == value) {
+            return c;
+        }
+    }
+
+    return NULL;
+}
+
+void modelview_each_entity(de_ecs *r) {
+    printf("modelview_each_entity:\n");
+    de_each(r, iter_entity, NULL);
+    printf("\n");
 }

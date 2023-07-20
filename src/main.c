@@ -307,7 +307,7 @@ int main(void) {
 
     //test_modelviews_one();
     de_set_options((de_options) {
-        .tracing = false,
+        .tracing = true,
     });
     test_modelviews_multiple();
     de_set_options((de_options) {

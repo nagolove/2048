@@ -156,3 +156,9 @@ void test_divide_slides();
 
 extern bool _use_field_printing;
 void _field_print(struct ModelView *mv, char **msg);
+
+void _modelview_field_print_s(
+    de_ecs *r, int field_size, char *str, size_t str_sz
+);
+void _modelview_field_print(de_ecs *r, int field_size);
+struct Cell *modelview_find_by_value(de_ecs *r, int value);
