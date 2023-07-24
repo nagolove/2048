@@ -629,6 +629,26 @@ static bool move(
 ) {
     bool has_move = false;
 
+    printf(
+        "cell_en %u, id %u, ver %u\n",
+        cell_en, 
+        de_entity_identifier(cell_en).id,
+        de_entity_version(cell_en).ver
+    );
+
+    printf(
+        "move: de_has(cell_en,  cmp_cell) %s\n",
+        de_has(mv->r, cell_en,  cmp_cell) ? "true" : "false"
+    );
+    printf(
+        "move: de_has(cell_en,  cmp_effect) %s\n",
+        de_has(mv->r, cell_en,  cmp_effect) ? "true" : "false"
+    );
+    printf(
+        "move: de_has(cell_en,  cmp_bonus) %s\n",
+        de_has(mv->r, cell_en,  cmp_bonus) ? "true" : "false"
+    );
+
     struct Cell *cell = de_try_get(mv->r, cell_en, cmp_cell);
     assert(cell);
 
@@ -1403,11 +1423,11 @@ bool modelview_draw(struct ModelView *mv) {
             // TODO: удаляет неправильно?
             destroy_dropped(mv);
 
-            _FIELD_PRINT(mv);
+            printf("before do_action()\n");
+            de_ecs_print(mv->r);
+
             mv->has_move = do_action(mv, move);
-            _FIELD_PRINT(mv);
             mv->has_sum = do_action(mv, sum);
-            _FIELD_PRINT(mv);
             //mv->has_move = do_action(mv, move);
             
             trace(
@@ -1649,8 +1669,9 @@ void _modelview_field_print_s(
     str += sprintf(str, "\n");
 }
 
-static void iter_entity(de_ecs *r, de_entity e, void *udata) {
+static bool iter_entity(de_ecs *r, de_entity e, void *udata) {
     printf("%u ", e);
+    return false;
 }
 
 struct Cell *modelview_find_by_value(de_ecs *r, int value) {

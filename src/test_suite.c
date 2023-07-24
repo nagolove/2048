@@ -256,7 +256,6 @@ _exit:
 
 void test_modelviews_multiple() {
 
-    /*
     // test 0
     test_modelview_arr((struct TestInput) {
         .name = "пустое поле",
@@ -284,9 +283,8 @@ void test_modelviews_multiple() {
         },
         .steps_num = 1,
     });
-    */
+    // */
 
-    /*
     // test 1
     test_modelview_arr((struct TestInput){
         .name = "статичная проверка поля",
@@ -313,9 +311,8 @@ void test_modelviews_multiple() {
         },
         .steps_num = 1,
     });
-    */
+    // */
 
-    /*
     // test 2
     test_modelview_arr((struct TestInput){
         .name = "одно движение вниз",
@@ -341,9 +338,8 @@ void test_modelviews_multiple() {
         },
         .steps_num = 1,
     });
-    */
+    // */
 
-    /*
     // test 3
     test_modelview_arr((struct TestInput){
         .name = "серия",
@@ -404,9 +400,8 @@ void test_modelviews_multiple() {
             },
         }
     });
-    */
+    // */
 
-    /*
     // test 4
     test_modelview_arr((struct TestInput){
         .name = "неправильное схлопывание",
@@ -456,7 +451,6 @@ void test_modelviews_multiple() {
     });
     // */
 
-    /*
     // test 5
     test_modelview_arr((struct TestInput){
         .name = "схлопывание с появлением",
@@ -534,7 +528,6 @@ void test_modelviews_multiple() {
     });
     // */
 
-    /*
     // test 6
     test_modelview_arr((struct TestInput){
         .name = "еще одна серия с появлениями",
@@ -612,7 +605,6 @@ void test_modelviews_multiple() {
     });
     // */
 
-    /*
     test_modelview_arr((struct TestInput){
         .name = "плитка пропадает при движении вправо, укороченный случай",
         .field_setup = {
@@ -719,7 +711,6 @@ void test_modelviews_multiple() {
     });
     // */
 
-    /*
     test_modelview_arr((struct TestInput){
         .name = "плитка пропадает при движении вправо, укороченный случай",
         .field_setup = {
@@ -913,7 +904,6 @@ void test_modelviews_multiple() {
     });
     // */
 
-    /*
     test_modelview_arr((struct TestInput){
         .name = "плитка пропадает при движении вправо",
         .field_setup = {
@@ -1075,7 +1065,6 @@ void test_modelviews_multiple() {
     });
     // */
 
-    /*
     test_modelview_arr((struct TestInput){
         .name = "плитка пропадает при движении вправо"
                 ", попытка изменить поведение, поле выставлено сразу",
@@ -1114,7 +1103,6 @@ void test_modelviews_multiple() {
     });
     // */
 
-    /*
     test_modelview_arr((struct TestInput){
         .name = "плитка пропадает при движении вправо"
                 ", попытка изменить поведение, поле выставлено по шагам",

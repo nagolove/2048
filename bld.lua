@@ -1,4 +1,7 @@
 return {
-    artifact = '2048',
-    main = "main.c"
+    {
+        artifact = '2048',
+        main = "main.c",
+        src = "src",
+    },
 }
