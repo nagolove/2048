@@ -650,7 +650,9 @@ static bool move(
     );
 
     struct Cell *cell = de_try_get(mv->r, cell_en, cmp_cell);
-    assert(cell);
+    if (!cell)
+        return false;
+    //assert(cell);
 
     struct Effect *ef = de_try_get(mv->r, cell_en, cmp_effect);
     assert(ef);
@@ -710,7 +712,9 @@ static bool sum(
     bool has_sum = false;
 
     struct Cell *cell = de_try_get(mv->r, cell_en, cmp_cell);
-    assert(cell);
+    //assert(cell);
+    if (!cell)
+        return false;
 
     struct Effect *ef = de_try_get(mv->r, cell_en, cmp_effect);
     assert(ef);
