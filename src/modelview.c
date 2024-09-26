@@ -8,9 +8,7 @@
 #include "cimgui.h"
 #include "cimgui_impl.h"
 #include "colored_text.h"
-#include "ecs_circ_buf.h"
 #include "koh_common.h"
-#include "koh_console.h"
 #include "koh_destral_ecs.h"
 #include "koh_logger.h"
 #include "koh_routine.h"
@@ -217,7 +215,7 @@ static void state_fill(struct ModelView *mv, int *last_state) {
         last_state[j] = 0;
     }
 
-    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { cmp_cell });
+    for (de_view v = de_view_create(mv->r, 1, (de_cp_type[1]) { cmp_cell });
             de_view_valid(&v); de_view_next(&v)) {
         assert(de_valid(mv->r, de_view_entity(&v)));
         struct Cell *c = de_view_get_safe(&v, cmp_cell);
@@ -231,7 +229,7 @@ static bool state_compare_eq(struct ModelView *mv, int *last_state) {
     assert(mv);
     assert(last_state);
 
-    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { cmp_cell });
+    for (de_view v = de_view_create(mv->r, 1, (de_cp_type[1]) { cmp_cell });
             de_view_valid(&v); de_view_next(&v)) {
         assert(de_valid(mv->r, de_view_entity(&v)));
         struct Cell *c = de_view_get_safe(&v, cmp_cell);
@@ -304,7 +302,7 @@ static void cell_draw(
 static int find_max(struct ModelView *mv) {
     int max = 0;
 
-    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
+    for (de_view v = de_view_create(mv->r, 1, (de_cp_type[1]) { 
         cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
         struct Cell *c = de_view_get_safe(&v, cmp_cell);
         assert(c);
@@ -318,7 +316,7 @@ static int find_max(struct ModelView *mv) {
 static bool is_over(struct ModelView *mv) {
     int num = 0;
 
-    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
+    for (de_view v = de_view_create(mv->r, 1, (de_cp_type[1]) { 
         cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
         struct Cell *c = de_view_get_safe(&v, cmp_cell);
         assert(c);
@@ -353,7 +351,7 @@ struct Cell *modelview_get_cell(
     }
     */
 
-    for (de_view_single v = de_create_view_single(mv->r, cmp_cell);
+    for (de_view_single v = de_view_single_create(mv->r, cmp_cell);
         de_view_single_valid(&v); de_view_single_next(&v)) {
         struct Cell *c = de_view_single_get(&v);
         assert(c);
@@ -373,7 +371,7 @@ static int get_cell_count(struct ModelView *mv) {
     assert(mv);
     assert(mv->r);
     int num = 0;
-    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
+    for (de_view v = de_view_create(mv->r, 1, (de_cp_type[1]) { 
         cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
         struct Cell *c = de_view_get_safe(&v, cmp_cell);
         assert(c);
@@ -632,8 +630,8 @@ static bool move(
     printf(
         "cell_en %u, id %u, ver %u\n",
         cell_en, 
-        de_entity_identifier(cell_en).id,
-        de_entity_version(cell_en).ver
+        de_entity_identifier(cell_en),
+        de_entity_version(cell_en)
     );
 
     printf(
@@ -1240,7 +1238,7 @@ static void entities_window(struct ModelView *mv) {
     if (!mv->r) goto _exit;
 
     int idx = 0;
-    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
+    for (de_view v = de_view_create(mv->r, 1, (de_cp_type[1]) { 
                 cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
         if (de_valid(mv->r, de_view_entity(&v))) {
             struct Cell *c = de_view_get_safe(&v, cmp_cell);
@@ -1312,7 +1310,7 @@ static void options_window(struct ModelView *mv) {
 
 static void gui(struct ModelView *mv) {
     //rlImGuiBegin(false, mv->camera);
-    rlImGuiBegin(false, NULL);
+    rlImGuiBegin();
 
     //if (mv->camera)
         //trace("gui: %s\n", camera2str(*mv->camera));
@@ -1353,7 +1351,7 @@ static void destroy_dropped(struct ModelView *mv) {
     de_entity destroy_arr[mv->field_size * mv->field_size];
     int destroy_num = 0;
     
-    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
+    for (de_view v = de_view_create(mv->r, 1, (de_cp_type[1]) { 
                 cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
         assert(de_valid(mv->r, de_view_entity(&v)));
         struct Cell *c = de_view_get_safe(&v, cmp_cell);
@@ -1498,7 +1496,7 @@ void modelview_init(struct ModelView *mv, const struct Setup setup) {
 
     mv->state = MVS_READY;
     mv->dropped = false;
-    mv->r = de_ecs_make();
+    mv->r = de_ecs_new();
     mv->camera = setup.cam;
     mv->use_gui = setup.use_gui;
     mv->auto_put = setup.auto_put;
@@ -1554,7 +1552,7 @@ void modelview_shutdown(struct ModelView *mv) {
     UnloadFont(mv->font);
 
     if (mv->r) {
-        de_ecs_destroy(mv->r);
+        de_ecs_free(mv->r);
         mv->r = NULL;
     }
 
@@ -1626,7 +1624,7 @@ void _modelview_field_print_s(
     bool dropped[cells_num];
     memset(dropped, 0, sizeof(dropped));
 
-    for (de_view v = de_create_view(r, 1, (de_cp_type[1]) { 
+    for (de_view v = de_view_create(r, 1, (de_cp_type[1]) { 
         cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
         struct Cell *c = de_view_get_safe(&v, cmp_cell);
         assert(c);
@@ -1679,7 +1677,7 @@ static bool iter_entity(de_ecs *r, de_entity e, void *udata) {
 }
 
 struct Cell *modelview_find_by_value(de_ecs *r, int value) {
-    for (de_view_single v = de_create_view_single(r, cmp_cell);
+    for (de_view_single v = de_view_single_create(r, cmp_cell);
         de_view_single_valid(&v); de_view_single_next(&v)) {
         struct Cell *c = de_view_single_get(&v);
         assert(c);

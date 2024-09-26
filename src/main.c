@@ -11,7 +11,8 @@
 #include "modelview.h"
 #include "raylib.h"
 #include "raymath.h"
-#include "test_suite.h"
+//#include "test_suite.h"
+#include "koh_hashers.h"
 #include <assert.h>
 #include <math.h>
 #include <stdbool.h>
@@ -287,6 +288,7 @@ int main(void) {
 
     main_view_setup.color_theme = color_theme_light,
 
+    koh_hashers_init();
     camera.zoom = 1.0f;
     srand(time(NULL));
     InitWindow(screen_width, screen_height, "2048");
