@@ -21,14 +21,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include "undosys.h"
+//#include "undosys.h"
 
 #if defined(PLATFORM_WEB)
 #include <emscripten.h>
 #endif
 
 static struct ModelView    main_view;
-static UndoSys *undo_system = NULL;
+/*static UndoSys *undo_system = NULL;*/
 
 #if defined(PLATFORM_WEB)
 static const int screen_width = 1920;
@@ -218,6 +218,7 @@ static void update() {
         is_paused = !is_paused;
     }
 
+    /*
     undosys_push(undo_system, (struct UndoState) {
         .r = main_view.r,
         .timers = (struct TimerMan*[]) {
@@ -228,6 +229,7 @@ static void update() {
         .udata = &main_view,
         .sz = sizeof(main_view),
     });
+    */
 
     timerman_pause(main_view.timers_slides, is_paused);
     timerman_pause(main_view.timers_effects, is_paused);
@@ -263,6 +265,7 @@ static void update() {
 
     console_update();
 
+    /*
     undosys_window(undo_system);
 
     // восстановление состояния
@@ -274,6 +277,7 @@ static void update() {
         main_view.timers_slides = st->timers[0];
         main_view.timers_effects = st->timers[1];
     }
+    */
 
     EndMode2D();
 
@@ -335,7 +339,7 @@ int main(void) {
     });
     console_immediate_buffer_enable(true);
 
-    undo_system = undosys_new(2048);
+    /*undo_system = undosys_new(2048);*/
 
     //view_test = printing_test();
     const int target_fps = 90;
@@ -354,7 +358,7 @@ int main(void) {
 
     CloseWindow();
 
-    undosys_free(undo_system);
+    /*undosys_free(undo_system);*/
 
     hotkey_shutdown(&hk);
     sc_shutdown();

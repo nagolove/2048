@@ -25,7 +25,7 @@ return {
 
       artifact = "2048",
 
-      main = "main.c",
+      main = "2048.c",
 
       src = "src",
 

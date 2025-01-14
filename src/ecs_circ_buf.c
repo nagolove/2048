@@ -1,5 +1,4 @@
 #include "ecs_circ_buf.h"
-#include "koh_destral_ecs.h"
 
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 
@@ -21,7 +20,7 @@ void ecs_circ_buf_shutdown(struct ecs_circ_buf *b) {
     assert(b);
     for (int j = 0; j < b->num; ++j) {
         if (b->ecs[j]) {
-            de_ecs_destroy(b->ecs[j]);
+            e_free(b->ecs[j]);
             b->ecs[j] = NULL;
         }
     }
@@ -31,20 +30,20 @@ void ecs_circ_buf_shutdown(struct ecs_circ_buf *b) {
     }
 }
 
-void ecs_circ_buf_push(struct ecs_circ_buf *b, de_ecs *r) {
+void ecs_circ_buf_push(struct ecs_circ_buf *b, ecs_t *r) {
     if (b->ecs[b->i]) {
-        de_ecs_destroy(b->ecs[b->i]);
+        e_free(b->ecs[b->i]);
     }
-    b->ecs[b->i] = de_ecs_clone(r);
+    b->ecs[b->i] = e_clone(r);
     b->i = (b->i + 1) % b->cap;
     b->num++;
     if (b->num >= b->cap)
         b->num = b->cap;
 }
 
-de_ecs *ecs_circ_buf_prev(struct ecs_circ_buf *b) {
+ecs_t *ecs_circ_buf_prev(struct ecs_circ_buf *b) {
     assert(b);
-    de_ecs *ret = NULL;
+    ecs_t *ret = NULL;
     if (b->cur > 0) {
         if (b->ecs[b->cur - 1]) {
             ret = b->ecs[b->cur - 1];
@@ -54,9 +53,9 @@ de_ecs *ecs_circ_buf_prev(struct ecs_circ_buf *b) {
     return ret;
 }
 
-de_ecs *ecs_circ_buf_next(struct ecs_circ_buf *b) {
+ecs_t *ecs_circ_buf_next(struct ecs_circ_buf *b) {
     assert(b);
-    de_ecs *ret = NULL;
+    ecs_t *ret = NULL;
     if (b->cur < b->cap) {
         if (b->ecs[b->cur + 1]) {
             ret = b->ecs[b->cur + 1];
@@ -66,8 +65,8 @@ de_ecs *ecs_circ_buf_next(struct ecs_circ_buf *b) {
     return ret;
 }
 
-de_ecs *ecs_circ_buf_first(struct ecs_circ_buf *ecs_buf) {
-    de_ecs *cur = NULL, *prev = NULL;
+ecs_t *ecs_circ_buf_first(struct ecs_circ_buf *ecs_buf) {
+    ecs_t *cur = NULL, *prev = NULL;
     do {
         prev = cur;
         cur = ecs_circ_buf_next(ecs_buf);
@@ -75,8 +74,8 @@ de_ecs *ecs_circ_buf_first(struct ecs_circ_buf *ecs_buf) {
     return prev;
 }
 
-de_ecs *ecs_circ_buf_last(struct ecs_circ_buf *ecs_buf) {
-    de_ecs *cur = NULL, *prev = NULL;
+ecs_t *ecs_circ_buf_last(struct ecs_circ_buf *ecs_buf) {
+    ecs_t *cur = NULL, *prev = NULL;
     do {
         prev = cur;
         cur = ecs_circ_buf_prev(ecs_buf);
@@ -84,7 +83,7 @@ de_ecs *ecs_circ_buf_last(struct ecs_circ_buf *ecs_buf) {
     return prev;
 }
 
-void ecs_circ_buf_window(struct ecs_circ_buf *ecs_buf, de_ecs **r) {
+void ecs_circ_buf_window(struct ecs_circ_buf *ecs_buf, ecs_t **r) {
     assert(ecs_buf);
     assert(r);
     assert(*r);

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ecs_circ_buf.h"
-#include "koh_destral_ecs.h"
+#include "koh_ecs.h"
 #include "raylib.h"
 #include "timers.h"
 #include <stdbool.h>
@@ -11,29 +11,6 @@
 #include <stdlib.h>
 
 #define WIN_VALUE   2048
-
-#define _FIELD_PRINT(modelview)    \
-    __FIELD_PRINT(modelview, __FILE__, __FUNCTION__, __LINE__) 
-
-#define __FIELD_PRINT(modelview, file, function, line)    \
-    do {                                \
-        char line_str[32] = {};         \
-        sprintf(line_str, "%d\n", line);\
-        _field_print(                   \
-            modelview,                  \
-            (char*[]){                  \
-                (char*)file,            \
-                " ",                    \
-                (char*)function,        \
-                " ",                    \
-                (char*)line_str,        \
-                NULL                    \
-            }                           \
-        );                              \
-    } while (0); 
-
-            //(struct ModelView*)modelview,
-            //(char*[]){ file, function, line_str, NULL }   
 
 enum Direction {
     DIR_NONE,
@@ -92,7 +69,7 @@ struct ColorTheme {
     Отображение поля. Все, что связано с анимацией.
  */
 struct ModelView {
-    de_ecs              *r;
+    ecs_t               *r;
     Camera2D            *camera;
     int                 scores;
     int                 dx, dy, field_size;
@@ -143,7 +120,7 @@ bool modelview_draw(struct ModelView *mv);
 void modelview_draw_gui(struct ModelView *mv);
 void modelview_input(struct ModelView *mv, enum Direction dir);
 struct Cell *modelview_get_cell(
-    struct ModelView *mv, int x, int y, de_entity *en
+    struct ModelView *mv, int x, int y, e_id *en
 );
 char *modelview_state2str(enum ModelViewState state);
 void modelview_field_print(struct ModelView *mv);
@@ -158,7 +135,7 @@ extern bool _use_field_printing;
 void _field_print(struct ModelView *mv, char **msg);
 
 void _modelview_field_print_s(
-    de_ecs *r, int field_size, char *str, size_t str_sz
+    ecs_t *r, int field_size, char *str, size_t str_sz
 );
-void _modelview_field_print(de_ecs *r, int field_size);
-struct Cell *modelview_find_by_value(de_ecs *r, int value);
+void _modelview_field_print(ecs_t *r, int field_size);
+struct Cell *modelview_find_by_value(ecs_t *r, int value);

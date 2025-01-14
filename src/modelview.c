@@ -9,7 +9,7 @@
 #include "cimgui_impl.h"
 #include "colored_text.h"
 #include "koh_common.h"
-#include "koh_destral_ecs.h"
+#include "koh_ecs.h"
 #include "koh_logger.h"
 #include "koh_routine.h"
 #include "modeltest.h"
@@ -41,8 +41,8 @@ static struct ModelTest     model_checker = {0};
 // }}} end of debug shit zone
 
 struct TimerData {
-    struct ModelView    *mv;
-    de_entity           cell;
+    ModelView   *mv;
+    e_id        cell;
 };
 
 const struct ColorTheme color_theme_dark = {
@@ -70,23 +70,20 @@ static const struct DrawOpts dflt_draw_opts = {
     /*.color               = BLACK,*/
 };
 
-static const de_cp_type cmp_cell = {
-    .cp_id = 0,
+static const e_cp_type cmp_cell = {
     .cp_sizeof = sizeof(struct Cell),
     .name = "cell",
     .initial_cap = 1000,
 };
 
-static const de_cp_type cmp_bonus = {
-    .cp_id = 1,
+static const e_cp_type cmp_bonus = {
     .cp_sizeof = sizeof(struct Bonus),
     .name = "bonus",
     .initial_cap = 1000,
 };
 // */
 
-static const de_cp_type cmp_effect = {
-    .cp_id = 2,
+static const e_cp_type cmp_effect = {
     .cp_sizeof = sizeof(struct Effect),
     .name = "effect",
     .initial_cap = 1000,
@@ -107,9 +104,9 @@ void _field_print(struct ModelView *mv, char **msg) {
 }
 /*
     char buf[1024] = {};
-    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
-        cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
-        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+    for (e_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
+        cmp_cell }); e_view_valid(&v); e_view_next(&v)) {
+        struct Cell *c = e_view_get_safe(&v, cmp_cell);
         assert(c);
         char cell_str[32] = {};
         snprintf(
@@ -153,10 +150,10 @@ void modelview_save_state2file(struct ModelView *mv) {
     static int state_sz = 0;
 
     state_sz = 0;
-    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { cmp_cell });
-         de_view_valid(&v); de_view_next(&v)) {
-        assert(de_valid(mv->r, de_view_entity(&v)));
-        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+    for (e_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { cmp_cell });
+         e_view_valid(&v); e_view_next(&v)) {
+        assert(de_valid(mv->r, e_view_entity(&v)));
+        struct Cell *c = e_view_get_safe(&v, cmp_cell);
         assert(c);
         state[state_sz++] = *c;
     }
@@ -185,10 +182,10 @@ void modelview_save_state2file(struct ModelView *mv) {
     if (!file) return;
     fprintf(file, "\n");
 
-    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { cmp_cell });
-         de_view_valid(&v); de_view_next(&v)) {
-        assert(de_valid(mv->r, de_view_entity(&v)));
-        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+    for (e_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { cmp_cell });
+         e_view_valid(&v); e_view_next(&v)) {
+        assert(de_valid(mv->r, e_view_entity(&v)));
+        struct Cell *c = e_view_get_safe(&v, cmp_cell);
         assert(c);
 
         //fprintf(file, "fr %d, %d ", c->from_x, c->from_y);
@@ -215,10 +212,10 @@ static void state_fill(struct ModelView *mv, int *last_state) {
         last_state[j] = 0;
     }
 
-    for (de_view v = de_view_create(mv->r, 1, (de_cp_type[1]) { cmp_cell });
-            de_view_valid(&v); de_view_next(&v)) {
-        assert(de_valid(mv->r, de_view_entity(&v)));
-        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+    for (e_view v = e_view_create(mv->r, 1, (e_cp_type[1]) { cmp_cell });
+            e_view_valid(&v); e_view_next(&v)) {
+        assert(e_valid(mv->r, e_view_entity(&v)));
+        struct Cell *c = e_view_get(&v, cmp_cell);
         assert(c);
 
         last_state[mv->field_size * c->y + c->x] = c->value;
@@ -229,10 +226,10 @@ static bool state_compare_eq(struct ModelView *mv, int *last_state) {
     assert(mv);
     assert(last_state);
 
-    for (de_view v = de_view_create(mv->r, 1, (de_cp_type[1]) { cmp_cell });
-            de_view_valid(&v); de_view_next(&v)) {
-        assert(de_valid(mv->r, de_view_entity(&v)));
-        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+    for (e_view v = e_view_create(mv->r, 1, (e_cp_type[1]) { cmp_cell });
+            e_view_valid(&v); e_view_next(&v)) {
+        assert(e_valid(mv->r, e_view_entity(&v)));
+        struct Cell *c = e_view_get(&v, cmp_cell);
         assert(c);
 
         /*if (last_state[mv->field_size * c->y + c->y] != c->value) */
@@ -302,9 +299,9 @@ static void cell_draw(
 static int find_max(struct ModelView *mv) {
     int max = 0;
 
-    for (de_view v = de_view_create(mv->r, 1, (de_cp_type[1]) { 
-        cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
-        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+    for (e_view v = e_view_create_single(mv->r, cmp_cell);
+         e_view_valid(&v); e_view_next(&v)) {
+        struct Cell *c = e_view_get(&v, cmp_cell);
         assert(c);
         if (c && c->value > max)
             max = c->value;
@@ -316,9 +313,9 @@ static int find_max(struct ModelView *mv) {
 static bool is_over(struct ModelView *mv) {
     int num = 0;
 
-    for (de_view v = de_view_create(mv->r, 1, (de_cp_type[1]) { 
-        cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
-        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+    for (e_view v = e_view_create_single(mv->r, cmp_cell); 
+         e_view_valid(&v); e_view_next(&v)) {
+        struct Cell *c = e_view_get(&v, cmp_cell);
         assert(c);
         if (c) num += c->value > 0;
     }
@@ -327,38 +324,38 @@ static bool is_over(struct ModelView *mv) {
 }
 
 struct Cell *modelview_get_cell(
-    struct ModelView *mv, int x, int y, de_entity *en
+    struct ModelView *mv, int x, int y, e_id *en
 ) {
     assert(mv);
     assert(mv->r);
 
-    if (en) *en = de_null;
+    if (en) *en = e_null;
 
     /*modelview_field_print(mv);*/
 
     /*
-    for (de_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
-        cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
-        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+    for (e_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
+        cmp_cell }); e_view_valid(&v); e_view_next(&v)) {
+        struct Cell *c = e_view_get_safe(&v, cmp_cell);
         assert(c);
         if (c && c->x == x && c->y == y) {
             if (en) {
-                assert(de_valid(mv->r, de_view_entity(&v)));
-                *en = de_view_entity(&v);
+                assert(de_valid(mv->r, e_view_entity(&v)));
+                *en = e_view_entity(&v);
             }
             return c;
         }
     }
     */
 
-    for (de_view_single v = de_view_single_create(mv->r, cmp_cell);
-        de_view_single_valid(&v); de_view_single_next(&v)) {
-        struct Cell *c = de_view_single_get(&v);
+    for (e_view v = e_view_create_single(mv->r, cmp_cell);
+        e_view_valid(&v); e_view_next(&v)) {
+        struct Cell *c = e_view_get(&v, cmp_cell);
         assert(c);
         if (c && c->x == x && c->y == y) {
             if (en) {
-                assert(de_valid(mv->r, de_view_single_entity(&v)));
-                *en = de_view_single_entity(&v);
+                assert(e_valid(mv->r, e_view_entity(&v)));
+                *en = e_view_entity(&v);
             }
             return c;
         }
@@ -371,11 +368,11 @@ static int get_cell_count(struct ModelView *mv) {
     assert(mv);
     assert(mv->r);
     int num = 0;
-    for (de_view v = de_view_create(mv->r, 1, (de_cp_type[1]) { 
-        cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
-        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+    for (e_view v = e_view_create(mv->r, 1, (de_cp_type[1]) { 
+        cmp_cell }); e_view_valid(&v); e_view_next(&v)) {
+        struct Cell *c = e_view_get_safe(&v, cmp_cell);
         assert(c);
-        assert(de_valid(mv->r, de_view_entity(&v)));
+        assert(de_valid(mv->r, e_view_entity(&v)));
         num += c ? 1 : 0;
     }
     return num;
@@ -413,11 +410,11 @@ static void tmr_cell_draw_stop(struct Timer *t) {
     struct TimerData *timer_data = t->data;
     struct ModelView *mv = timer_data->mv;
 
-    assert(de_valid(mv->r, timer_data->cell));
-    struct Cell *cell = de_try_get(mv->r, timer_data->cell, cmp_cell);
+    assert(e_valid(mv->r, timer_data->cell));
+    struct Cell *cell = e_get(mv->r, timer_data->cell, cmp_cell);
     assert(cell);
 
-    struct Effect *ef = de_try_get(mv->r, timer_data->cell, cmp_effect);
+    struct Effect *ef = e_get(mv->r, timer_data->cell, cmp_effect);
     assert(ef);
 
     ef->anim_movement = false;
@@ -1238,16 +1235,16 @@ static void entities_window(struct ModelView *mv) {
     if (!mv->r) goto _exit;
 
     int idx = 0;
-    for (de_view v = de_view_create(mv->r, 1, (de_cp_type[1]) { 
-                cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
-        if (de_valid(mv->r, de_view_entity(&v))) {
-            struct Cell *c = de_view_get_safe(&v, cmp_cell);
-            struct Effect *ef = de_view_get_safe(&v, cmp_effect);
+    for (e_view v = e_view_create(mv->r, 1, (de_cp_type[1]) { 
+                cmp_cell }); e_view_valid(&v); e_view_next(&v)) {
+        if (de_valid(mv->r, e_view_entity(&v))) {
+            struct Cell *c = e_view_get_safe(&v, cmp_cell);
+            struct Effect *ef = e_view_get_safe(&v, cmp_effect);
 
             igSetNextItemOpen(true, ImGuiCond_Once);
 
             if (igTreeNode_Ptr((void*)(uintptr_t)idx, "i %d", idx)) {
-                igText("en      %ld", de_view_entity(&v));
+                igText("en      %ld", e_view_entity(&v));
                 if (c)
                     print_node_cell(c);
                 if (ef)
@@ -1351,10 +1348,10 @@ static void destroy_dropped(struct ModelView *mv) {
     de_entity destroy_arr[mv->field_size * mv->field_size];
     int destroy_num = 0;
     
-    for (de_view v = de_view_create(mv->r, 1, (de_cp_type[1]) { 
-                cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
-        assert(de_valid(mv->r, de_view_entity(&v)));
-        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+    for (e_view v = e_view_create(mv->r, 1, (de_cp_type[1]) { 
+                cmp_cell }); e_view_valid(&v); e_view_next(&v)) {
+        assert(de_valid(mv->r, e_view_entity(&v)));
+        struct Cell *c = e_view_get_safe(&v, cmp_cell);
         assert(c);
         if (c->dropped) {
             trace(
@@ -1363,12 +1360,12 @@ static void destroy_dropped(struct ModelView *mv) {
             );
             //global_cell_push(c);
             //memset(c, 0, sizeof(*c));
-            //de_destroy(mv->r, de_view_entity(&v));
+            //de_destroy(mv->r, e_view_entity(&v));
 
             assert(
                 destroy_num + 1 < sizeof(destroy_arr) / sizeof(destroy_arr[0])
             );
-            destroy_arr[destroy_num++] = de_view_entity(&v);
+            destroy_arr[destroy_num++] = e_view_entity(&v);
         }
     }
 
@@ -1624,9 +1621,9 @@ void _modelview_field_print_s(
     bool dropped[cells_num];
     memset(dropped, 0, sizeof(dropped));
 
-    for (de_view v = de_view_create(r, 1, (de_cp_type[1]) { 
-        cmp_cell }); de_view_valid(&v); de_view_next(&v)) {
-        struct Cell *c = de_view_get_safe(&v, cmp_cell);
+    for (e_view v = e_view_create(r, 1, (de_cp_type[1]) { 
+        cmp_cell }); e_view_valid(&v); e_view_next(&v)) {
+        struct Cell *c = e_view_get_safe(&v, cmp_cell);
         assert(c);
         if (c) {
             field[c->y * field_size + c->x] = c->value;
@@ -1677,9 +1674,9 @@ static bool iter_entity(de_ecs *r, de_entity e, void *udata) {
 }
 
 struct Cell *modelview_find_by_value(de_ecs *r, int value) {
-    for (de_view_single v = de_view_single_create(r, cmp_cell);
-        de_view_single_valid(&v); de_view_single_next(&v)) {
-        struct Cell *c = de_view_single_get(&v);
+    for (e_view_single v = e_view_single_create(r, cmp_cell);
+        e_view_single_valid(&v); e_view_single_next(&v)) {
+        struct Cell *c = e_view_single_get(&v);
         assert(c);
         if (c && c->value == value) {
             return c;
