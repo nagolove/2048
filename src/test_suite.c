@@ -223,7 +223,7 @@ static void test_modelview_arr(struct TestInput input) {
 
         io_restore();
         /*itoa();*/
-        _FIELD_PRINT((&mv));
+        //_FIELD_PRINT((&mv));
 
         io_2null();
 

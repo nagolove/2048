@@ -311,17 +311,8 @@ int main(void) {
     logger_register_functions();
     sc_init_script();
 
-    //test_modelviews_one();
-    de_set_options((de_options) {
-        .tracing = true,
-    });
-
     // TODO: Тесты сломаны
     //test_modelviews_multiple();
-
-    de_set_options((de_options) {
-        .tracing = false,
-    });
 
     modelview_init(&main_view, main_view_setup);
     modelview_put(&main_view);

@@ -70,26 +70,24 @@ static const struct DrawOpts dflt_draw_opts = {
     /*.color               = BLACK,*/
 };
 
-static const e_cp_type cmp_cell = {
+static e_cp_type cmp_cell = {
     .cp_sizeof = sizeof(struct Cell),
     .name = "cell",
     .initial_cap = 1000,
 };
 
-static const e_cp_type cmp_bonus = {
+static e_cp_type cmp_bonus = {
     .cp_sizeof = sizeof(struct Bonus),
     .name = "bonus",
     .initial_cap = 1000,
 };
 // */
 
-static const e_cp_type cmp_effect = {
+static e_cp_type cmp_effect = {
     .cp_sizeof = sizeof(struct Effect),
     .name = "effect",
     .initial_cap = 1000,
 };
-
-bool _use_field_printing = true;
 
 static Color colors[] = {
     RED,
@@ -99,35 +97,6 @@ static Color colors[] = {
     BLUE, 
     GRAY,
 };
-
-void _field_print(struct ModelView *mv, char **msg) {
-}
-/*
-    char buf[1024] = {};
-    for (e_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
-        cmp_cell }); e_view_valid(&v); e_view_next(&v)) {
-        struct Cell *c = e_view_get_safe(&v, cmp_cell);
-        assert(c);
-        char cell_str[32] = {};
-        snprintf(
-            cell_str, sizeof(cell_str),
-            "   (%d, %d, %d, %s)\n",
-            c->x, c->y, 
-            c->value, 
-            c->dropped ? "true" : "false"
-        );
-        strcat(buf, cell_str);
-    }
-
-    char buf_msg[2048] = {};
-    char **cur = (char**)msg;
-    while (*cur) {
-        strcat(buf_msg, *cur++);
-    }
-    trace("_field_print: %s\n", buf_msg);
-    trace("_field_print: %s\n", buf);
-}
-// */
 
 const char *dir2str(enum Direction dir) {
     static char buf[32] = {0};
@@ -293,7 +262,7 @@ void state_save(struct ModelView *mv) {
 }
 
 static void cell_draw(
-    struct ModelView *mv, de_entity cell_en, struct DrawOpts opts
+    struct ModelView *mv, e_id cell_en, struct DrawOpts opts
 );
 
 static int find_max(struct ModelView *mv) {
@@ -368,18 +337,18 @@ static int get_cell_count(struct ModelView *mv) {
     assert(mv);
     assert(mv->r);
     int num = 0;
-    for (e_view v = e_view_create(mv->r, 1, (de_cp_type[1]) { 
-        cmp_cell }); e_view_valid(&v); e_view_next(&v)) {
-        struct Cell *c = e_view_get_safe(&v, cmp_cell);
+    e_view v = e_view_create_single(mv->r, cmp_cell);
+    for (; e_view_valid(&v); e_view_next(&v)) {
+        struct Cell *c = e_view_get(&v, cmp_cell);
         assert(c);
-        assert(de_valid(mv->r, e_view_entity(&v)));
+        assert(e_valid(mv->r, e_view_entity(&v)));
         num += c ? 1 : 0;
     }
     return num;
 }
 
 static struct Cell *create_cell(
-    struct ModelView *mv, int x, int y, de_entity *_en
+    struct ModelView *mv, int x, int y, e_id *_en
 ) {
     assert(mv);
     assert(mv->r);
@@ -391,14 +360,14 @@ static struct Cell *create_cell(
         return NULL;
     }
 
-    de_entity en = de_create(mv->r);
-    struct Cell *cell = de_emplace(mv->r, en, cmp_cell);
+    e_id en = e_create(mv->r);
+    struct Cell *cell = e_emplace(mv->r, en, cmp_cell);
     assert(cell);
     cell->x = x;
     cell->y = y;
     cell->value = -1;
 
-    struct Effect *ef = de_emplace(mv->r, en, cmp_effect);
+    struct Effect *ef = e_emplace(mv->r, en, cmp_effect);
     ef->anim_movement = false;
 
     if (_en)
@@ -428,7 +397,7 @@ static bool tmr_cell_draw(struct Timer *t) {
     struct ModelView *mv = timer_data->mv;
     struct DrawOpts opts = dflt_draw_opts;
 
-    assert(de_valid(mv->r, timer_data->cell));
+    assert(e_valid(mv->r, timer_data->cell));
 
     opts.amount = t->amount;
     cell_draw(timer_data->mv, timer_data->cell, opts);
@@ -451,7 +420,7 @@ static void modelview_put_cell(struct ModelView *mv, int x, int y) {
     assert(x < mv->field_size);
     assert(y >= 0);
     assert(y < mv->field_size);
-    de_entity cell_en = de_null;
+    e_id cell_en = e_null;
     struct Cell *cell = create_cell(mv, x, y, &cell_en);
 
     assert(cell);
@@ -469,7 +438,7 @@ static void modelview_put_cell(struct ModelView *mv, int x, int y) {
     //cell->anima = true;
     cell->dropped = false;
 
-    struct Effect *ef = de_try_get(mv->r, cell_en, cmp_effect);
+    struct Effect *ef = e_get(mv->r, cell_en, cmp_effect);
     assert(ef);
     ef->anim_alpha = AM_FORWARD;
 
@@ -496,7 +465,7 @@ static void modelview_put_bonus(
     assert(x < mv->field_size);
     assert(y >= 0);
     assert(y < mv->field_size);
-    de_entity cell_en = de_null;
+    e_id cell_en = e_null;
     struct Cell *cell = create_cell(mv, x, y, &cell_en);
 
     assert(cell);
@@ -513,11 +482,11 @@ static void modelview_put_bonus(
     cell->y = y;
     cell->dropped = false;
 
-    struct Effect *ef = de_try_get(mv->r, cell_en, cmp_effect);
+    struct Effect *ef = e_get(mv->r, cell_en, cmp_effect);
     assert(ef);
     ef->anim_alpha = AM_FORWARD;
 
-    struct Bonus *bonus = de_emplace(mv->r, cell_en, cmp_bonus);
+    struct Bonus *bonus = e_emplace(mv->r, cell_en, cmp_bonus);
     assert(bonus);
     bonus->type = type;
 
@@ -553,8 +522,8 @@ static bool tmr_bonus_border_color_update(struct Timer *t) {
     assert(td);
     assert(td->mv);
     assert(td->mv->r);
-    assert(td->cell != de_null);
-    struct Bonus *bonus = de_try_get(td->mv->r, td->cell, cmp_bonus);
+    assert(td->cell != e_null);
+    struct Bonus *bonus = e_get(td->mv->r, td->cell, cmp_bonus);
     assert(bonus);
     bonus->border_color.a = 
     return false;
@@ -594,7 +563,7 @@ static void global_cell_push(struct Cell *cell) {
 static void clear_touched(struct ModelView *mv) {
     for (int x = 0; x < mv->field_size; ++x)
         for (int y = 0; y < mv->field_size; ++y) {
-            de_entity cell_en = de_null;
+            e_id cell_en = e_null;
             struct Cell *cell = modelview_get_cell(mv, x, y, &cell_en);
             if (cell)
                 cell->touched = false;
@@ -620,39 +589,39 @@ static bool cell_in_bounds(struct ModelView *mv, struct Cell *cell) {
 }
 
 static bool move(
-    struct ModelView *mv, de_entity cell_en, int x, int y, bool *touched
+    struct ModelView *mv, e_id cell_en, int x, int y, bool *touched
 ) {
     bool has_move = false;
 
     printf(
-        "cell_en %u, id %u, ver %u\n",
-        cell_en, 
-        de_entity_identifier(cell_en),
-        de_entity_version(cell_en)
+        "cell_en id %lu, ord %u, ver %u\n",
+        cell_en.id, 
+        cell_en.ord,
+        cell_en.ver
     );
 
     printf(
         "move: de_has(cell_en,  cmp_cell) %s\n",
-        de_has(mv->r, cell_en,  cmp_cell) ? "true" : "false"
+        e_has(mv->r, cell_en,  cmp_cell) ? "true" : "false"
     );
     printf(
         "move: de_has(cell_en,  cmp_effect) %s\n",
-        de_has(mv->r, cell_en,  cmp_effect) ? "true" : "false"
+        e_has(mv->r, cell_en,  cmp_effect) ? "true" : "false"
     );
     printf(
         "move: de_has(cell_en,  cmp_bonus) %s\n",
-        de_has(mv->r, cell_en,  cmp_bonus) ? "true" : "false"
+        e_has(mv->r, cell_en,  cmp_bonus) ? "true" : "false"
     );
 
-    struct Cell *cell = de_try_get(mv->r, cell_en, cmp_cell);
+    struct Cell *cell = e_get(mv->r, cell_en, cmp_cell);
     if (!cell)
         return false;
     //assert(cell);
 
-    struct Effect *ef = de_try_get(mv->r, cell_en, cmp_effect);
+    struct Effect *ef = e_get(mv->r, cell_en, cmp_effect);
     assert(ef);
 
-    //struct Bonus *bonus = de_try_get(mv->r, cell_en, cmp_bonus);
+    //struct Bonus *bonus = e_get(mv->r, cell_en, cmp_bonus);
 
     //if (cell->touched)
         //return has_move;
@@ -674,7 +643,7 @@ static bool move(
 
     has_move = true;
 
-    assert(cell_en != de_null);
+    assert(cell_en.id != e_null.id);
 
     cell->x += mv->dx;
     cell->y += mv->dy;
@@ -698,26 +667,26 @@ static bool move(
 }
 
 static bool sum(
-    struct ModelView *mv, de_entity cell_en, 
+    struct ModelView *mv, e_id cell_en, 
     int x, int y, bool *touched
 ) {
     assert(mv);
-    assert(cell_en != de_null);
+    assert(cell_en.id != e_null.id);
 
     bool has_sum = false;
 
-    struct Cell *cell = de_try_get(mv->r, cell_en, cmp_cell);
+    struct Cell *cell = e_get(mv->r, cell_en, cmp_cell);
     //assert(cell);
     if (!cell)
         return false;
 
-    struct Effect *ef = de_try_get(mv->r, cell_en, cmp_effect);
+    struct Effect *ef = e_get(mv->r, cell_en, cmp_effect);
     assert(ef);
 
     if (cell->dropped) 
         return has_sum;
 
-    de_entity neighbour_en = de_null;
+    e_id neighbour_en = e_null;
 
     struct Cell *neighbour = modelview_get_cell(
         mv, x + mv->dx, y + mv->dy, &neighbour_en
@@ -727,10 +696,10 @@ static bool sum(
     if (neighbour->dropped) 
         return has_sum;
 
-    struct Effect *neighbour_ef = de_try_get(mv->r, neighbour_en, cmp_effect);
+    struct Effect *neighbour_ef = e_get(mv->r, neighbour_en, cmp_effect);
 
-    assert(cell_en != de_null);
-    assert(neighbour_en != de_null);
+    assert(cell_en.id != e_null.id);
+    assert(neighbour_en.id != e_null.id);
 
     if (cell->value != neighbour->value)
         return has_sum;
@@ -741,7 +710,7 @@ static bool sum(
     mv->scores += cell->value;
 
     /*koh_screenshot_incremental();*/
-    assert(de_valid(mv->r, cell_en));
+    assert(e_valid(mv->r, cell_en));
 
     // cell_en уничтожается
     cell->dropped = true;
@@ -775,7 +744,7 @@ static bool sum(
 }
 
 typedef bool (*Action)(
-    struct ModelView *mv, de_entity cell_en, int x, int y, bool *touched
+    struct ModelView *mv, e_id cell_en, int x, int y, bool *touched
 );
 
 static bool do_action(struct ModelView *mv, Action action) {
@@ -795,7 +764,7 @@ static bool do_action(struct ModelView *mv, Action action) {
         touched = false;
         for (int y = 0; y < mv->field_size; ++y) 
             for (int x = 0; x < mv->field_size; ++x) {
-                de_entity cell_en = de_null;
+                e_id cell_en = e_null;
                 struct Cell *cell = modelview_get_cell(mv, x, y, &cell_en);
                 if (!cell) continue;
                 if (action(mv, cell_en, x, y, &touched))
@@ -914,10 +883,10 @@ static Vector2 decrease_font_size(
 }
 
 static int calc_font_size_anim(
-    struct ModelView *mv, de_entity en, struct DrawOpts opts
+    struct ModelView *mv, e_id en, struct DrawOpts opts
 ) {
     int fontsize = opts.fontsize;
-    struct Effect *ef = de_try_get(mv->r, en, cmp_effect);
+    struct Effect *ef = e_get(mv->r, en, cmp_effect);
     assert(ef);
     if (ef->anim_size) {
         const float font_scale = 6.;
@@ -930,10 +899,10 @@ static int calc_font_size_anim(
 }
 
 static Color calc_alpha(
-    struct ModelView *mv, de_entity en, Color color, struct DrawOpts opts
+    struct ModelView *mv, e_id en, Color color, struct DrawOpts opts
 ) {
     assert(mv);
-    struct Effect *ef = de_try_get(mv->r, en, cmp_effect);
+    struct Effect *ef = e_get(mv->r, en, cmp_effect);
     assert(ef);
     switch (ef->anim_alpha) {
         case AM_FORWARD:
@@ -949,13 +918,13 @@ static Color calc_alpha(
 }
 
 static Vector2 calc_base_pos(
-    struct ModelView *mv, de_entity en, struct DrawOpts opts
+    struct ModelView *mv, e_id en, struct DrawOpts opts
 ) {
     Vector2 base_pos;
 
-    struct Cell *cell = de_try_get(mv->r, en, cmp_cell);
+    struct Cell *cell = e_get(mv->r, en, cmp_cell);
     assert(cell);
-    struct Effect *ef = de_try_get(mv->r, en, cmp_effect);
+    struct Effect *ef = e_get(mv->r, en, cmp_effect);
     assert(ef);
 
     if (ef->anim_movement) {
@@ -975,18 +944,18 @@ static Vector2 calc_base_pos(
 }
 
 static void cell_draw(
-    struct ModelView *mv, de_entity cell_en, struct DrawOpts opts
+    struct ModelView *mv, e_id cell_en, struct DrawOpts opts
 ) {
     assert(mv);
 
-    struct Cell *cell = de_try_get(mv->r, cell_en, cmp_cell);
+    struct Cell *cell = e_get(mv->r, cell_en, cmp_cell);
 
     if (!cell)
         return;
 
     // TODO: падает при проверке наличия компоненты в сущности(если ни одной
     // сущности такого типа не создано?)
-    struct Bonus *bonus = de_try_get(mv->r, cell_en, cmp_bonus);
+    struct Bonus *bonus = e_get(mv->r, cell_en, cmp_bonus);
 
     char msg[64] = {0};
     if (!bonus)
@@ -1114,11 +1083,11 @@ static void draw_numbers(struct ModelView *mv) {
     assert(mv);
     for (int y = 0; y < mv->field_size; y++) {
         for (int x = 0; x < mv->field_size; x++) {
-            de_entity en = de_null;
+            e_id en = e_null;
             struct Cell *cell = modelview_get_cell(mv, x, y, &en);
             if (!cell) continue;
-            assert(en != de_null);
-            struct Effect *ef = de_try_get(mv->r, en, cmp_effect);
+            assert(en.id != e_null.id);
+            struct Effect *ef = e_get(mv->r, en, cmp_effect);
             assert(ef);
 
             bool can_draw = cell && !ef->anim_movement && 
@@ -1235,11 +1204,11 @@ static void entities_window(struct ModelView *mv) {
     if (!mv->r) goto _exit;
 
     int idx = 0;
-    for (e_view v = e_view_create(mv->r, 1, (de_cp_type[1]) { 
-                cmp_cell }); e_view_valid(&v); e_view_next(&v)) {
-        if (de_valid(mv->r, e_view_entity(&v))) {
-            struct Cell *c = e_view_get_safe(&v, cmp_cell);
-            struct Effect *ef = e_view_get_safe(&v, cmp_effect);
+    e_view v = e_view_create_single(mv->r, cmp_cell);
+    for (; e_view_valid(&v); e_view_next(&v)) {
+        if (e_valid(mv->r, e_view_entity(&v))) {
+            struct Cell *c = e_view_get(&v, cmp_cell);
+            struct Effect *ef = e_view_get(&v, cmp_effect);
 
             igSetNextItemOpen(true, ImGuiCond_Once);
 
@@ -1345,13 +1314,13 @@ static void destroy_dropped(struct ModelView *mv) {
     printf("destroy_dropped:\n");
     modelview_field_print(mv);
 
-    de_entity destroy_arr[mv->field_size * mv->field_size];
+    e_id destroy_arr[mv->field_size * mv->field_size];
     int destroy_num = 0;
     
-    for (e_view v = e_view_create(mv->r, 1, (de_cp_type[1]) { 
-                cmp_cell }); e_view_valid(&v); e_view_next(&v)) {
-        assert(de_valid(mv->r, e_view_entity(&v)));
-        struct Cell *c = e_view_get_safe(&v, cmp_cell);
+    e_view v = e_view_create_single(mv->r, cmp_cell);
+    for (; e_view_valid(&v); e_view_next(&v)) {
+        assert(e_valid(mv->r, e_view_entity(&v)));
+        struct Cell *c = e_view_get(&v, cmp_cell);
         assert(c);
         if (c->dropped) {
             trace(
@@ -1378,7 +1347,7 @@ static void destroy_dropped(struct ModelView *mv) {
     }
 
     for (int j = 0; j < destroy_num; ++j) {
-        de_entity e = destroy_arr[j];
+        e_id e = destroy_arr[j];
 
         /*
         if (de_has(mv->r, e, cmp_cell))
@@ -1387,7 +1356,7 @@ static void destroy_dropped(struct ModelView *mv) {
             de_remove(mv->r, e, cmp_effect);
         */
 
-        de_destroy(mv->r, e);
+        e_destroy(mv->r, e);
     }
 
     printf("destroy_dropped: after destroy\n");
@@ -1423,7 +1392,8 @@ bool modelview_draw(struct ModelView *mv) {
             destroy_dropped(mv);
 
             printf("before do_action()\n");
-            de_ecs_print(mv->r);
+
+            e_print_entities(mv->r);
 
             mv->has_move = do_action(mv, move);
             mv->has_sum = do_action(mv, sum);
@@ -1493,7 +1463,12 @@ void modelview_init(struct ModelView *mv, const struct Setup setup) {
 
     mv->state = MVS_READY;
     mv->dropped = false;
-    mv->r = de_ecs_new();
+
+    mv->r = e_new(NULL);
+    e_register(mv->r, &cmp_bonus);
+    e_register(mv->r, &cmp_cell);
+    e_register(mv->r, &cmp_effect);
+
     mv->camera = setup.cam;
     mv->use_gui = setup.use_gui;
     mv->auto_put = setup.auto_put;
@@ -1549,7 +1524,7 @@ void modelview_shutdown(struct ModelView *mv) {
     UnloadFont(mv->font);
 
     if (mv->r) {
-        de_ecs_free(mv->r);
+        e_free(mv->r);
         mv->r = NULL;
     }
 
@@ -1597,7 +1572,7 @@ void modelview_field_print(struct ModelView *mv) {
     printf("%s\n", buf);
 }
 
-void _modelview_field_print(de_ecs *r, int field_size) {
+void _modelview_field_print(ecs_t *r, int field_size) {
     assert(r);
     char buf[1024] = {};
     _modelview_field_print_s(r, field_size, buf, sizeof(buf));
@@ -1609,8 +1584,9 @@ void modelview_field_print_s(struct ModelView *mv, char *str, size_t str_sz) {
     _modelview_field_print_s(mv->r, mv->field_size, str, str_sz);
 }
 
+// XXX: Что делает функция?
 void _modelview_field_print_s(
-    de_ecs *r, int field_size, char *str, size_t str_sz
+    ecs_t *r, int field_size, char *str, size_t str_sz
 ) {
     assert(r);
 
@@ -1621,9 +1597,9 @@ void _modelview_field_print_s(
     bool dropped[cells_num];
     memset(dropped, 0, sizeof(dropped));
 
-    for (e_view v = e_view_create(r, 1, (de_cp_type[1]) { 
-        cmp_cell }); e_view_valid(&v); e_view_next(&v)) {
-        struct Cell *c = e_view_get_safe(&v, cmp_cell);
+    e_view v = e_view_create_single(r, cmp_cell); 
+    for (; e_view_valid(&v); e_view_next(&v)) {
+        struct Cell *c = e_view_get(&v, cmp_cell);
         assert(c);
         if (c) {
             field[c->y * field_size + c->x] = c->value;
@@ -1668,15 +1644,15 @@ void _modelview_field_print_s(
     str += sprintf(str, "\n");
 }
 
-static bool iter_entity(de_ecs *r, de_entity e, void *udata) {
-    printf("%u ", e);
+static bool iter_entity(ecs_t *r, e_id e, void *udata) {
+    printf("%lu ", e.id);
     return false;
 }
 
-struct Cell *modelview_find_by_value(de_ecs *r, int value) {
-    for (e_view_single v = e_view_single_create(r, cmp_cell);
-        e_view_single_valid(&v); e_view_single_next(&v)) {
-        struct Cell *c = e_view_single_get(&v);
+struct Cell *modelview_find_by_value(ecs_t *r, int value) {
+    for (e_view v = e_view_create_single(r, cmp_cell);
+        e_view_valid(&v); e_view_next(&v)) {
+        struct Cell *c = e_view_get(&v, cmp_cell);
         assert(c);
         if (c && c->value == value) {
             return c;
@@ -1686,8 +1662,8 @@ struct Cell *modelview_find_by_value(de_ecs *r, int value) {
     return NULL;
 }
 
-void modelview_each_entity(de_ecs *r) {
+void modelview_each_entity(ecs_t *r) {
     printf("modelview_each_entity:\n");
-    de_each(r, iter_entity, NULL);
+    e_each(r, iter_entity, NULL);
     printf("\n");
 }

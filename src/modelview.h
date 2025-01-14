@@ -131,9 +131,6 @@ void model_global_shutdown();
 
 void test_divide_slides();
 
-extern bool _use_field_printing;
-void _field_print(struct ModelView *mv, char **msg);
-
 void _modelview_field_print_s(
     ecs_t *r, int field_size, char *str, size_t str_sz
 );
