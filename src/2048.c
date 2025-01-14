@@ -296,8 +296,8 @@ int main(void) {
     srand(time(NULL));
     InitWindow(screen_width, screen_height, "2048");
     SetWindowMonitor(1);
-    //SetTargetFPS(999);
-    SetTargetFPS(60);
+
+    const int target_fps = 90;
 
     rlImGuiSetup(&(struct igSetupOptions) {
             .dark = false,
@@ -332,7 +332,6 @@ int main(void) {
     /*undo_system = undosys_new(2048);*/
 
     //view_test = printing_test();
-    const int target_fps = 90;
 #if defined(PLATFORM_WEB)
     emscripten_set_main_loop_arg(update, NULL, target_fps, 1);
 #else

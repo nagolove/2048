@@ -1235,14 +1235,18 @@ _exit:
 static void options_window(struct ModelView *mv) {
     assert(mv);
     bool wnd_open = true;
-    igBegin("options_window", &wnd_open, 0);
+    ImGuiWindowFlags wnd_flag = ImGuiWindowFlags_AlwaysAutoResize;
+    igBegin("options_window", &wnd_open, wnd_flag);
 
     static int field_size = 0;
 
     if (!field_size)
         field_size = mv->field_size;
 
-    igSliderInt("field size", &field_size, 3, 20, "%d", 0);
+    igSliderInt("field size", &field_size, 4, 20, "%d", 0);
+
+    igSliderFloat("tmr_block_time", &mv->tmr_block_time, 0.01, 1., "%f", 0);
+    igSliderFloat("tmr_put_time", &mv->tmr_put_time, 0.01, 1., "%f", 0);
 
     static bool use_bonus = true;
     igCheckbox("use bonuses", &use_bonus);
