@@ -16,7 +16,7 @@
 #include "modelview.h"
 #include "raylib.h"
 #include "raymath.h"
-#include "timers.h"
+#include "koh_timerman.h"
 #include <assert.h>
 #include <math.h>
 #include <stdbool.h>
@@ -453,7 +453,7 @@ static void modelview_put_cell(struct ModelView *mv, int x, int y) {
         .sz = sizeof(struct TimerData),
         .on_update = tmr_cell_draw,
         .on_stop = tmr_cell_draw_stop,
-        .udata = &td,
+        .data = &td,
     });
 }
 
@@ -501,7 +501,7 @@ static void modelview_put_bonus(
         .sz = sizeof(struct TimerData),
         .on_update = tmr_cell_draw,
         .on_stop = tmr_cell_draw_stop,
-        .udata = &td,
+        .data = &td,
     });
 
     /*
@@ -657,7 +657,7 @@ static bool move(
         .sz = sizeof(struct TimerData),
         .on_update = tmr_cell_draw,
         .on_stop = tmr_cell_draw_stop,
-        .udata = &(struct TimerData) {
+        .data = &(struct TimerData) {
             .mv = mv,
             .cell = cell_en,
         },
@@ -720,7 +720,7 @@ static bool sum(
         .on_stop = tmr_cell_draw_stop,
         .on_update = tmr_cell_draw,
         .sz = sizeof(struct TimerData),
-        .udata = &(struct TimerData) {
+        .data = &(struct TimerData) {
             .mv = mv,
             .cell = cell_en,
         },
@@ -734,7 +734,7 @@ static bool sum(
         .on_stop = tmr_cell_draw_stop,
         .on_update = tmr_cell_draw,
         .sz = sizeof(struct TimerData),
-        .udata = &(struct TimerData) {
+        .data = &(struct TimerData) {
             .mv = mv,
             .cell = neighbour_en,
         },
@@ -1287,10 +1287,15 @@ static void gui(struct ModelView *mv) {
     //paths_window();
     entities_window(mv);
 
+    /*
     timerman_window((struct TimerMan* []) { 
             mv->timers_slides,
             mv->timers_effects,
     }, 2);
+    */
+
+    timerman_window_gui(mv->timers_slides);
+    timerman_window_gui(mv->timers_effects);
 
     options_window(mv);
     //ecs_window(mv);
@@ -1458,7 +1463,7 @@ void modelview_init(struct ModelView *mv, const struct Setup setup) {
         mv->field_size * mv->field_size * 2, "slides"
     );
     mv->timers_effects = timerman_new(
-        mv->field_size * mv->field_size * 2, "effect"
+        mv->field_size * mv->field_size * 2, "effects"
     );
 
     mv->state = MVS_READY;

@@ -1,7 +1,6 @@
-#include "timers.h"
+#include "koh_timerman.h"
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 
-#include "timers.h"
 #include "cimgui.h"
 #include "cimgui_impl.h"
 #include "koh_console.h"
