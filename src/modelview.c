@@ -1567,14 +1567,14 @@ void modelview_draw_gui(struct ModelView *mv) {
 }
 
 void modelview_field_print(struct ModelView *mv) {
-    char buf[1024] = {};
+    char buf[1024 * 8] = {};
     modelview_field_print_s(mv, buf, sizeof(buf));
     printf("%s\n", buf);
 }
 
 void _modelview_field_print(ecs_t *r, int field_size) {
     assert(r);
-    char buf[1024] = {};
+    char buf[1024 * 8] = {};
     _modelview_field_print_s(r, field_size, buf, sizeof(buf));
     printf("%s\n", buf);
 }
