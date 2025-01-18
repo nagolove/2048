@@ -33,6 +33,8 @@
 static struct Cell global_cells[GLOBAL_CELLS_CAP] = {0};
 static int global_cells_num = 0;
 static struct Cell cell_zero = {0};
+
+// XXX: зачем нужна переменная last_state?
 static int *last_state = NULL;
 
 //static struct ecs_circ_buf  ecs_buf = {0};
@@ -70,10 +72,21 @@ static const struct DrawOpts dflt_draw_opts = {
     /*.color               = BLACK,*/
 };
 
+static StrBuf str_repr_buf_cell(void *payload, e_id e) {
+    StrBuf buf = strbuf_init(NULL);
+
+    struct Cell *cell = payload;
+    //strbuf_addf(&buf, cell->x);
+    //strbuf_addf(&buf, cell->x);
+
+    return buf;
+}
+
 static e_cp_type cmp_cell = {
     .cp_sizeof = sizeof(struct Cell),
     .name = "cell",
     .initial_cap = 1000,
+    .str_repr_buf = str_repr_buf_cell,
 };
 
 static e_cp_type cmp_bonus = {
@@ -206,12 +219,14 @@ static bool state_compare_eq(struct ModelView *mv, int *last_state) {
             "state_compare_eq: field_size %d, x %d, y %d\n",
             mv->field_size, c->x, c->y
         );
+
         if (last_state[(mv->field_size - 0) * c->y + c->x] != c->value) 
             return false;
     }
     return true;
 }
 
+// Сохраняет состояние поля в файл, добавляя содержимое в его конец
 void state_save(struct ModelView *mv) {
     trace("state_save:\n");
     assert(mv);
@@ -805,7 +820,8 @@ static int cmp(const void *pa, const void *pb) {
 }
 
 static void sort_numbers(struct ModelView *mv) {
-    struct Cell tmp[mv->field_size * mv->field_size];
+    size_t num = mv->field_size * mv->field_size;
+    struct Cell tmp[num];
     memset(tmp, 0, sizeof(tmp));
     int idx = 0;
     for (int y = 0; y < mv->field_size; y++)
@@ -817,6 +833,15 @@ static void sort_numbers(struct ModelView *mv) {
 
     //trace("sort_numbers: idx %d\n", idx);
     qsort(tmp, idx, sizeof(tmp[0]), cmp);
+
+    {
+        char buf[20 /* value len */ * num ] = {}, *pbuf = buf;
+        for (int i = 0; i < num; i++) {
+            pbuf += sprintf(pbuf, "%d ", tmp[i].value);
+        }
+        trace("sort_numbers: %s\n", buf);
+    }
+
     memmove(mv->sorted, tmp, sizeof(tmp[0]) * idx);
 }
 
@@ -967,18 +992,23 @@ static void cell_draw(
         abort();
     }
 
+    /*
+    // XXX: Зачем нужен данный вывод к консоль?
     if (opts.amount <= 0.) {
         trace("cell_draw: \033[1;31m!\033[0m opts.amount %f\n", opts.amount);
         opts.amount = 0.;
     }
 
+    // XXX: Зачем нужен данный вывод к консоль?
     if (opts.amount >= 1.) {
         trace("cell_draw: \033[1;31m!\033[0m opts.amount %f\n", opts.amount);
         opts.amount = 1.;
     }
+    */
 
     Vector2 base_pos = calc_base_pos(mv, cell_en, opts);
     int fontsize = calc_font_size_anim(mv, cell_en, opts);
+    // XXX: Почему не используются все цвета из colors?
     Color color = opts.custom_color ? opts.color : get_color(mv, cell->value);
 
     color = calc_alpha(mv, cell_en, color, opts);
@@ -1436,8 +1466,8 @@ bool modelview_draw(struct ModelView *mv) {
         mv->state = MVS_WIN;
     }
 
-    draw_field(mv);
     sort_numbers(mv);
+    draw_field(mv);
     draw_numbers(mv);
 
     return dir_none;

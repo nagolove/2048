@@ -42,11 +42,11 @@ static HotkeyStorage hk = {0};
 
 static struct Setup main_view_setup = {
     .pos = NULL,
-    .use_bonus = true,
+    .use_bonus = false,
     .cam = &camera,
     .field_size = 6,
-    .tmr_block_time = 0.3,
-    .tmr_put_time = 0.3,
+    .tmr_block_time = 0.05,
+    .tmr_put_time = 0.05,
     .use_gui = true,
     .auto_put = true,
 };
@@ -311,6 +311,7 @@ int main(void) {
     sc_init_script();
 
     // TODO: Тесты сломаны
+    // TODO: Сделать несколько исполняемых файлов - для тестов и основной
     //test_modelviews_multiple();
 
     modelview_init(&main_view, main_view_setup);

@@ -33,7 +33,8 @@ enum AlphaMode {
 };
 
 struct Cell {
-    bool            dropped;        // ячейка подлежит удалению 
+                    // ячейка подлежит удалению 
+    bool            dropped;        
     int             x, y, value;
 };
 
