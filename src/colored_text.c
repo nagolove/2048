@@ -18,7 +18,7 @@ int colored_text_pickup_size(
     if (opts.use_fnt_vector) {
     } else {
 
-        Font font = *opts.font_bitmap;
+        //Font font = *opts.font_bitmap;
         Vector2 textsize = {};
 
         do {

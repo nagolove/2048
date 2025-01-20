@@ -10,7 +10,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "fnt_vector.h"
+#include "koh_fnt_vector.h"
 #include "colored_text.h"
 
 #define WIN_VALUE   2048

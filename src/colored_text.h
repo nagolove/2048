@@ -2,7 +2,7 @@
 
 #include "raylib.h"
 #include "raymath.h"
-#include "fnt_vector.h"
+#include "koh_fnt_vector.h"
 
 typedef struct ColoredTextOpts {
     Font      *font_bitmap;
