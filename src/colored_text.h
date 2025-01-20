@@ -2,6 +2,13 @@
 
 #include "raylib.h"
 #include "raymath.h"
+#include "fnt_vector.h"
+
+typedef struct ColoredTextOpts {
+    Font      *font_bitmap;
+    FntVector *font_vector;
+    bool      use_fnt_vector;
+} ColoredTextOpts;
 
 struct ColoredText {
     const char  *text;
@@ -11,15 +18,19 @@ struct ColoredText {
 
 int colored_text_pickup_size(
     struct ColoredText *text, int text_num,
-    Font *font, Vector2 text_bound 
+    ColoredTextOpts opts,
+    Vector2 text_bound 
 );
 
 void colored_text_print(
     struct ColoredText *text, int text_num,
-    Vector2 pos, Font *font, int base_size 
+    Vector2 pos, 
+    ColoredTextOpts opts,
+    int base_size 
 );
 
 Vector2 colored_text_measure(
     struct ColoredText *text, int text_num,
-    Font *font, int base_size 
+    ColoredTextOpts opts,
+    int base_size 
 );

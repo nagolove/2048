@@ -1,3 +1,4 @@
+// vim: fdm=marker
 #pragma once
 
 #include "ecs_circ_buf.h"
@@ -9,9 +10,12 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "fnt_vector.h"
+#include "colored_text.h"
 
 #define WIN_VALUE   2048
 
+// {{{
 enum Direction {
     DIR_NONE,
     DIR_LEFT,
@@ -66,6 +70,8 @@ struct ColorTheme {
     Color   background, foreground;
 };
 
+// }}}
+
 /*
     Отображение поля. Все, что связано с анимацией.
  */
@@ -82,7 +88,10 @@ struct ModelView {
                         auto_put;       // класть новую плитку на след. ход
 
     int                 quad_width;
+
+    ColoredTextOpts     text_opts;
     Font                font;
+    FntVector           *font_vector;
 
     struct TimerMan     *timers_slides,     // Таймеры анимации плиток
                         *timers_effects;    // Таймеры эффектов
@@ -107,7 +116,7 @@ struct Setup {
     int                 field_size;
     float               tmr_put_time, tmr_block_time;
     bool                use_gui, auto_put;
-    bool                use_bonus;
+    bool                use_bonus, use_fnt_vector;
     struct ColorTheme   color_theme;
 };
 

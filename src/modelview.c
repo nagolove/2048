@@ -76,8 +76,12 @@ static StrBuf str_repr_buf_cell(void *payload, e_id e) {
     StrBuf buf = strbuf_init(NULL);
 
     struct Cell *cell = payload;
-    //strbuf_addf(&buf, cell->x);
-    //strbuf_addf(&buf, cell->x);
+    strbuf_add(&buf, "{ ");
+    strbuf_addf(&buf, "x = %d,", cell->x);
+    strbuf_addf(&buf, "y = %d,", cell->x);
+    strbuf_addf(&buf, "value = %d,", cell->value);
+    strbuf_addf(&buf, "dropped = %s,", cell->dropped ? "true" : "false");
+    strbuf_add(&buf, "}");
 
     return buf;
 }
@@ -215,10 +219,13 @@ static bool state_compare_eq(struct ModelView *mv, int *last_state) {
         assert(c);
 
         /*if (last_state[mv->field_size * c->y + c->y] != c->value) */
+
+        /*
         trace(
             "state_compare_eq: field_size %d, x %d, y %d\n",
             mv->field_size, c->x, c->y
         );
+        */
 
         if (last_state[(mv->field_size - 0) * c->y + c->x] != c->value) 
             return false;
@@ -586,7 +593,7 @@ static void clear_touched(struct ModelView *mv) {
 }
 */
 
-static int move_call_counter = 0;
+/*static int move_call_counter = 0;*/
 
 static bool cell_in_bounds(struct ModelView *mv, struct Cell *cell) {
     assert(mv);
@@ -608,13 +615,16 @@ static bool move(
 ) {
     bool has_move = false;
 
+    /*
     printf(
         "cell_en id %lu, ord %u, ver %u\n",
         cell_en.id, 
         cell_en.ord,
         cell_en.ver
     );
+    */
 
+    /*
     printf(
         "move: de_has(cell_en,  cmp_cell) %s\n",
         e_has(mv->r, cell_en,  cmp_cell) ? "true" : "false"
@@ -627,6 +637,7 @@ static bool move(
         "move: de_has(cell_en,  cmp_bonus) %s\n",
         e_has(mv->r, cell_en,  cmp_bonus) ? "true" : "false"
     );
+    */
 
     struct Cell *cell = e_get(mv->r, cell_en, cmp_cell);
     if (!cell)
@@ -665,7 +676,8 @@ static bool move(
     ef->anim_movement = true;
 
     *touched = true;
-    trace("try_move: move_call_counter %d\n", move_call_counter);
+
+    /*trace("try_move: move_call_counter %d\n", move_call_counter);*/
 
     timerman_add(mv->timers_slides, (struct TimerDef) {
         .duration = mv->tmr_block_time,
@@ -766,14 +778,17 @@ static bool do_action(struct ModelView *mv, Action action) {
     assert(mv);
     assert(action);
 
+    /*
     const char *action_name = action == sum ? "sum" : "move";
     printf("do_action: %s\n", action_name);
+    */
 
     //clear_touched(mv);
     bool has_action = false;
     bool touched = false;
 
-    modelview_field_print(mv);
+    /*modelview_field_print(mv);*/
+
     do {
     //for (int i = 0; i < 3; ++i) {
         touched = false;
@@ -787,13 +802,16 @@ static bool do_action(struct ModelView *mv, Action action) {
         }
     //}
     } while (touched);
-    modelview_field_print(mv);
 
+    /*modelview_field_print(mv);*/
+
+    /*
     trace(
         "move: timerman_num %d, move_call_counter %d\n",
         timerman_num(mv->timers_slides, NULL),
         move_call_counter++
     );
+    */
 
     return has_action;
 }
@@ -839,7 +857,8 @@ static void sort_numbers(struct ModelView *mv) {
         for (int i = 0; i < num; i++) {
             pbuf += sprintf(pbuf, "%d ", tmp[i].value);
         }
-        trace("sort_numbers: %s\n", buf);
+
+        /*trace("sort_numbers: %s\n", buf);*/
     }
 
     memmove(mv->sorted, tmp, sizeof(tmp[0]) * idx);
@@ -895,6 +914,8 @@ static Vector2 decrease_font_size_colored(
 }
 */
 
+// Уменьшает размер шрифта до тех пор, пока данный текст msg не влезет по 
+// ширине в text_bound
 static Vector2 decrease_font_size(
     struct ModelView *mv, const char *msg, int *fontsize, Vector2 text_bound
 ) {
@@ -982,11 +1003,11 @@ static void cell_draw(
     // сущности такого типа не создано?)
     struct Bonus *bonus = e_get(mv->r, cell_en, cmp_bonus);
 
-    char msg[64] = {0};
+    char cell_text[64] = {0};
     if (!bonus)
-        sprintf(msg, "%d", cell->value);
+        sprintf(cell_text, "%d", cell->value);
     else if (bonus->type == BT_DOUBLE)
-        sprintf(msg, "x2");
+        sprintf(cell_text, "x2");
     else {
         trace("cell_draw: bad bonus type %d\n", bonus->type);
         abort();
@@ -1024,11 +1045,13 @@ static void cell_draw(
         text_bound.y = mv->quad_width - thick * 6.;
     }
 
-    Vector2 textsize = decrease_font_size(mv, msg, &fontsize, text_bound);
+    Vector2 textsize = decrease_font_size(
+        mv, cell_text, &fontsize, text_bound
+    );
 
     struct ColoredText text_cell[] = {
         { 
-            .text = msg,
+            .text = cell_text,
             .scale = 1.,
             .color = color,
         },
@@ -1064,7 +1087,7 @@ static void cell_draw(
 
     fontsize = colored_text_pickup_size(
         texts, texts_num,
-        &mv->font, text_bound
+        mv->text_opts, text_bound
     );
 
     Vector2 offset = {
@@ -1075,7 +1098,7 @@ static void cell_draw(
     Vector2 disp = Vector2Add(Vector2Scale(base_pos, mv->quad_width), offset);
     Vector2 pos = Vector2Add(mv->pos, disp);
 
-    colored_text_print(texts, texts_num, pos, &mv->font, fontsize);
+    colored_text_print(texts, texts_num, pos, mv->text_opts, fontsize);
     //DrawTextEx(mv->font, msg, pos, fontsize, 0, color);
 
     if (bonus) {
@@ -1123,7 +1146,7 @@ static void draw_numbers(struct ModelView *mv) {
             bool can_draw = cell && !ef->anim_movement && 
                             !ef->anim_size && ef->anim_alpha == AM_NONE;
             if (can_draw)
-                    cell_draw(mv, en, dflt_draw_opts);
+                cell_draw(mv, en, dflt_draw_opts);
         }
     }
 }
@@ -1281,6 +1304,9 @@ static void options_window(struct ModelView *mv) {
     static bool use_bonus = true;
     igCheckbox("use bonuses", &use_bonus);
 
+    static bool use_fnt_vector = false;
+    igCheckbox("[experimental] use vector font drawing", &use_fnt_vector);
+
     static bool theme_light = true;
     if (igRadioButton_Bool("color theme: light", theme_light)) {
         theme_light = true;
@@ -1299,6 +1325,7 @@ static void options_window(struct ModelView *mv) {
             .pos = &mv->pos,
             .use_gui = mv->use_gui,
             .use_bonus = use_bonus,
+            .use_fnt_vector = use_fnt_vector,
             .color_theme = theme_light ? color_theme_light : color_theme_dark,
         };
         modelview_init(mv, setup);
@@ -1319,7 +1346,9 @@ static void gui(struct ModelView *mv) {
     movements_window();
     removed_entities_window();
     //paths_window();
+
     entities_window(mv);
+    e_gui_buf(mv->r);
 
     /*
     timerman_window((struct TimerMan* []) { 
@@ -1350,8 +1379,10 @@ char *modelview_state2str(enum ModelViewState state) {
 }
 
 static void destroy_dropped(struct ModelView *mv) {
+    /*
     printf("destroy_dropped:\n");
     modelview_field_print(mv);
+    */
 
     e_id destroy_arr[mv->field_size * mv->field_size];
     int destroy_num = 0;
@@ -1362,10 +1393,14 @@ static void destroy_dropped(struct ModelView *mv) {
         struct Cell *c = e_view_get(&v, cmp_cell);
         assert(c);
         if (c->dropped) {
+
+            /*
             trace(
                 "destroy_dropped: cell val %d, (%d, %d)\n",
                 c->value, c->x, c->y
             );
+            */
+
             //global_cell_push(c);
             //memset(c, 0, sizeof(*c));
             //de_destroy(mv->r, e_view_entity(&v));
@@ -1377,8 +1412,10 @@ static void destroy_dropped(struct ModelView *mv) {
         }
     }
 
+    /*
     printf("destroy_dropped: before destroy\n");
     modelview_field_print(mv);
+    */
 
     if (mv->test_payload && ((struct TestPayload*)mv->test_payload)->do_trap) {
         printf("test_payload trap\n");
@@ -1398,8 +1435,10 @@ static void destroy_dropped(struct ModelView *mv) {
         e_destroy(mv->r, e);
     }
 
+    /*
     printf("destroy_dropped: after destroy\n");
     modelview_field_print(mv);
+    */
 }
 
 bool modelview_draw(struct ModelView *mv) {
@@ -1417,34 +1456,40 @@ bool modelview_draw(struct ModelView *mv) {
 
     static enum ModelViewState prev_state = 0;
     if (mv->state != prev_state) {
-        trace("modelview_draw: state %s\n", modelview_state2str(mv->state));
+        /*trace("modelview_draw: state %s\n", modelview_state2str(mv->state));*/
         prev_state = mv->state;
-        trace("modelview_draw: dir %s\n", dir2str(mv->dir));
+        /*trace("modelview_draw: dir %s\n", dir2str(mv->dir));*/
     }
 
-    if (!timersnum)
-        state_save(mv);
+    // XXX: Сохраненние делается когда все таймеры заканчиваются?
+    if (!timersnum) {
+        //state_save(mv);
+    }
 
     if (mv->state == MVS_READY) {
         if (mv->dx || mv->dy) {
             // TODO: удаляет неправильно?
             destroy_dropped(mv);
 
-            printf("before do_action()\n");
+            /*printf("before do_action()\n");*/
 
-            e_print_entities(mv->r);
+            /*e_print_entities(mv->r);*/
 
             mv->has_move = do_action(mv, move);
             mv->has_sum = do_action(mv, sum);
             //mv->has_move = do_action(mv, move);
-            
+           
+            /*
             trace(
                 "modelview_draw: has_move %s, has_sum %s\n",
                 mv->has_move ? "t" : "f",
                 mv->has_sum ? "t" : "f"
             );
+            */
 
+            /*
             printf("modelview_draw: clear input flags\n");
+            */
         }
 
         if (!mv->has_sum && !mv->has_move && (mv->dx || mv->dy)) {
@@ -1534,12 +1579,23 @@ void modelview_init(struct ModelView *mv, const struct Setup setup) {
     );
     mv->sorted = calloc(cells_num, sizeof(mv->sorted[0]));
 
+    mv->text_opts = (ColoredTextOpts) {
+        .font_bitmap = &mv->font,
+        .font_vector = mv->font_vector,
+        .use_fnt_vector = false,
+    };
 
     global_cells_num = 0;
+    mv->font_vector = fnt_vector_new("assets/djv.ttf");
 }
 
 void modelview_shutdown(struct ModelView *mv) {
     assert(mv);
+
+    if (mv->font_vector) {
+        fnt_vector_free(mv->font_vector);
+        mv->font_vector = NULL;
+    }
 
     if (last_state) {
         free(last_state);
