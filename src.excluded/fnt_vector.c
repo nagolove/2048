@@ -87,8 +87,11 @@ void fnt_vector_init() {
 void fnt_vector_free(FntVector *fv) {
     assert(fv);
 
+    trace("fnt_vector_free:\n");
+
     if (fv->char2vector) {
         htable_free(fv->char2vector);
+        fv->char2vector = NULL;
     }
 }
 
@@ -102,11 +105,12 @@ void on_remove_char(
 }
 
 FntVector *fnt_vector_new(const char *ttf_file) {
-    FntVector fv = {
-        .char2vector = htable_new(&(HTableSetup) {
-            /*.f_on_remove = on_remove_char,*/
-        }),
-    };
+    FntVector *fv = calloc(1, sizeof(*fv));
+    assert(fv);
+
+    fv->char2vector = htable_new(&(HTableSetup) {
+        .f_on_remove = on_remove_char,
+    });
 
     if (!library) {
         fnt_vector_init();
@@ -120,19 +124,21 @@ FntVector *fnt_vector_new(const char *ttf_file) {
 
     // Загрузка базовых и долнительных символов
     for (int i = ascii_first; i < ascii_last; i++) {
-        char_load(&fv, ttf_file, i);
+        char_load(fv, ttf_file, i);
     }
     for (int i = cyrillic_first; i < cyrillic_last; i++) {
-        char_load(&fv, ttf_file, i);
+        char_load(fv, ttf_file, i);
     }
     for (int i = pseudo_gr_first; i < pseudo_gr_last; i++) {
-        char_load(&fv, ttf_file, i);
+        char_load(fv, ttf_file, i);
     }
     for (int i = arrows_first; i < arrows_last; i++) {
-        char_load(&fv, ttf_file, i);
+        char_load(fv, ttf_file, i);
     }
 
-    return 0;
+    trace("fnt_vector_new: %p\n", fv);
+
+    return fv;
 }
 
 // Проверка для аргумента utf8proc_iterate()
