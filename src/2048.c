@@ -307,7 +307,6 @@ int main(void) {
 
     logger_init();
     sc_init();
-    logger_register_functions();
     sc_init_script();
 
     // TODO: Тесты сломаны
