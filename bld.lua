@@ -17,7 +17,7 @@ return {
 
          "resvg",
 
-         "rlwr",
+
 
       },
 
