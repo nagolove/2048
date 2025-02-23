@@ -1586,7 +1586,9 @@ void modelview_init(struct ModelView *mv, const struct Setup setup) {
     };
 
     global_cells_num = 0;
-    mv->font_vector = fnt_vector_new("assets/djv.ttf");
+    mv->font_vector = fnt_vector_new("assets/djv.ttf", &(FntVectorOpts) {
+        .line_thick = 10.f,
+    });
 }
 
 void modelview_shutdown(struct ModelView *mv) {

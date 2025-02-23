@@ -1,12 +1,12 @@
-#include "koh_timerman.h"
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 
+#include "koh_timerman.h"
 #include "cimgui.h"
 #include "cimgui_impl.h"
 #include "koh_console.h"
 #include "koh_hotkey.h"
 #include "koh_logger.h"
-#include "koh_script.h"
+#include "koh_lua.h"
 #include "modelview.h"
 #include "raylib.h"
 #include "raymath.h"
