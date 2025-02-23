@@ -1,17 +1,21 @@
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 
-#include "koh_timerman.h"
 #include "cimgui.h"
 #include "cimgui_impl.h"
-#include "koh_console.h"
-#include "koh_hotkey.h"
+#include "koh_fnt_vector.h"
+#include "koh_hashers.h"
+#include "koh_inotifier.h"
 #include "koh_logger.h"
 #include "koh_lua.h"
+#include "koh_lua.h"
+#include "koh_timerman.h"
+#include "lauxlib.h"
+#include "lua.h"
+#include "lualib.h"
 #include "modelview.h"
 #include "raylib.h"
 #include "raymath.h"
-//#include "test_suite.h"
-#include "koh_hashers.h"
+#include "rlwr.h"
 #include <assert.h>
 #include <math.h>
 #include <stdbool.h>
@@ -20,14 +24,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-//#include "undosys.h"
+//#include "test_suite.h"
 
 #if defined(PLATFORM_WEB)
 #include <emscripten.h>
 #endif
 
 static struct ModelView    main_view;
-/*static UndoSys *undo_system = NULL;*/
 
 #if defined(PLATFORM_WEB)
 static const int screen_width = 1920;
@@ -38,7 +41,13 @@ static const int screen_height = 1080 * 2;
 #endif
 
 static Camera2D camera = { 0 };
-static HotkeyStorage hk = {0};
+static bool draw_gui = true;
+
+static lua_State *l = NULL;
+// Создает Луа состояние с raylib окружением.
+static rlwr_t *rlwr = NULL;
+static const char *init_lua = "assets/init.lua";
+static char error[256] = {};
 
 static struct Setup main_view_setup = {
     .pos = NULL,
@@ -49,11 +58,18 @@ static struct Setup main_view_setup = {
     .tmr_put_time = 0.05,
     .use_gui = true,
     .auto_put = true,
+    .win_value = 2048,
 };
 
 float maxf(float a, float b) {
     return a > b ? a : b;
 }
+
+int l_state_get(lua_State *l) {
+    lua_pushstring(l, modelview_state2str(main_view.state));
+    return 1;
+}
+
 
 void mouse_swipe_cell(enum Direction *dir) {
     assert(dir);
@@ -72,6 +88,35 @@ void mouse_swipe_cell(enum Direction *dir) {
             else if (diff.y < 0) *dir = DIR_DOWN;
         }
     }
+}
+
+static void load_init() {
+    trace("load_init:\n");
+    rlwr = rlwr_new();
+    l = rlwr_state(rlwr);
+    luaL_openlibs(l);
+
+    if (luaL_dofile(l, init_lua) != LUA_OK) {
+        strncpy(error, lua_tostring(l, -1), sizeof(error) - 1);
+        trace("main: error in '%s' '%s'\n", init_lua, lua_tostring(l, -1));
+    } else {
+        strcpy(error, "");
+
+        lua_register(l, "state_get", l_state_get);
+    }
+}
+
+void hotreload(const char *fname, void *ud) {
+    trace("hotreload:\n");
+
+    if (rlwr) {
+        rlwr_free(rlwr);
+        rlwr = NULL;
+        l = NULL;
+    }
+
+    load_init();
+    inotifier_watch(init_lua, hotreload, NULL);
 }
 
 static void keyboard_swipe_cell(enum Direction *dir) {
@@ -139,38 +184,15 @@ void draw_scores() {
     const int fontsize = 70;
     sprintf(msg, "scores: %d", main_view.scores);
     Vector2 pos = place_center(msg, fontsize);
+
 #if defined(PLATFORM_WEB)
     pos.y = 1.0 * fontsize;
 #else
     pos.y = 1.0 * fontsize;
 #endif
+
     DrawText(msg, pos.x, pos.y, fontsize, BLUE);
 }
-
-/*
-void print_inputs(const double *inputs, int inputs_num) {
-    printf("print_inputs: ");
-    for (int i = 0; i < inputs_num; i++) {
-        printf("%f ", inputs[i]);
-    }
-    printf("\n");
-}
-*/
-
-/*
-// Как протестировать функцию?
-int out2dir(const double *outputs) {
-    assert(outputs);
-    double max = 0.;
-    int max_index = 0;
-    for (int j = 0; j < 4; j++)
-        if (outputs[j] > max) {
-            max = outputs[j];
-            max_index = j;
-        }
-    return max_index;
-}
-*/
 
 void camera_process() {
     if (IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE)) {
@@ -211,24 +233,16 @@ void camera_process() {
 bool is_paused = false;
 
 static void update() {
+    inotifier_update();
     camera_process();
+
+    if (IsKeyPressed(KEY_GRAVE)) {
+        draw_gui = !draw_gui;
+    }
 
     if (IsKeyPressed(KEY_P)) {
         is_paused = !is_paused;
     }
-
-    /*
-    undosys_push(undo_system, (struct UndoState) {
-        .r = main_view.r,
-        .timers = (struct TimerMan*[]) {
-            main_view.timers_slides,
-            main_view.timers_effects,
-        },
-        .timers_num = 2,
-        .udata = &main_view,
-        .sz = sizeof(main_view),
-    });
-    */
 
     timerman_pause(main_view.timers_slides, is_paused);
     timerman_pause(main_view.timers_effects, is_paused);
@@ -239,17 +253,21 @@ static void update() {
         modelview_put(&main_view);
     }
 
-    hotkey_process(&hk);
-    console_check_editor_mode();
-
     BeginDrawing();
     BeginMode2D(camera);
+
+    trace(
+        "update: main_view.state '%s'\n",
+        modelview_state2str(main_view.state)
+    );
 
     if (main_view.state != MVS_GAMEOVER)
         input();
     modelview_draw(&main_view);
 
     draw_scores();
+
+    /*
     switch (main_view.state) {
         case MVS_GAMEOVER: {
             draw_over();
@@ -261,26 +279,20 @@ static void update() {
         }
         default: break;
     }
-
-    console_update();
-
-    /*
-    undosys_window(undo_system);
-
-    // восстановление состояния
-    if (undosys_get(undo_system)) {
-        struct UndoState *st = undosys_get(undo_system);
-        assert(sizeof(main_view) == st->sz);
-        memcpy(&main_view, st->udata, sizeof(main_view));
-        main_view.r = st->r;
-        main_view.timers_slides = st->timers[0];
-        main_view.timers_effects = st->timers[1];
-    }
     */
+
+    static bool is_ok = false;
+    const char *pcall_err = L_call(l, "update", &is_ok);
+    if (!is_ok)
+        strncpy(error, pcall_err, sizeof(error));
+
+    if (strlen(error))
+        DrawText(error, 0, 0, 70, BLACK);
 
     EndMode2D();
 
-    modelview_draw_gui(&main_view);
+    if (draw_gui)
+        modelview_draw_gui(&main_view);
 
     EndDrawing();
 }
@@ -306,30 +318,19 @@ int main(void) {
     });
 
     logger_init();
-    sc_init();
-    sc_init_script();
 
     // TODO: Тесты сломаны
     // TODO: Сделать несколько исполняемых файлов - для тестов и основной
     //test_modelviews_multiple();
 
+    fnt_vector_init_freetype();
+
     modelview_init(&main_view, main_view_setup);
+
+    load_init();
+    inotifier_watch(init_lua, hotreload, NULL);
+
     modelview_put(&main_view);
-
-    hotkey_init(&hk);
-    console_init(&hk, &(struct ConsoleSetup) {
-        .on_enable = NULL,
-        .on_disable = NULL,
-        .udata = NULL,
-        .color_cursor = BLUE,
-        .color_text = BLACK,
-        .fnt_path = "assets/djv.ttf",
-        //.fnt_size = 50,
-        .fnt_size = 20,
-    });
-    console_immediate_buffer_enable(true);
-
-    /*undo_system = undosys_new(2048);*/
 
     //view_test = printing_test();
 #if defined(PLATFORM_WEB)
@@ -341,16 +342,13 @@ int main(void) {
     }
 #endif
 
+    rlwr_free(rlwr);
+    fnt_vector_shutdown_freetype();
     modelview_shutdown(&main_view);
 
     rlImGuiShutdown();
-
     CloseWindow();
 
-    /*undosys_free(undo_system);*/
-
-    hotkey_shutdown(&hk);
-    sc_shutdown();
     logger_shutdown();
 
     return 0;

@@ -298,6 +298,7 @@ static int find_max(struct ModelView *mv) {
             max = c->value;
     }
 
+    trace("find_max: max %d\n", max);
     return max;
 }
 
@@ -526,33 +527,11 @@ static void modelview_put_bonus(
         .data = &td,
     });
 
-    /*
-    timerman_add(mv->timers_effects, (struct TimerDef) {
-        .duration = 0.5,
-        .sz = sizeof(struct TimerData),
-        .on_update = tmr_bonus_border_color_update,
-        .udata = &td,
-    });
-    */
-
 }
 
-/*
-static bool tmr_bonus_border_color_update(struct Timer *t) {
-    assert(t);
-    struct TimerData *td = t->data;
-    assert(td);
-    assert(td->mv);
-    assert(td->mv->r);
-    assert(td->cell != e_null);
-    struct Bonus *bonus = e_get(td->mv->r, td->cell, cmp_bonus);
-    assert(bonus);
-    bonus->border_color.a = 
-    return false;
-}
-*/
 
-
+// TODO: Сделать несколько точек создания клеток. Возможно в зависимости от 
+// площади.
 void modelview_put(struct ModelView *mv) {
     assert(mv);
     int x = rand() % mv->field_size;
@@ -573,27 +552,6 @@ void modelview_put(struct ModelView *mv) {
     } else
         modelview_put_cell(mv, x, y);
 }
-
-/*
-static void global_cell_push(struct Cell *cell) {
-    assert(cell);
-    global_cells[global_cells_num++] = *cell;
-}
-*/
-
-/*
-static void clear_touched(struct ModelView *mv) {
-    for (int x = 0; x < mv->field_size; ++x)
-        for (int y = 0; y < mv->field_size; ++y) {
-            e_id cell_en = e_null;
-            struct Cell *cell = modelview_get_cell(mv, x, y, &cell_en);
-            if (cell)
-                cell->touched = false;
-        }
-}
-*/
-
-/*static int move_call_counter = 0;*/
 
 static bool cell_in_bounds(struct ModelView *mv, struct Cell *cell) {
     assert(mv);
@@ -783,7 +741,6 @@ static bool do_action(struct ModelView *mv, Action action) {
     printf("do_action: %s\n", action_name);
     */
 
-    //clear_touched(mv);
     bool has_action = false;
     bool touched = false;
 
@@ -1106,7 +1063,8 @@ static void cell_draw(
             opts.caption_offset_coef.x * (mv->quad_width - text_bound.x) / 2.,
             opts.caption_offset_coef.y * (mv->quad_width - text_bound.y) / 2.,
         };
-        Vector2 _disp = Vector2Add(Vector2Scale(base_pos, mv->quad_width), _offset);
+        Vector2 tmp = Vector2Scale(base_pos, mv->quad_width);
+        Vector2 _disp = Vector2Add(tmp, _offset);
         Vector2 _pos = Vector2Add(mv->pos, _disp);
 
         //float cur_thick = (-1. + sin(GetTime())) * 1.5 + 0.5;
@@ -1301,7 +1259,7 @@ static void options_window(struct ModelView *mv) {
     igSliderFloat("tmr_block_time", &mv->tmr_block_time, 0.01, 1., "%f", 0);
     igSliderFloat("tmr_put_time", &mv->tmr_put_time, 0.01, 1., "%f", 0);
 
-    static bool use_bonus = true;
+    static bool use_bonus = false;
     igCheckbox("use bonuses", &use_bonus);
 
     static bool use_fnt_vector = false;
@@ -1313,6 +1271,9 @@ static void options_window(struct ModelView *mv) {
     } else if (igRadioButton_Bool("color theme: dark", !theme_light)) {
         theme_light = false;
     }
+
+    static int points2win = 2048;
+    igSliderInt("points for win", &points2win, 0, 2048 * 10, "%d", 0);
 
     if (igButton("restart", (ImVec2) {0, 0})) {
         modelview_shutdown(mv);
@@ -1441,7 +1402,7 @@ static void destroy_dropped(struct ModelView *mv) {
     */
 }
 
-bool modelview_draw(struct ModelView *mv) {
+bool modelview_draw(ModelView *mv) {
     assert(mv);
 
     bool dir_none = false;
@@ -1507,7 +1468,8 @@ bool modelview_draw(struct ModelView *mv) {
         mv->state = MVS_GAMEOVER;
     }
 
-    if (find_max(mv) == WIN_VALUE) {
+    if (find_max(mv) >= mv->win_value) {
+        trace("modelview_draw: win state, win_value %d\n", mv->win_value);
         mv->state = MVS_WIN;
     }
 
@@ -1518,10 +1480,12 @@ bool modelview_draw(struct ModelView *mv) {
     return dir_none;
 }
 
-void modelview_init(struct ModelView *mv, const struct Setup setup) {
+void modelview_init(struct ModelView *mv, Setup setup) {
     last_state = NULL;
     assert(mv);
     assert(setup.field_size > 1);
+
+    memset(mv, 0, sizeof(*mv));
     mv->field_size = setup.field_size;
     const int cells_num = mv->field_size * mv->field_size;
 
@@ -1547,6 +1511,8 @@ void modelview_init(struct ModelView *mv, const struct Setup setup) {
 
     mv->state = MVS_READY;
     mv->dropped = false;
+
+    mv->win_value = setup.win_value;
 
     mv->r = e_new(NULL);
     e_register(mv->r, &cmp_bonus);
@@ -1579,16 +1545,16 @@ void modelview_init(struct ModelView *mv, const struct Setup setup) {
     );
     mv->sorted = calloc(cells_num, sizeof(mv->sorted[0]));
 
+    global_cells_num = 0;
+    mv->font_vector = fnt_vector_new("assets/djv.ttf", &(FntVectorOpts) {
+        .line_thick = 10.f,
+    });
+
     mv->text_opts = (ColoredTextOpts) {
         .font_bitmap = &mv->font,
         .font_vector = mv->font_vector,
         .use_fnt_vector = false,
     };
-
-    global_cells_num = 0;
-    mv->font_vector = fnt_vector_new("assets/djv.ttf", &(FntVectorOpts) {
-        .line_thick = 10.f,
-    });
 }
 
 void modelview_shutdown(struct ModelView *mv) {
@@ -1632,26 +1598,6 @@ void modelview_shutdown(struct ModelView *mv) {
     modeltest_shutdown(&model_checker);
     mv->dropped = true;
 }
-
-/*
-void modelview_put_cell(struct ModelView *mv, struct Cell cell) {
-    assert(mv);
-
-    assert(cell.x >= 0);
-    assert(cell.y >= 0);
-    assert(cell.x < mv->field_size);
-    assert(cell.y < mv->field_size);
-
-    struct Cell *new_cell = modelview_get_cell(mv, cell.x, cell.y, NULL);
-    if (!new_cell) {
-        new_cell = create_cell(mv, cell.x, cell.y, NULL);
-    }
-    memset(new_cell, 0, sizeof(*new_cell));
-    new_cell->x = cell.x;
-    new_cell->y = cell.y;
-    new_cell->value = cell.value;
-}
-*/
 
 void modelview_draw_gui(struct ModelView *mv) {
     assert(mv);

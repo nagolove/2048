@@ -36,11 +36,11 @@ enum AlphaMode {
     AM_BACKWARD,
 };
 
-struct Cell {
+typedef struct Cell {
                     // ячейка подлежит удалению 
     bool            dropped;        
     int             x, y, value;
-};
+} Cell;
 
 enum BonusType {
     BT_DOUBLE = 0, 
@@ -106,11 +106,13 @@ struct ModelView {
     float               font_spacing;
     struct ColorTheme   color_theme;
     void                *test_payload;
+    int                 win_value;
 };
 
 extern const struct ColorTheme color_theme_dark, color_theme_light;
 
-struct Setup {
+typedef struct Setup {
+    int                 win_value;
     Vector2             *pos;
     Camera2D            *cam;
     int                 field_size;
@@ -118,23 +120,23 @@ struct Setup {
     bool                use_gui, auto_put;
     bool                use_bonus, use_fnt_vector;
     struct ColorTheme   color_theme;
-};
+} Setup;
 
-void modelview_init(struct ModelView *mv, struct Setup setup);
-void modelview_put_manual(struct ModelView *mv, int x, int y, int value);
-//void modelview_put_cell(struct ModelView *mv, struct Cell cell);
-void modelview_put(struct ModelView *mv);
-void modelview_shutdown(struct ModelView *mv);
-void modelview_save_state2file(struct ModelView *mv);
-bool modelview_draw(struct ModelView *mv);
-void modelview_draw_gui(struct ModelView *mv);
-void modelview_input(struct ModelView *mv, enum Direction dir);
-struct Cell *modelview_get_cell(
-    struct ModelView *mv, int x, int y, e_id *en
+void modelview_init(ModelView *mv, Setup setup);
+void modelview_put_manual(ModelView *mv, int x, int y, int value);
+//void modelview_put_cell(ModelView *mv, Cell cell);
+void modelview_put(ModelView *mv);
+void modelview_shutdown(ModelView *mv);
+void modelview_save_state2file(ModelView *mv);
+bool modelview_draw(ModelView *mv);
+void modelview_draw_gui(ModelView *mv);
+void modelview_input(ModelView *mv, enum Direction dir);
+Cell *modelview_get_cell(
+    ModelView *mv, int x, int y, e_id *en
 );
 char *modelview_state2str(enum ModelViewState state);
-void modelview_field_print(struct ModelView *mv);
-void modelview_field_print_s(struct ModelView *mv, char *str, size_t str_sz);
+void modelview_field_print(ModelView *mv);
+void modelview_field_print_s(ModelView *mv, char *str, size_t str_sz);
 
 void model_global_init();
 void model_global_shutdown();
@@ -145,4 +147,4 @@ void _modelview_field_print_s(
     ecs_t *r, int field_size, char *str, size_t str_sz
 );
 void _modelview_field_print(ecs_t *r, int field_size);
-struct Cell *modelview_find_by_value(ecs_t *r, int value);
+Cell *modelview_find_by_value(ecs_t *r, int value);

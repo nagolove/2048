@@ -65,7 +65,7 @@ void colored_text_print(
     assert(text);
     assert(base_size > 0);
 
-    if (opts.use_fnt_vector) {
+    if (!opts.use_fnt_vector) {
         Vector2 measures[text_num];
         // считать размеры каждого куска теста при печати
         for (int i = 0; i < text_num; ++i) {
