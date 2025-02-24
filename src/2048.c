@@ -65,11 +65,15 @@ float maxf(float a, float b) {
     return a > b ? a : b;
 }
 
+int l_scores_get(lua_State *l) {
+    lua_pushnumber(l, main_view.scores);
+    return 1;
+}
+
 int l_state_get(lua_State *l) {
     lua_pushstring(l, modelview_state2str(main_view.state));
     return 1;
 }
-
 
 void mouse_swipe_cell(enum Direction *dir) {
     assert(dir);
@@ -103,6 +107,7 @@ static void load_init() {
         strcpy(error, "");
 
         lua_register(l, "state_get", l_state_get);
+        lua_register(l, "state_get", l_scores_get);
     }
 }
 
@@ -256,10 +261,12 @@ static void update() {
     BeginDrawing();
     BeginMode2D(camera);
 
+    /*
     trace(
         "update: main_view.state '%s'\n",
         modelview_state2str(main_view.state)
     );
+    */
 
     if (main_view.state != MVS_GAMEOVER)
         input();
