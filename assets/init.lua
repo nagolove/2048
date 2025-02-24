@@ -1,4 +1,7 @@
+-- vim: fdm=marker
+
 --[[
+-- {{{
 local enum State
     "animation"
     "ready"
@@ -6,17 +9,26 @@ local enum State
     "gameover"
 end
 
-state_get()
+"state_get"
+"scores_get"
+"quad_width_get"
+"field_size_get"
 
+-- }}}
 --]]
+
+-- TODO: Делать подсказку наиболее продуктивного хода
 
 local format = string.format
 local ceil = math.ceil
 local floor = math.floor
 local random = math.random
+local sin = math.sin
+local cos = math.cos
 
 -- XXX: Какого цвета победа?
 local function print_win()
+    -- {{{
 
     local fnt_size = 300
     local color = { 0, 0, 0 }
@@ -56,9 +68,11 @@ local function print_win()
         coroutine.yield()
     end
 
+    -- }}}
 end
 
 local function print_scores()
+    -- {{{
     local scores = 0
 
     print('print_scores')
@@ -94,12 +108,69 @@ type(RED)
         scores = coroutine.yield()
     end
 
+    -- }}}
+end
+
+local function draw_grid()
+    -- {{{
+
+    local quad_width = quad_width_get()
+    local field_size = field_size_get()
+    --print("draw_grid: quad_width", quad_width, "field_size", field_size)
+    --]]
+
+    local anim = {}
+    for x = 1, field_size do
+        table.insert(anim, {})
+        for y = 1, field_size do
+            anim[x][y] = {
+                random(10, 20), -- коэффициент масштаба
+                random()        -- фаза колебания
+            }
+        end
+    end
+    --]]
+    
+    local i = 0
+    while true do
+        local color = GRAY
+        local segments = 20
+        local roundness = 0.3
+
+        for x = 0, field_size - 1 do
+            for y = 0, field_size - 1 do
+                local qw = floor(quad_width)
+
+            local pos_x, pos_y = pos_get()
+            local phase = anim[x + 1][y + 1][2]
+            local coef = anim[x + 1][y + 1][1]
+            local space = coef * (0.8 * math.pi - sin(i + phase))
+            --local space = 24. 
+            local rect = Rectangle(
+                pos_x + x * qw + space,
+                pos_y + y * qw + space,
+                qw - space * 2,
+                qw - space * 2
+            )
+
+            local color = RED
+            color.a = 70
+            DrawRectangleRounded(rect, roundness, segments, color)
+            end
+        end
+
+        i = i + 0.01
+        coroutine.yield()
+    end
+
+    -- }}}
 end
 
 local function print_gameover()
+    -- {{{
 
     local j = 0
-    local fnt_size = 300
+    local fnt_size = 400
     local color = { 0, 0, 0 }
     local x = 0
     local colord = 1
@@ -120,9 +191,8 @@ local function print_gameover()
         color[2] = color[2] + colord
         color[3] = color[3] + colord
 
-
         for k = 1, 3 do
-            if (color[k] >= 255) then
+            if (color[k] >= 100) then
                 colord = -colord
             end
         end
@@ -143,13 +213,21 @@ local function print_gameover()
         coroutine.yield()
     end
 
+    -- }}}
 end
 
+-- Вся рисовашка будет на корутинах
 local c_print_gameover = coroutine.create(print_gameover)
 local c_print_win = coroutine.create(print_win)
 local c_print_scores = coroutine.create(print_scores)
+local c_draw_grid = coroutine.create(draw_grid)
 
 function update()
+    --print('update')
+end
+
+function draw_top()
+    --print('draw_top')
     local scores = scores_get()
     local state = state_get()
     local ok, err
@@ -174,4 +252,16 @@ function update()
     end
 end
 
+function draw_bottom()
+    --print('draw_bottom')
+    coroutine.resume(c_draw_grid)
+end
+
 print("init.lua loaded")
+
+
+print("state_get", state_get())
+print("scores_get", scores_get())
+print("quad_width_get", quad_width_get())
+print("field_size_get", field_size_get())
+
