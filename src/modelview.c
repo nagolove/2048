@@ -56,13 +56,15 @@ const struct ColorTheme color_theme_dark = {
                             .foreground = BLACK,
                         };
 
-struct DrawOpts {
+typedef struct DrawOpts {
     int                 fontsize;
     Vector2             caption_offset_coef; // 1. is default value
     bool                custom_color;
     Color               color;
     double              amount;             // 0 .. 1.
-};
+} DrawOpts;
+
+static void cell_draw(ModelView *mv, e_id cell_en, DrawOpts opts);
 
 static const struct DrawOpts dflt_draw_opts = {
     .caption_offset_coef = { 1., 1., },
@@ -127,166 +129,6 @@ const char *dir2str(enum Direction dir) {
     return buf;
 };
 
-/*
-void modelview_save_state2file(struct ModelView *mv) {
-    static struct Cell prev_state[FIELD_SIZE * FIELD_SIZE] = {0};
-    static int prev_state_sz = 0;
-
-    static struct Cell state[FIELD_SIZE * FIELD_SIZE] = {0};
-    static int state_sz = 0;
-
-    state_sz = 0;
-    for (e_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { cmp_cell });
-         e_view_valid(&v); e_view_next(&v)) {
-        assert(de_valid(mv->r, e_view_entity(&v)));
-        struct Cell *c = e_view_get_safe(&v, cmp_cell);
-        assert(c);
-        state[state_sz++] = *c;
-    }
-
-    bool equal = false;
-    if (prev_state_sz == state_sz) {
-        int eq_num = 0;
-        for (int i = 0; i < state_sz; ++i) {
-            for (int j = 0; j < prev_state_sz; j++) {
-                eq_num += memcmp(
-                        &state[i], &prev_state[j], sizeof(state[0])) == 0;
-            }
-            trace("modelview_save_state2file: eq_num %d\n", eq_num);
-        }
-
-        equal = eq_num == prev_state_sz;
-    }
-
-    memmove(prev_state, state, sizeof(state[0]) * state_sz);
-    prev_state_sz = state_sz;
-
-    trace("modelview_save_state2file: equal %s\n", equal ? "t" : "f");
-    if (equal) return;
-
-    FILE *file = fopen("state.txt", "a");
-    if (!file) return;
-    fprintf(file, "\n");
-
-    for (e_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { cmp_cell });
-         e_view_valid(&v); e_view_next(&v)) {
-        assert(de_valid(mv->r, e_view_entity(&v)));
-        struct Cell *c = e_view_get_safe(&v, cmp_cell);
-        assert(c);
-
-        //fprintf(file, "fr %d, %d ", c->from_x, c->from_y);
-        //fprintf(file, "to %d, %d ", c->to_x, c->to_y);
-        fprintf(file, "%d, %d ", c->x, c->y);
-        fprintf(file, "val %d ", c->value);
-        fprintf(file, "anim_size %s ", c->anim_size ? "true" : "false");
-        fprintf(file, "anima %s ", c->anima ? "true" : "false");
-        fprintf(file, "dropped %s ", c->dropped ? "true" : "false");
-        fprintf(file, "\n");
-    }
-
-    fprintf(file, "\n");
-    fprintf(file, "\n");
-
-    fclose(file);
-}
-*/
-
-static void state_fill(struct ModelView *mv, int *last_state) {
-    assert(last_state);
-
-    for (int j = 0; j < mv->field_size * mv->field_size; ++j) {
-        last_state[j] = 0;
-    }
-
-    for (e_view v = e_view_create(mv->r, 1, (e_cp_type[1]) { cmp_cell });
-            e_view_valid(&v); e_view_next(&v)) {
-        assert(e_valid(mv->r, e_view_entity(&v)));
-        struct Cell *c = e_view_get(&v, cmp_cell);
-        assert(c);
-
-        last_state[mv->field_size * c->y + c->x] = c->value;
-    }
-}
-
-static bool state_compare_eq(struct ModelView *mv, int *last_state) {
-    assert(mv);
-    assert(last_state);
-
-    for (e_view v = e_view_create(mv->r, 1, (e_cp_type[1]) { cmp_cell });
-            e_view_valid(&v); e_view_next(&v)) {
-        assert(e_valid(mv->r, e_view_entity(&v)));
-        struct Cell *c = e_view_get(&v, cmp_cell);
-        assert(c);
-
-        /*if (last_state[mv->field_size * c->y + c->y] != c->value) */
-
-        /*
-        trace(
-            "state_compare_eq: field_size %d, x %d, y %d\n",
-            mv->field_size, c->x, c->y
-        );
-        */
-
-        if (last_state[(mv->field_size - 0) * c->y + c->x] != c->value) 
-            return false;
-    }
-    return true;
-}
-
-// Сохраняет состояние поля в файл, добавляя содержимое в его конец
-void state_save(struct ModelView *mv) {
-    trace("state_save:\n");
-    assert(mv);
-
-    //trace("state_save: last_state %p\n", last_state);
-
-    if (!last_state) {
-        last_state = calloc(
-            mv->field_size * mv->field_size, sizeof(last_state[0])
-        );
-
-        /*
-        trace(
-            "state_save: last_state allocated field_size %d\n",
-            mv->field_size
-        );
-        */
-
-        assert(last_state);
-        state_fill(mv, last_state);
-    }
-
-    if (state_compare_eq(mv, last_state)) 
-        return;
-
-    state_fill(mv, last_state);
-
-    FILE *file = fopen("state.txt", "a");
-    if (!file) return;
-
-    fprintf(file, "%s\n", dir2str(mv->prev_dir));
-    fprintf(file, "{\n");
-
-    for (int y = 0; y < mv->field_size; ++y) {
-        fprintf(file, "\n    {");
-        for (int x = 0; x < mv->field_size; ++x) {
-            //trace("state_save: y %d, x %d\n", y, x);
-            fprintf(file, "%d, ", last_state[y * mv->field_size + x]);
-        }
-        //fprintf(file, "},\n");
-        fprintf(file, "},");
-    }
-
-    fprintf(file, "\n}\n\n");
-
-    fclose(file);
-
-}
-
-static void cell_draw(
-    struct ModelView *mv, e_id cell_en, struct DrawOpts opts
-);
-
 static int find_max(struct ModelView *mv) {
     int max = 0;
 
@@ -298,7 +140,6 @@ static int find_max(struct ModelView *mv) {
             max = c->value;
     }
 
-    trace("find_max: max %d\n", max);
     return max;
 }
 
@@ -322,23 +163,6 @@ struct Cell *modelview_get_cell(
     assert(mv->r);
 
     if (en) *en = e_null;
-
-    /*modelview_field_print(mv);*/
-
-    /*
-    for (e_view v = de_create_view(mv->r, 1, (de_cp_type[1]) { 
-        cmp_cell }); e_view_valid(&v); e_view_next(&v)) {
-        struct Cell *c = e_view_get_safe(&v, cmp_cell);
-        assert(c);
-        if (c && c->x == x && c->y == y) {
-            if (en) {
-                assert(de_valid(mv->r, e_view_entity(&v)));
-                *en = e_view_entity(&v);
-            }
-            return c;
-        }
-    }
-    */
 
     for (e_view v = e_view_create_single(mv->r, cmp_cell);
         e_view_valid(&v); e_view_next(&v)) {
@@ -1272,12 +1096,13 @@ static void options_window(struct ModelView *mv) {
         theme_light = false;
     }
 
-    static int points2win = 2048;
-    igSliderInt("points for win", &points2win, 0, 2048 * 10, "%d", 0);
+    static int win_value = 2048;
+    igSliderInt("points for win", &win_value, 0, 2048 * 4, "%d", 0);
 
     if (igButton("restart", (ImVec2) {0, 0})) {
         modelview_shutdown(mv);
         struct Setup setup = {
+            .win_value = win_value,
             .auto_put = true,
             .cam = mv->camera,
             .field_size = field_size,
@@ -1340,11 +1165,6 @@ char *modelview_state2str(enum ModelViewState state) {
 }
 
 static void destroy_dropped(struct ModelView *mv) {
-    /*
-    printf("destroy_dropped:\n");
-    modelview_field_print(mv);
-    */
-
     e_id destroy_arr[mv->field_size * mv->field_size];
     int destroy_num = 0;
     
@@ -1355,30 +1175,13 @@ static void destroy_dropped(struct ModelView *mv) {
         assert(c);
         if (c->dropped) {
 
-            /*
-            trace(
-                "destroy_dropped: cell val %d, (%d, %d)\n",
-                c->value, c->x, c->y
-            );
-            */
-
-            //global_cell_push(c);
-            //memset(c, 0, sizeof(*c));
-            //de_destroy(mv->r, e_view_entity(&v));
-
-            assert(
-                destroy_num + 1 < sizeof(destroy_arr) / sizeof(destroy_arr[0])
-            );
+            int destroy_arr_num = sizeof(destroy_arr) / sizeof(destroy_arr[0]);
+            assert(destroy_num + 1 < destroy_arr_num);
             destroy_arr[destroy_num++] = e_view_entity(&v);
         }
     }
 
-    /*
-    printf("destroy_dropped: before destroy\n");
-    modelview_field_print(mv);
-    */
-
-    if (mv->test_payload && ((struct TestPayload*)mv->test_payload)->do_trap) {
+    if (mv->test_payload && ((TestPayload*)mv->test_payload)->do_trap) {
         printf("test_payload trap\n");
         koh_trap();
     }
@@ -1386,20 +1189,9 @@ static void destroy_dropped(struct ModelView *mv) {
     for (int j = 0; j < destroy_num; ++j) {
         e_id e = destroy_arr[j];
 
-        /*
-        if (de_has(mv->r, e, cmp_cell))
-            de_remove(mv->r, e, cmp_cell);
-        if (de_has(mv->r, e, cmp_effect))
-            de_remove(mv->r, e, cmp_effect);
-        */
-
         e_destroy(mv->r, e);
     }
 
-    /*
-    printf("destroy_dropped: after destroy\n");
-    modelview_field_print(mv);
-    */
 }
 
 bool modelview_draw(ModelView *mv) {
@@ -1413,44 +1205,17 @@ bool modelview_draw(ModelView *mv) {
     int timersnum = timerman_update(mv->timers_slides);
     mv->state = timersnum ? MVS_ANIMATION : MVS_READY;
 
-    //destroy_dropped(mv);
-
     static enum ModelViewState prev_state = 0;
     if (mv->state != prev_state) {
-        /*trace("modelview_draw: state %s\n", modelview_state2str(mv->state));*/
         prev_state = mv->state;
-        /*trace("modelview_draw: dir %s\n", dir2str(mv->dir));*/
-    }
-
-    // XXX: Сохраненние делается когда все таймеры заканчиваются?
-    if (!timersnum) {
-        //state_save(mv);
     }
 
     if (mv->state == MVS_READY) {
         if (mv->dx || mv->dy) {
-            // TODO: удаляет неправильно?
             destroy_dropped(mv);
-
-            /*printf("before do_action()\n");*/
-
-            /*e_print_entities(mv->r);*/
 
             mv->has_move = do_action(mv, move);
             mv->has_sum = do_action(mv, sum);
-            //mv->has_move = do_action(mv, move);
-           
-            /*
-            trace(
-                "modelview_draw: has_move %s, has_sum %s\n",
-                mv->has_move ? "t" : "f",
-                mv->has_sum ? "t" : "f"
-            );
-            */
-
-            /*
-            printf("modelview_draw: clear input flags\n");
-            */
         }
 
         if (!mv->has_sum && !mv->has_move && (mv->dx || mv->dy)) {
