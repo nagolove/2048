@@ -59,13 +59,38 @@ local function print_win()
 end
 
 local function print_scores()
-    local scores = coroutine.yield()
+    local scores = 0
 
+    print('print_scores')
+
+    local fnt_size = 100
     while true do
-        local msg = format("SCORES %d")
-        local msg_w = MeasureText(msg)
-        local x, y = (GetScreenWidth() - msg_w) / 2, 0
+        print(1)
+        local msg = format("SCORES %d", scores)
+        print('msg', msg)
+        print(2)
+        local msg_w = MeasureText(msg, fnt_size)
+        print(3)
+
+        local x = (GetScreenWidth() - msg_w) / 2.
+        local y = 0.
+        --local x, y = 0, 0
+        print('x, y', x, y)
+        print(4)
+
+        --DrawText("HER", 0, 0, 100, RED)
+
+        print(
+type(msg),
+type(x),
+type(y),
+type(fnt_size),
+type(RED)
+ )
+
         DrawText(msg, x, y, fnt_size, GREEN)
+        print(5)
+        print('print_scores yield')
         scores = coroutine.yield()
     end
 
@@ -120,25 +145,32 @@ local function print_gameover()
 
 end
 
-local c_gameover = coroutine.create(print_gameover)
-local c_win = coroutine.create(print_win)
-local c_scores = coroutine.create(print_scores)
+local c_print_gameover = coroutine.create(print_gameover)
+local c_print_win = coroutine.create(print_win)
+local c_print_scores = coroutine.create(print_scores)
 
 function update()
     local scores = scores_get()
     local state = state_get()
-    print(format("update: state '%s'", state))
+    local ok, err
 
-    coroutine.resume(c_scores, scores)
+    --print(format("update: state '%s'", state))
+
+    ok, err = coroutine.resume(c_print_scores, scores)
+    if not ok then
+        --print("update: err", err)
+    end
 
     if state == 'gameover' then
-        coroutine.resume(c_gameover)
+        coroutine.resume(c_print_gameover)
     elseif state == 'win' then
-        coroutine.resume(c_gameover)
-        --local ok, msg = coroutine.resume(c_win)
-        --if ok then
-            --print('update: ', msg)
-        --end
+        coroutine.resume(c_print_gameover)
+        ok, msg = coroutine.resume(c_win)
+
+        if ok then
+            print('update: ', msg)
+        end
+
     end
 end
 
