@@ -16,7 +16,7 @@ local floor = math.floor
 local random = math.random
 
 -- XXX: Какого цвета победа?
-local function win()
+local function print_win()
 
     local fnt_size = 300
     local color = { 0, 0, 0 }
@@ -58,7 +58,20 @@ local function win()
 
 end
 
-local function gameover()
+local function print_scores()
+    local scores = coroutine.yield()
+
+    while true do
+        local msg = format("SCORES %d")
+        local msg_w = MeasureText(msg)
+        local x, y = (GetScreenWidth() - msg_w) / 2, 0
+        DrawText(msg, x, y, fnt_size, GREEN)
+        scores = coroutine.yield()
+    end
+
+end
+
+local function print_gameover()
 
     local j = 0
     local fnt_size = 300
@@ -107,19 +120,25 @@ local function gameover()
 
 end
 
-local c_gameover = coroutine.create(gameover)
-local c_win = coroutine.create(win)
+local c_gameover = coroutine.create(print_gameover)
+local c_win = coroutine.create(print_win)
+local c_scores = coroutine.create(print_scores)
 
 function update()
+    local scores = scores_get()
     local state = state_get()
-    print(format('update: state '%s'', state))
+    print(format("update: state '%s'", state))
+
+    coroutine.resume(c_scores, scores)
+
     if state == 'gameover' then
         coroutine.resume(c_gameover)
     elseif state == 'win' then
-        local ok, msg = coroutine.resume(c_win)
-        if ok then
-            print('update: ', msg)
-        end
+        coroutine.resume(c_gameover)
+        --local ok, msg = coroutine.resume(c_win)
+        --if ok then
+            --print('update: ', msg)
+        --end
     end
 end
 
