@@ -14,7 +14,7 @@
 #include <unistd.h>
 
 static struct Setup modelview_test_setup = {
-    .pos            = NULL,
+    //.pos            = NULL,
     .cam            = NULL,
     .field_size     = 5,
     .tmr_block_time = 0.01,
