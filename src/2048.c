@@ -50,7 +50,7 @@ static const char *init_lua = "assets/init.lua";
 static char error[256] = {};
 
 static struct Setup main_view_setup = {
-    .pos = NULL,
+    /*.pos = NULL,*/
     .use_bonus = false,
     .cam = &camera,
     .field_size = 6,
@@ -65,9 +65,25 @@ float maxf(float a, float b) {
     return a > b ? a : b;
 }
 
+int l_field_size_get(lua_State *l) {
+    lua_pushnumber(l, main_view.field_size);
+    return 1;
+}
+
+int l_quad_width_get(lua_State *l) {
+    lua_pushnumber(l, main_view.quad_width);
+    return 1;
+}
+
 int l_scores_get(lua_State *l) {
     lua_pushnumber(l, main_view.scores);
     return 1;
+}
+
+int l_pos_get(lua_State *l) {
+    lua_pushnumber(l, main_view.pos.x);
+    lua_pushnumber(l, main_view.pos.y);
+    return 2;
 }
 
 int l_state_get(lua_State *l) {
@@ -100,14 +116,17 @@ static void load_init() {
     l = rlwr_state(rlwr);
     luaL_openlibs(l);
 
+    lua_register(l, "pos_get", l_pos_get);
+    lua_register(l, "state_get", l_state_get);
+    lua_register(l, "scores_get", l_scores_get);
+    lua_register(l, "quad_width_get", l_quad_width_get);
+    lua_register(l, "field_size_get", l_field_size_get);
+
     if (luaL_dofile(l, init_lua) != LUA_OK) {
         strncpy(error, lua_tostring(l, -1), sizeof(error) - 1);
         trace("main: error in '%s' '%s'\n", init_lua, lua_tostring(l, -1));
     } else {
         strcpy(error, "");
-
-        lua_register(l, "state_get", l_state_get);
-        lua_register(l, "scores_get", l_scores_get);
     }
 }
 
@@ -267,6 +286,18 @@ static void update() {
         modelview_state2str(main_view.state)
     );
     */
+    static bool is_ok = false;
+    const char *pcall_err = NULL;
+
+    pcall_err = L_pcall(l, "update", &is_ok);
+    if (!is_ok)
+        strncpy(error, pcall_err, sizeof(error));
+
+    //pcall_err = 
+    L_call(l, "draw_bottom", &is_ok);
+    /*if (!is_ok)*/
+        /*strncpy(error, pcall_err, sizeof(error));*/
+
 
     if (main_view.state != MVS_GAMEOVER)
         input();
@@ -288,13 +319,12 @@ static void update() {
     }
     */
 
-    static bool is_ok = false;
-    const char *pcall_err = L_call(l, "update", &is_ok);
-    if (!is_ok)
-        strncpy(error, pcall_err, sizeof(error));
-
     if (strlen(error))
         DrawText(error, 0, 0, 70, BLACK);
+
+    pcall_err = L_pcall(l, "draw_top", &is_ok);
+    if (!is_ok)
+        strncpy(error, pcall_err, sizeof(error));
 
     EndMode2D();
 
@@ -303,7 +333,6 @@ static void update() {
 
     EndDrawing();
 }
-
 
 
 int main(void) {
