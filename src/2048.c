@@ -107,7 +107,7 @@ static void load_init() {
         strcpy(error, "");
 
         lua_register(l, "state_get", l_state_get);
-        lua_register(l, "state_get", l_scores_get);
+        lua_register(l, "scores_get", l_scores_get);
     }
 }
 
@@ -325,6 +325,7 @@ int main(void) {
     });
 
     logger_init();
+    inotifier_init();
 
     // TODO: Тесты сломаны
     // TODO: Сделать несколько исполняемых файлов - для тестов и основной
@@ -349,6 +350,7 @@ int main(void) {
     }
 #endif
 
+    inotifier_shutdown();
     rlwr_free(rlwr);
     fnt_vector_shutdown_freetype();
     modelview_shutdown(&main_view);
