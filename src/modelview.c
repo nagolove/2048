@@ -354,27 +354,40 @@ static void modelview_put_bonus(
 }
 
 
-// TODO: Сделать несколько точек создания клеток. Возможно в зависимости от 
-// площади.
+// XXX:Количество цифр должно зависеть от совбодной площади
+// TODO: Чем более крупная фишка есть на поле, тем более крупная может выпадать
+// ячейка, но до определенного предела.
 void modelview_put(struct ModelView *mv) {
+    
     assert(mv);
-    int x = rand() % mv->field_size;
-    int y = rand() % mv->field_size;
 
-    struct Cell *cell = modelview_get_cell(mv, x, y, NULL);
-    while (cell) {
-        x = rand() % mv->field_size;
-        y = rand() % mv->field_size;
-        cell = modelview_get_cell(mv, x, y, NULL);
-    }
+    for (int i = 0; i < mv->put_num; i++) {
+        int x = rand() % mv->field_size;
+        int y = rand() % mv->field_size;
+        // Максимальное количество проб клетки на возможность заполнения
+        int j = mv->field_size * mv->field_size * 10; 
+        struct Cell *cell = modelview_get_cell(mv, x, y, NULL);
 
-    if (mv->use_bonus) {
-        if ((double)rand() / (double)RAND_MAX > 0.5)
+        while (cell) {
+            x = rand() % mv->field_size;
+            y = rand() % mv->field_size;
+            cell = modelview_get_cell(mv, x, y, NULL);
+
+            j--;
+            if (j <= 0) {
+                // спасение бегством от бесконечного цикла
+                return;
+            }
+        }
+
+        if (mv->use_bonus) {
+            if ((double)rand() / (double)RAND_MAX > 0.5)
+                modelview_put_cell(mv, x, y);
+            else
+                modelview_put_bonus(mv, x, y, BT_DOUBLE);
+        } else
             modelview_put_cell(mv, x, y);
-        else
-            modelview_put_bonus(mv, x, y, BT_DOUBLE);
-    } else
-        modelview_put_cell(mv, x, y);
+    }
 }
 
 static bool cell_in_bounds(struct ModelView *mv, struct Cell *cell) {
@@ -645,9 +658,8 @@ static void sort_numbers(struct ModelView *mv) {
     memmove(mv->sorted, tmp, sizeof(tmp[0]) * idx);
 }
 
-static void draw_field(struct ModelView *mv) {
+static void draw_grid(struct ModelView *mv) {
     assert(mv);
-    ClearBackground(mv->color_theme.background);
 
     const int field_width = mv->field_size * mv->quad_width;
     Vector2 start = mv->pos;
@@ -744,9 +756,8 @@ static Color calc_alpha(
     return color;
 }
 
-static Vector2 calc_base_pos(
-    struct ModelView *mv, e_id en, struct DrawOpts opts
-) {
+// XXX: Что возвращает функция?
+static Vector2 calc_base_pos(ModelView *mv, e_id en, DrawOpts opts) {
     Vector2 base_pos;
 
     struct Cell *cell = e_get(mv->r, en, cmp_cell);
@@ -1080,6 +1091,9 @@ static void options_window(struct ModelView *mv) {
 
     igSliderInt("field size", &field_size, 4, 20, "%d", 0);
 
+    static int put_num = 1;
+    igSliderInt("put cells num", &put_num, 1, mv->field_size, "%d", 0);
+
     igSliderFloat("tmr_block_time", &mv->tmr_block_time, 0.01, 1., "%f", 0);
     igSliderFloat("tmr_put_time", &mv->tmr_put_time, 0.01, 1., "%f", 0);
 
@@ -1088,6 +1102,9 @@ static void options_window(struct ModelView *mv) {
 
     static bool use_fnt_vector = false;
     igCheckbox("[experimental] use vector font drawing", &use_fnt_vector);
+
+    static bool draw_field = true;
+    igCheckbox("draw field", &draw_field);
 
     static bool theme_light = true;
     if (igRadioButton_Bool("color theme: light", theme_light)) {
@@ -1108,13 +1125,18 @@ static void options_window(struct ModelView *mv) {
             .field_size = field_size,
             .tmr_block_time = mv->tmr_block_time,
             .tmr_put_time = mv->tmr_put_time,
-            .pos = &mv->pos,
+            /*.pos = &mv->pos,*/
             .use_gui = mv->use_gui,
             .use_bonus = use_bonus,
             .use_fnt_vector = use_fnt_vector,
             .color_theme = theme_light ? color_theme_light : color_theme_dark,
         };
         modelview_init(mv, setup);
+
+        // XXX: Опасный код так как параметры проходят мимо конструктора
+        mv->put_num = put_num;
+        mv->draw_field = draw_field;
+
         modelview_put(mv);
     }
 
@@ -1239,18 +1261,23 @@ bool modelview_draw(ModelView *mv) {
     }
 
     sort_numbers(mv);
-    draw_field(mv);
+    ClearBackground(mv->color_theme.background);
+    if (mv->draw_field)
+        draw_grid(mv);
     draw_numbers(mv);
 
     return dir_none;
 }
 
 void modelview_init(struct ModelView *mv, Setup setup) {
-    last_state = NULL;
     assert(mv);
-    assert(setup.field_size > 1);
-
     memset(mv, 0, sizeof(*mv));
+
+    assert(setup.field_size > 1);
+    last_state = NULL;
+
+    mv->put_num = 1;
+    mv->draw_field = true;
     mv->field_size = setup.field_size;
     const int cells_num = mv->field_size * mv->field_size;
 
@@ -1259,13 +1286,13 @@ void modelview_init(struct ModelView *mv, Setup setup) {
     assert(mv->quad_width > 0);
 
     const int field_width = mv->field_size * mv->quad_width;
-    if (!setup.pos) {
+    //if (!setup.pos) {
         mv->pos = (Vector2){
             .x = (GetScreenWidth() - field_width) / 2.,
             .y = (GetScreenHeight() - field_width) / 2.,
         };
-    } else 
-        mv->pos = *setup.pos;
+    /*} else */
+        /*mv->pos = *setup.pos;*/
 
     mv->timers_slides = timerman_new(
         mv->field_size * mv->field_size * 2, "slides"

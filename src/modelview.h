@@ -64,8 +64,6 @@ enum ModelViewState {
     MVS_GAMEOVER,
 };
 
-typedef struct ModelView ModelView;
-
 struct ColorTheme {
     Color   background, foreground;
 };
@@ -75,7 +73,7 @@ struct ColorTheme {
 /*
     Отображение поля. Все, что связано с анимацией.
  */
-struct ModelView {
+typedef struct ModelView {
     ecs_t               *r;
     Camera2D            *camera;
     int                 scores;
@@ -85,7 +83,8 @@ struct ModelView {
     enum Direction      dir, prev_dir;
     bool                has_sum, has_move;
     bool                use_gui,        // рисовать imgui
-                        auto_put;       // класть новую плитку на след. ход
+                        auto_put,       // класть новую плитку на след. ход
+                        draw_field;
 
     int                 quad_width;
 
@@ -106,14 +105,17 @@ struct ModelView {
     float               font_spacing;
     struct ColorTheme   color_theme;
     void                *test_payload;
-    int                 win_value;
-};
+                        // значение на клетке для победы
+    int                 win_value,
+                        // количество фишек для создания на одном ходу
+                        put_num;
+} ModelView;
 
 extern const struct ColorTheme color_theme_dark, color_theme_light;
 
 typedef struct Setup {
     int                 win_value;
-    Vector2             *pos;
+    /*Vector2             *pos;*/
     Camera2D            *cam;
     int                 field_size;
     float               tmr_put_time, tmr_block_time;
