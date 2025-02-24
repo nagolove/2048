@@ -4,9 +4,9 @@
 
 #include "stdbool.h"
 
-struct TestPayload {
+typedef struct TestPayload {
     bool do_trap;
-};
+} TestPayload;
 
 /*
  .x == -1, .y == -1 - koh_trap()
