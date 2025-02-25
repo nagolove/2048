@@ -10,11 +10,11 @@ typedef struct ColoredTextOpts {
     bool      use_fnt_vector;
 } ColoredTextOpts;
 
-struct ColoredText {
+typedef struct ColoredText {
     const char  *text;
     float       scale; // 1. or 2. or 0.5
     Color       color;
-};
+} ColoredText;
 
 int colored_text_pickup_size(
     struct ColoredText *text, int text_num,

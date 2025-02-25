@@ -49,8 +49,9 @@ static rlwr_t *rlwr = NULL;
 static const char *init_lua = "assets/init.lua";
 static char error[256] = {};
 
+static void load_init_lua();
+
 static struct Setup main_view_setup = {
-    /*.pos = NULL,*/
     .use_bonus = false,
     .cam = &camera,
     .field_size = 6,
@@ -59,6 +60,7 @@ static struct Setup main_view_setup = {
     .use_gui = true,
     .auto_put = true,
     .win_value = 2048,
+    .on_init_lua = load_init_lua,
 };
 
 float maxf(float a, float b) {
@@ -110,7 +112,13 @@ void mouse_swipe_cell(enum Direction *dir) {
     }
 }
 
-static void load_init() {
+static void load_init_lua() {
+    if (rlwr) {
+        rlwr_free(rlwr);
+        rlwr = NULL;
+        l = NULL;
+    }
+
     trace("load_init:\n");
     rlwr = rlwr_new();
     l = rlwr_state(rlwr);
@@ -133,13 +141,7 @@ static void load_init() {
 void hotreload(const char *fname, void *ud) {
     trace("hotreload:\n");
 
-    if (rlwr) {
-        rlwr_free(rlwr);
-        rlwr = NULL;
-        l = NULL;
-    }
-
-    load_init();
+    load_init_lua();
     inotifier_watch(init_lua, hotreload, NULL);
 }
 
@@ -274,6 +276,7 @@ static void update() {
     if (IsKeyPressed(KEY_R)) {
         modelview_shutdown(&main_view);
         modelview_init(&main_view, main_view_setup);
+        main_view.on_init_lua = load_init_lua;
         modelview_put(&main_view);
     }
 
@@ -363,8 +366,8 @@ int main(void) {
     fnt_vector_init_freetype();
 
     modelview_init(&main_view, main_view_setup);
+    //load_init_lua();
 
-    load_init();
     inotifier_watch(init_lua, hotreload, NULL);
 
     modelview_put(&main_view);

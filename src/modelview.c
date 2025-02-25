@@ -64,7 +64,7 @@ typedef struct DrawOpts {
     double              amount;             // 0 .. 1.
 } DrawOpts;
 
-static void cell_draw(ModelView *mv, e_id cell_en, DrawOpts opts);
+static void tile_draw(ModelView *mv, e_id cell_en, DrawOpts opts);
 
 static const struct DrawOpts dflt_draw_opts = {
     .caption_offset_coef = { 1., 1., },
@@ -110,8 +110,8 @@ static e_cp_type cmp_effect = {
 
 static Color colors[] = {
     RED,
-    ORANGE,
-    GOLD,
+    ORANGE, // плохо виден на фоне прозрачного красного?
+    GOLD,// плохо виден на фоне прозрачного красного?
     GREEN,
     BLUE, 
     GRAY,
@@ -247,7 +247,7 @@ static bool tmr_cell_draw(struct Timer *t) {
     assert(e_valid(mv->r, timer_data->cell));
 
     opts.amount = t->amount;
-    cell_draw(timer_data->mv, timer_data->cell, opts);
+    tile_draw(timer_data->mv, timer_data->cell, opts);
     return false;
 }
 
@@ -353,6 +353,11 @@ static void modelview_put_bonus(
 
 }
 
+// INFO: Добавлять бомбу, которая может уничтожить самыый большой элемент
+
+// INFO: Добавлять второй элемент только тогда когда и только туда, где он
+// может быть уничтожен. Успех зависит от игрока - ошибется он или примет
+// верное решение
 
 // XXX:Количество цифр должно зависеть от совбодной площади
 // TODO: Чем более крупная фишка есть на поле, тем более крупная может выпадать
@@ -381,10 +386,15 @@ void modelview_put(struct ModelView *mv) {
         }
 
         if (mv->use_bonus) {
-            if ((double)rand() / (double)RAND_MAX > 0.5)
-                modelview_put_cell(mv, x, y);
-            else
-                modelview_put_bonus(mv, x, y, BT_DOUBLE);
+            if (mv->next_bomb) {
+                modelview_put_bonus(mv, x, y, BT_BOMB);
+                mv->next_bomb = false;
+            } else {
+                if ((double)rand() / (double)RAND_MAX > 0.5)
+                    modelview_put_cell(mv, x, y);
+                else
+                    modelview_put_bonus(mv, x, y, BT_BOMB);
+            }
         } else
             modelview_put_cell(mv, x, y);
     }
@@ -409,30 +419,6 @@ static bool move(
     struct ModelView *mv, e_id cell_en, int x, int y, bool *touched
 ) {
     bool has_move = false;
-
-    /*
-    printf(
-        "cell_en id %lu, ord %u, ver %u\n",
-        cell_en.id, 
-        cell_en.ord,
-        cell_en.ver
-    );
-    */
-
-    /*
-    printf(
-        "move: de_has(cell_en,  cmp_cell) %s\n",
-        e_has(mv->r, cell_en,  cmp_cell) ? "true" : "false"
-    );
-    printf(
-        "move: de_has(cell_en,  cmp_effect) %s\n",
-        e_has(mv->r, cell_en,  cmp_effect) ? "true" : "false"
-    );
-    printf(
-        "move: de_has(cell_en,  cmp_bonus) %s\n",
-        e_has(mv->r, cell_en,  cmp_bonus) ? "true" : "false"
-    );
-    */
 
     struct Cell *cell = e_get(mv->r, cell_en, cmp_cell);
     if (!cell)
@@ -513,9 +499,15 @@ static bool sum(
     struct Cell *neighbour = modelview_get_cell(
         mv, x + mv->dx, y + mv->dy, &neighbour_en
     );
+
     if (!neighbour) 
         return has_sum;
     if (neighbour->dropped) 
+        return has_sum;
+
+    // Если соседом оказался бонус - выход
+    Bonus *neighbour_bonus = e_get(mv->r, neighbour_en, cmp_bonus);
+    if (neighbour_bonus)
         return has_sum;
 
     struct Effect *neighbour_ef = e_get(mv->r, neighbour_en, cmp_effect);
@@ -531,7 +523,6 @@ static bool sum(
     neighbour->value += cell->value;
     mv->scores += cell->value;
 
-    /*koh_screenshot_incremental();*/
     assert(e_valid(mv->r, cell_en));
 
     // cell_en уничтожается
@@ -552,7 +543,6 @@ static bool sum(
     neighbour_ef->anim_size = true;
     timerman_add(mv->timers_slides, (struct TimerDef) {
         .duration = mv->tmr_block_time,
-        //.on_stop = tmr_cell_draw_stop_drop,
         .on_stop = tmr_cell_draw_stop,
         .on_update = tmr_cell_draw,
         .sz = sizeof(struct TimerData),
@@ -573,39 +563,38 @@ static bool do_action(struct ModelView *mv, Action action) {
     assert(mv);
     assert(action);
 
-    /*
-    const char *action_name = action == sum ? "sum" : "move";
-    printf("do_action: %s\n", action_name);
-    */
-
     bool has_action = false;
     bool touched = false;
 
-    /*modelview_field_print(mv);*/
-
+    /*
     do {
-    //for (int i = 0; i < 3; ++i) {
         touched = false;
         for (int y = 0; y < mv->field_size; ++y) 
             for (int x = 0; x < mv->field_size; ++x) {
                 e_id cell_en = e_null;
-                struct Cell *cell = modelview_get_cell(mv, x, y, &cell_en);
+                Cell *cell = modelview_get_cell(mv, x, y, &cell_en);
                 if (!cell) continue;
                 if (action(mv, cell_en, x, y, &touched))
                     has_action = true;
         }
-    //}
     } while (touched);
-
-    /*modelview_field_print(mv);*/
-
-    /*
-    trace(
-        "move: timerman_num %d, move_call_counter %d\n",
-        timerman_num(mv->timers_slides, NULL),
-        move_call_counter++
-    );
     */
+
+    do {
+        touched = false;
+        for (int y = 0; y < mv->field_size; ++y) 
+            for (int x = 0; x < mv->field_size; ++x) {
+                e_id cell_en = e_null;
+                Cell *cell = modelview_get_cell(mv, x, y, &cell_en);
+                if (!cell) continue;
+
+                /*Bonus *bonus = e_get(mv->r, cell_en, cmp_bonus);*/
+                /*if (bonus) continue;*/
+
+                if (action(mv, cell_en, x, y, &touched))
+                    has_action = true;
+        }
+    } while (touched);
 
     return has_action;
 }
@@ -781,67 +770,47 @@ static Vector2 calc_base_pos(ModelView *mv, e_id en, DrawOpts opts) {
     return base_pos;
 }
 
-static void cell_draw(
-    struct ModelView *mv, e_id cell_en, struct DrawOpts opts
+static void bonus_draw(
+    ModelView *mv, e_id cell_en, Vector2 base_pos, DrawOpts opts
 ) {
-    assert(mv);
+    Vector2 text_bound = { .x = mv->quad_width, .y = mv->quad_width };
+    Vector2 _offset = {
+        opts.caption_offset_coef.x * (mv->quad_width - text_bound.x) / 2.,
+        opts.caption_offset_coef.y * (mv->quad_width - text_bound.y) / 2.,
+    };
+    Vector2 tmp = Vector2Scale(base_pos, mv->quad_width);
+    Vector2 _disp = Vector2Add(tmp, _offset);
+    Vector2 _pos = Vector2Add(mv->pos, _disp);
 
+    float thick = 40.; // Отступ внутрь квадрата
+    Rectangle src = { 0., 0., mv->tex_bomb.width, mv->tex_bomb.height, },
+              dst = {
+                .x = _pos.x + thick * 1.,
+                .y = _pos.y + thick * 1.,
+                .width = mv->quad_width - thick * 2.,
+                .height = mv->quad_width - thick * 2.,
+              }; 
+
+    DrawTexturePro(mv->tex_bomb, src, dst, Vector2Zero(), 0., WHITE);
+}
+
+static void cell_draw(
+    ModelView *mv, e_id cell_en, Vector2 base_pos, DrawOpts opts
+) {
     struct Cell *cell = e_get(mv->r, cell_en, cmp_cell);
-
-    if (!cell)
-        return;
-
-    // TODO: падает при проверке наличия компоненты в сущности(если ни одной
-    // сущности такого типа не создано?)
-    struct Bonus *bonus = e_get(mv->r, cell_en, cmp_bonus);
-
     char cell_text[64] = {0};
-    if (!bonus)
-        sprintf(cell_text, "%d", cell->value);
-    else if (bonus->type == BT_DOUBLE)
-        sprintf(cell_text, "x2");
-    else {
-        trace("cell_draw: bad bonus type %d\n", bonus->type);
-        abort();
-    }
+    sprintf(cell_text, "%d", cell->value);
 
-    /*
-    // XXX: Зачем нужен данный вывод к консоль?
-    if (opts.amount <= 0.) {
-        trace("cell_draw: \033[1;31m!\033[0m opts.amount %f\n", opts.amount);
-        opts.amount = 0.;
-    }
-
-    // XXX: Зачем нужен данный вывод к консоль?
-    if (opts.amount >= 1.) {
-        trace("cell_draw: \033[1;31m!\033[0m opts.amount %f\n", opts.amount);
-        opts.amount = 1.;
-    }
-    */
-
-    Vector2 base_pos = calc_base_pos(mv, cell_en, opts);
-    int fontsize = calc_font_size_anim(mv, cell_en, opts);
+    int fntsize = calc_font_size_anim(mv, cell_en, opts);
     // XXX: Почему не используются все цвета из colors?
     Color color = opts.custom_color ? opts.color : get_color(mv, cell->value);
 
     color = calc_alpha(mv, cell_en, color, opts);
 
-    const float thick = 8.;
+    Vector2 text_bound = { .x = mv->quad_width, .y = mv->quad_width },
+            textsize = decrease_font_size(mv, cell_text, &fntsize, text_bound);
 
-    Vector2 text_bound;
-    if (!bonus) {
-        text_bound.x = mv->quad_width;
-        text_bound.y = mv->quad_width;
-    } else {
-        text_bound.x = mv->quad_width - thick * 6.;
-        text_bound.y = mv->quad_width - thick * 6.;
-    }
-
-    Vector2 textsize = decrease_font_size(
-        mv, cell_text, &fontsize, text_bound
-    );
-
-    struct ColoredText text_cell[] = {
+    ColoredText text_cell[] = {
         { 
             .text = cell_text,
             .scale = 1.,
@@ -849,80 +818,42 @@ static void cell_draw(
         },
     };
 
-    Color multiplier_color = mv->color_theme.foreground;
-    multiplier_color. a = color.a;
-
-    struct ColoredText text_double_bonus[] =  {
-        { 
-            .text = "x",
-            .scale = 0.5,
-            .color = multiplier_color,
-        },
-        { 
-            .text = "2",
-            .scale = 1.,
-            .color = color,
-        },
-    };
-
-    struct ColoredText *texts;
-    int texts_num;
-    if (!bonus) {
-        texts = text_cell;
-        texts_num = sizeof(text_cell) / sizeof(text_cell[0]);
-    } else {
-        texts = text_double_bonus;
-        texts_num = sizeof(text_double_bonus) / sizeof(text_double_bonus[0]);
-    }
+    ColoredText *texts = text_cell;
+    int texts_num = sizeof(text_cell) / sizeof(text_cell[0]);
 
     assert(texts);
 
-    fontsize = colored_text_pickup_size(
+    fntsize = colored_text_pickup_size(
         texts, texts_num,
         mv->text_opts, text_bound
     );
 
     Vector2 offset = {
         opts.caption_offset_coef.x * (mv->quad_width - textsize.x) / 2.,
-        opts.caption_offset_coef.y * (mv->quad_width - fontsize) / 2.,
+        opts.caption_offset_coef.y * (mv->quad_width - fntsize) / 2.,
     };
 
     Vector2 disp = Vector2Add(Vector2Scale(base_pos, mv->quad_width), offset);
     Vector2 pos = Vector2Add(mv->pos, disp);
 
-    colored_text_print(texts, texts_num, pos, mv->text_opts, fontsize);
-    //DrawTextEx(mv->font, msg, pos, fontsize, 0, color);
+    colored_text_print(texts, texts_num, pos, mv->text_opts, fntsize);
+}
 
-    if (bonus) {
-        Vector2 _offset = {
-            opts.caption_offset_coef.x * (mv->quad_width - text_bound.x) / 2.,
-            opts.caption_offset_coef.y * (mv->quad_width - text_bound.y) / 2.,
-        };
-        Vector2 tmp = Vector2Scale(base_pos, mv->quad_width);
-        Vector2 _disp = Vector2Add(tmp, _offset);
-        Vector2 _pos = Vector2Add(mv->pos, _disp);
+static void tile_draw(ModelView *mv, e_id cell_en, DrawOpts opts) {
+    assert(mv);
 
-        //float cur_thick = (-1. + sin(GetTime())) * 1.5 + 0.5;
-        const float cur_thick = thick;
-        Rectangle rect = {
-            .x = _pos.x + cur_thick * 0.,
-            .y = _pos.y + cur_thick * 0.,
-            .width = mv->quad_width - cur_thick * 6.,
-            .height = mv->quad_width - cur_thick * 6.,
-        };
+    struct Cell *cell = e_get(mv->r, cell_en, cmp_cell);
 
-        //const float roundness = 0.5;
-        //const int segments = 10;
-        //Color color = BLACK;
-        //DrawRectangleRoundedLines(rect, roundness, segments, thick, color);
-       
-        Color border_color = BLUE;
-        border_color.a = 128. + (0. + sin(GetTime())) * 128.;
-        DrawRectangleLinesEx(rect, thick, border_color);
-    }
+    if (!cell)
+        return;
 
-    //DrawText("PRIVET", 100, 100, 200, BLUE);
-    //DrawText("PRIVET", 100, 600, 40, GREEN);
+    struct Bonus *bonus = e_get(mv->r, cell_en, cmp_bonus);
+    Vector2 base_pos = calc_base_pos(mv, cell_en, opts);
+
+    if (bonus)
+        bonus_draw(mv, cell_en, base_pos, opts);
+    else
+        cell_draw(mv, cell_en, base_pos, opts);
 }
 
 static void draw_numbers(struct ModelView *mv) {
@@ -939,12 +870,13 @@ static void draw_numbers(struct ModelView *mv) {
             bool can_draw = cell && !ef->anim_movement && 
                             !ef->anim_size && ef->anim_alpha == AM_NONE;
             if (can_draw)
-                cell_draw(mv, en, dflt_draw_opts);
+                tile_draw(mv, en, dflt_draw_opts);
         }
     }
 }
 
 static void movements_window() {
+    // {{{
     bool open = true;
     ImGuiWindowFlags flags = 0;
     igBegin("movements", &open, flags);
@@ -1007,6 +939,7 @@ static void movements_window() {
         igEndTable();
     }
     igEnd();
+    // }}}
 }
 
 static void print_node_cell(struct Cell *c) {
@@ -1043,6 +976,7 @@ static void removed_entities_window() {
 }
 
 static void entities_window(struct ModelView *mv) {
+    // {{{
     bool open = true;
     ImGuiWindowFlags flags = 0;
     igBegin("entities", &open, flags);
@@ -1076,9 +1010,11 @@ static void entities_window(struct ModelView *mv) {
 
 _exit:
     igEnd();
+    // }}}
 }
 
 static void options_window(struct ModelView *mv) {
+    // {{{
     assert(mv);
     bool wnd_open = true;
     ImGuiWindowFlags wnd_flag = ImGuiWindowFlags_AlwaysAutoResize;
@@ -1099,6 +1035,9 @@ static void options_window(struct ModelView *mv) {
 
     static bool use_bonus = false;
     igCheckbox("use bonuses", &use_bonus);
+
+    static bool next_bomb = false;
+    igCheckbox("next bomb", &next_bomb);
 
     static bool use_fnt_vector = false;
     igCheckbox("[experimental] use vector font drawing", &use_fnt_vector);
@@ -1130,21 +1069,24 @@ static void options_window(struct ModelView *mv) {
             .use_bonus = use_bonus,
             .use_fnt_vector = use_fnt_vector,
             .color_theme = theme_light ? color_theme_light : color_theme_dark,
+            .on_init_lua = mv->on_init_lua,
         };
         modelview_init(mv, setup);
 
         // XXX: Опасный код так как параметры проходят мимо конструктора
         mv->put_num = put_num;
         mv->draw_field = draw_field;
+        mv->next_bomb = next_bomb;
 
         modelview_put(mv);
     }
 
     igEnd();
+    // }}}
 }
 
 static void gui(struct ModelView *mv) {
-    //rlImGuiBegin(false, mv->camera);
+    // {{{
     rlImGuiBegin();
 
     //if (mv->camera)
@@ -1173,6 +1115,7 @@ static void gui(struct ModelView *mv) {
     bool open = false;
     igShowDemoWindow(&open);
     rlImGuiEnd();
+    // }}}
 }
 
 char *modelview_state2str(enum ModelViewState state) {
@@ -1269,9 +1212,9 @@ bool modelview_draw(ModelView *mv) {
     return dir_none;
 }
 
-void modelview_init(struct ModelView *mv, Setup setup) {
+void modelview_init(ModelView *mv, Setup setup) {
     assert(mv);
-    memset(mv, 0, sizeof(*mv));
+    /*memset(mv, 0, sizeof(*mv));*/
 
     assert(setup.field_size > 1);
     last_state = NULL;
@@ -1279,6 +1222,7 @@ void modelview_init(struct ModelView *mv, Setup setup) {
     mv->put_num = 1;
     mv->draw_field = true;
     mv->field_size = setup.field_size;
+    mv->tex_bomb = LoadTexture("assets/bomb.png");
     const int cells_num = mv->field_size * mv->field_size;
 
     const int gap = 300;
@@ -1347,10 +1291,22 @@ void modelview_init(struct ModelView *mv, Setup setup) {
         .font_vector = mv->font_vector,
         .use_fnt_vector = false,
     };
+
+    mv->on_init_lua = setup.on_init_lua;
+
+    if (mv->on_init_lua) {
+        trace("modeltest_init:\n");
+        mv->on_init_lua();
+    }
 }
 
 void modelview_shutdown(struct ModelView *mv) {
     assert(mv);
+
+    if (mv->tex_bomb.id) {
+        UnloadTexture(mv->tex_bomb);
+        memset(&mv->tex_bomb, 0, sizeof(mv->tex_bomb));
+    }
 
     if (mv->font_vector) {
         fnt_vector_free(mv->font_vector);

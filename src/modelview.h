@@ -1,7 +1,6 @@
 // vim: fdm=marker
 #pragma once
 
-#include "ecs_circ_buf.h"
 #include "koh_ecs.h"
 #include "raylib.h"
 #include "koh_timerman.h"
@@ -36,26 +35,27 @@ enum AlphaMode {
     AM_BACKWARD,
 };
 
+// Клетка задает только положение
 typedef struct Cell {
                     // ячейка подлежит удалению 
     bool            dropped;        
     int             x, y, value;
 } Cell;
 
-enum BonusType {
-    BT_DOUBLE = 0, 
-};
+typedef enum BonusType {
+    BT_BOMB = 0, 
+} BonusType;
 
-struct Bonus {
+typedef struct Bonus {
     enum BonusType  type;
     Color           border_color;
-};
+} Bonus;
 
-struct Effect {
+typedef struct Effect {
     enum AlphaMode  anim_alpha;
     bool            anim_movement,  // ячейка в движении
                     anim_size;      // ячейка меняет размер
-};
+} Effect;
 
 enum ModelViewState {
     MVS_ANIMATION,
@@ -74,6 +74,7 @@ struct ColorTheme {
     Отображение поля. Все, что связано с анимацией.
  */
 typedef struct ModelView {
+    Texture2D           tex_bomb;
     ecs_t               *r;
     Camera2D            *camera;
     int                 scores;
@@ -101,14 +102,19 @@ typedef struct ModelView {
     Vector2             pos;
     enum ModelViewState state;
     bool                dropped;    //Флаг деинициализации структуры
-    bool                use_bonus;
-    float               font_spacing;
+    bool                use_bonus,
+                        // следующая фигура - бомба
+                        next_bomb;
+    float               font_spacing,
+                        // XXX: Толщина чего?
+                        thick;
     struct ColorTheme   color_theme;
     void                *test_payload;
                         // значение на клетке для победы
     int                 win_value,
                         // количество фишек для создания на одном ходу
                         put_num;
+    void                (*on_init_lua)();
 } ModelView;
 
 extern const struct ColorTheme color_theme_dark, color_theme_light;
@@ -122,6 +128,7 @@ typedef struct Setup {
     bool                use_gui, auto_put;
     bool                use_bonus, use_fnt_vector;
     struct ColorTheme   color_theme;
+    void                (*on_init_lua)();
 } Setup;
 
 void modelview_init(ModelView *mv, Setup setup);
