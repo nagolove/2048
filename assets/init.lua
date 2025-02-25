@@ -131,9 +131,11 @@ local function draw_grid()
     end
     --]]
     
+    local color = GRAY
+    color.a = 40
+
     local i = 0
     while true do
-        local color = GRAY
         local segments = 20
         local roundness = 0.3
 
@@ -153,8 +155,6 @@ local function draw_grid()
                 qw - space * 2
             )
 
-            local color = RED
-            color.a = 70
             DrawRectangleRounded(rect, roundness, segments, color)
             end
         end
