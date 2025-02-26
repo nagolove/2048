@@ -3,6 +3,7 @@
 #include "raylib.h"
 #include "raymath.h"
 #include "koh_fnt_vector.h"
+#include "koh_ecs.h"
 
 typedef struct ColoredTextOpts {
     Font      *font_bitmap;
@@ -14,23 +15,24 @@ typedef struct ColoredText {
     const char  *text;
     float       scale; // 1. or 2. or 0.5
     Color       color;
+    Vector2     text_bound;
+    int         base_font_size;
+    Vector2     pos;
 } ColoredText;
 
 int colored_text_pickup_size(
-    struct ColoredText *text, int text_num,
-    ColoredTextOpts opts,
-    Vector2 text_bound 
+    ColoredText *text, int text_num, ColoredTextOpts opts
 );
 
 void colored_text_print(
-    struct ColoredText *text, int text_num,
-    Vector2 pos, 
-    ColoredTextOpts opts,
-    int base_size 
+    ColoredText *text, int text_num, ColoredTextOpts opts,
+    ecs_t *r, e_id cell_en
 );
 
 Vector2 colored_text_measure(
-    struct ColoredText *text, int text_num,
-    ColoredTextOpts opts,
-    int base_size 
+    ColoredText *text, int text_num, ColoredTextOpts opts
 );
+
+void colored_text_init(int field_size);
+void colored_text_shutdown();
+
