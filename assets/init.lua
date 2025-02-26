@@ -17,7 +17,12 @@ end
 -- }}}
 --]]
 
+-- TODO: Ползунок сложности. Сложность возрастает нелинейно. 
+-- Появляются преграды, добавлются бомбы.
+-- На легком и среднем уровне есть подсказки
+
 -- TODO: Делать подсказку наиболее продуктивного хода
+-- TODO: Непроходимые блоки
 
 local format = string.format
 local ceil = math.ceil
@@ -119,6 +124,7 @@ local function draw_grid()
     --print("draw_grid: quad_width", quad_width, "field_size", field_size)
     --]]
 
+    -- Массив хранит инфу по анимации каждой клетки
     local anim = {}
     for x = 1, field_size do
         table.insert(anim, {})
@@ -133,29 +139,27 @@ local function draw_grid()
     
     local color = GRAY
     color.a = 40
-
     local i = 0
-    while true do
-        local segments = 20
-        local roundness = 0.3
+    local segments = 20
+    local roundness = 0.3
+    local qw = floor(quad_width)
 
+    while true do
         for x = 0, field_size - 1 do
             for y = 0, field_size - 1 do
-                local qw = floor(quad_width)
+                local pos_x, pos_y = pos_get()
+                local phase = anim[x + 1][y + 1][2]
+                local coef = anim[x + 1][y + 1][1]
+                local space = coef * (0.8 * math.pi - sin(i + phase))
+                --local space = 24. 
+                local rect = Rectangle(
+                    pos_x + x * qw + space,
+                    pos_y + y * qw + space,
+                    qw - space * 2,
+                    qw - space * 2
+                )
 
-            local pos_x, pos_y = pos_get()
-            local phase = anim[x + 1][y + 1][2]
-            local coef = anim[x + 1][y + 1][1]
-            local space = coef * (0.8 * math.pi - sin(i + phase))
-            --local space = 24. 
-            local rect = Rectangle(
-                pos_x + x * qw + space,
-                pos_y + y * qw + space,
-                qw - space * 2,
-                qw - space * 2
-            )
-
-            DrawRectangleRounded(rect, roundness, segments, color)
+                DrawRectangleRounded(rect, roundness, segments, color)
             end
         end
 
@@ -174,19 +178,12 @@ local function print_gameover()
     local color = { 0, 0, 0 }
     local x = 0
     local colord = 1
+
     while true do
         local c = Color(ceil(color[1]), ceil(color[2]), ceil(color[3]))
 
-        --local c = RED
         DrawText("GAVEOVER", x, j, fnt_size, c)
-        --DrawText("HELLO YEPdev", 100, j, fnt_size, RED)
 
-        --[[
-        color[1] = color[1] + random() * 0.5
-        color[2] = color[2] + random() * 0.5
-        color[3] = color[3] + random() * 0.5
-        --]]
-        
         color[1] = color[1] + colord
         color[2] = color[2] + colord
         color[3] = color[3] + colord
@@ -198,18 +195,15 @@ local function print_gameover()
         end
 
         j = j + 10
-
         if j > GetScreenHeight() then
             j = -fnt_size
         end
 
         x = x + random(10)
-
         if x > GetScreenWidth() then
             x = 0
         end
 
-        print('gameover yield')
         coroutine.yield()
     end
 
