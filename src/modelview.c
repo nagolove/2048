@@ -42,10 +42,10 @@ static struct ModelTest     model_checker = {0};
 
 // }}} end of debug shit zone
 
-struct TimerData {
+typedef struct TimerData {
     ModelView   *mv;
     e_id        cell;
-};
+} TimerData;
 
 const struct ColorTheme color_theme_dark = {
                             .background = BLACK,
@@ -88,21 +88,21 @@ static StrBuf str_repr_buf_cell(void *payload, e_id e) {
     return buf;
 }
 
-static e_cp_type cmp_cell = {
+e_cp_type cmp_cell = {
     .cp_sizeof = sizeof(struct Cell),
     .name = "cell",
     .initial_cap = 1000,
     .str_repr_buf = str_repr_buf_cell,
 };
 
-static e_cp_type cmp_bonus = {
+e_cp_type cmp_bonus = {
     .cp_sizeof = sizeof(struct Bonus),
     .name = "bonus",
     .initial_cap = 1000,
 };
 // */
 
-static e_cp_type cmp_effect = {
+e_cp_type cmp_effect = {
     .cp_sizeof = sizeof(struct Effect),
     .name = "effect",
     .initial_cap = 1000,
@@ -110,6 +110,7 @@ static e_cp_type cmp_effect = {
 
 static Color colors[] = {
     RED,
+    /*{ 230, 41, 55, 205 }, //RED*/
     ORANGE, // плохо виден на фоне прозрачного красного?
     GOLD,// плохо виден на фоне прозрачного красного?
     GREEN,
@@ -216,6 +217,7 @@ static struct Cell *create_cell(
 
     struct Effect *ef = e_emplace(mv->r, en, cmp_effect);
     ef->anim_movement = false;
+    ef->phase = rand() % 1024;
 
     if (_en)
         *_en = en;
@@ -261,6 +263,34 @@ void modelview_put_manual(struct ModelView *mv, int x, int y, int value) {
     cell->value = value;
 }
 
+static bool tmr_pulsation_update(struct Timer *t) {
+    TimerData *td = t->data;
+    ecs_t *r = td->mv->r;
+    e_id e = td->cell;
+    /*trace("tmr_pulsation_update:\n");*/
+
+    if (!e_valid(r, e))
+        return true;
+
+    Effect *ef = e_get(r, e, cmp_effect);
+    if (!ef)
+        return false;
+
+    return false;
+}
+
+static void tmr_pulsation_stop(Timer *t) {
+    TimerData *td = t->data;
+    ecs_t *r = td->mv->r;
+    e_id e = td->cell;
+
+    if (!e_valid(r, e))
+        return;
+
+    /*trace("tmr_pulsation_stop:\n");*/
+}
+
+// TODO: Добавить анимацию
 static void modelview_put_cell(struct ModelView *mv, int x, int y) {
     assert(mv);
     assert(x >= 0);
@@ -273,10 +303,19 @@ static void modelview_put_cell(struct ModelView *mv, int x, int y) {
     assert(cell);
 
     float v = (float)rand() / (float)RAND_MAX;
-    if (v >= 0. && v < 0.9) {
-        cell->value = 2;
+
+    if (mv->strong) {
+        if (v >= 0. && v < 0.9) {
+            cell->value = 1;
+        } else {
+            cell->value = 3;
+        }
     } else {
-        cell->value = 4;
+        if (v >= 0. && v < 0.9) {
+            cell->value = 2;
+        } else {
+            cell->value = 4;
+        }
     }
 
     assert(cell->value > 0);
@@ -301,6 +340,14 @@ static void modelview_put_cell(struct ModelView *mv, int x, int y) {
         .on_update = tmr_cell_draw,
         .on_stop = tmr_cell_draw_stop,
         .data = &td,
+    });
+
+    timerman_add(mv->timers_effects, (TimerDef) {
+        .data = &td,
+        .duration = 1.,
+        .on_stop = tmr_pulsation_stop,
+        .on_update = tmr_pulsation_update,
+        .sz = sizeof(struct TimerData),
     });
 }
 
@@ -624,7 +671,7 @@ static void sort_numbers(struct ModelView *mv) {
     size_t num = mv->field_size * mv->field_size;
     struct Cell tmp[num];
     memset(tmp, 0, sizeof(tmp));
-    int idx = 0;
+    int idx = 0; // Количество клеток
     for (int y = 0; y < mv->field_size; y++)
         for (int x = 0; x < mv->field_size; x++) {
             struct Cell *cell = modelview_get_cell(mv, x, y, NULL);
@@ -640,8 +687,27 @@ static void sort_numbers(struct ModelView *mv) {
         for (int i = 0; i < num; i++) {
             pbuf += sprintf(pbuf, "%d ", tmp[i].value);
         }
+        trace("sort_numbers: %s\n", buf);
+    }
 
-        /*trace("sort_numbers: %s\n", buf);*/
+    // TODO: Выкинуть дубликаты
+    int dup = tmp[0].value;
+    if (idx > 1) {
+        for (int j = 1; j < idx; j++) {
+            while (dup == tmp[j].value && j < idx) {
+                j++;
+            }
+            dup = tmp[j].value;
+        }
+    }
+    // XXX:Заполнить остатки массива нулями?
+
+    {
+        char buf[20 /* value len */ * num ] = {}, *pbuf = buf;
+        for (int i = 0; i < num; i++) {
+            pbuf += sprintf(pbuf, "%d ", tmp[i].value);
+        }
+        trace("sort_numbers: without dups %s\n", buf);
     }
 
     memmove(mv->sorted, tmp, sizeof(tmp[0]) * idx);
@@ -671,13 +737,14 @@ static void draw_grid(struct ModelView *mv) {
     }
 }
 
-static Color get_color(struct ModelView *mv, int cell_value) {
+static Color get_color(ModelView *mv, int cell_value) {
     int colors_num = sizeof(colors) / sizeof(colors[0]);
     for (int k = 0; k < colors_num; k++) {
         if (cell_value == mv->sorted[k].value) {
             return colors[k];
         }
     }
+    // Возврат серого цвета
     return colors[colors_num - 1];
 }
 
@@ -803,7 +870,8 @@ static void cell_draw(
 
     int fntsize = calc_font_size_anim(mv, cell_en, opts);
     // XXX: Почему не используются все цвета из colors?
-    Color color = opts.custom_color ? opts.color : get_color(mv, cell->value);
+    /*Color color = opts.custom_color ? opts.color : get_color(mv, cell->value);*/
+    Color color = get_color(mv, cell->value);
 
     color = calc_alpha(mv, cell_en, color, opts);
 
@@ -823,9 +891,10 @@ static void cell_draw(
 
     assert(texts);
 
+    texts->text_bound = text_bound;
     fntsize = colored_text_pickup_size(
         texts, texts_num,
-        mv->text_opts, text_bound
+        mv->text_opts
     );
 
     Vector2 offset = {
@@ -836,7 +905,11 @@ static void cell_draw(
     Vector2 disp = Vector2Add(Vector2Scale(base_pos, mv->quad_width), offset);
     Vector2 pos = Vector2Add(mv->pos, disp);
 
-    colored_text_print(texts, texts_num, pos, mv->text_opts, fntsize);
+    //colored_text_print(texts, texts_num, pos, mv->text_opts, fntsize);
+    texts->pos = pos;
+    texts->base_font_size = fntsize;
+    // Найти место создания клетки
+    colored_text_print(texts, texts_num, mv->text_opts, mv->r, cell_en);
 }
 
 static void tile_draw(ModelView *mv, e_id cell_en, DrawOpts opts) {
@@ -1036,6 +1109,9 @@ static void options_window(struct ModelView *mv) {
     static bool use_bonus = false;
     igCheckbox("use bonuses", &use_bonus);
 
+    static bool strong = false;
+    igCheckbox("strong", &strong);
+
     static bool next_bomb = false;
     igCheckbox("next bomb", &next_bomb);
 
@@ -1077,6 +1153,7 @@ static void options_window(struct ModelView *mv) {
         mv->put_num = put_num;
         mv->draw_field = draw_field;
         mv->next_bomb = next_bomb;
+        mv->strong = strong;
 
         modelview_put(mv);
     }
@@ -1293,6 +1370,7 @@ void modelview_init(ModelView *mv, Setup setup) {
     };
 
     mv->on_init_lua = setup.on_init_lua;
+    colored_text_init(mv->field_size);
 
     if (mv->on_init_lua) {
         trace("modeltest_init:\n");
@@ -1338,6 +1416,8 @@ void modelview_shutdown(struct ModelView *mv) {
         e_free(mv->r);
         mv->r = NULL;
     }
+
+    colored_text_shutdown();
 
     if (mv->sorted) {
         free(mv->sorted);

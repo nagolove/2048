@@ -55,6 +55,12 @@ typedef struct Effect {
     enum AlphaMode  anim_alpha;
     bool            anim_movement,  // ячейка в движении
                     anim_size;      // ячейка меняет размер
+
+    // Для пульсации шрифта 
+          // коэффициент масштаба
+    float coef, 
+          // начальная фаза колебания
+          phase;
 } Effect;
 
 enum ModelViewState {
@@ -104,7 +110,9 @@ typedef struct ModelView {
     bool                dropped;    //Флаг деинициализации структуры
     bool                use_bonus,
                         // следующая фигура - бомба
-                        next_bomb;
+                        next_bomb,
+                        // выпадают 1 или 3
+                        strong;
     float               font_spacing,
                         // XXX: Толщина чего?
                         thick;
@@ -157,3 +165,5 @@ void _modelview_field_print_s(
 );
 void _modelview_field_print(ecs_t *r, int field_size);
 Cell *modelview_find_by_value(ecs_t *r, int value);
+
+extern e_cp_type cmp_cell, cmp_bonus, cmp_effect;
