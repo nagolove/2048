@@ -687,7 +687,7 @@ static void sort_numbers(struct ModelView *mv) {
         for (int i = 0; i < num; i++) {
             pbuf += sprintf(pbuf, "%d ", tmp[i].value);
         }
-        trace("sort_numbers: %s\n", buf);
+        //trace("sort_numbers: %s\n", buf);
     }
 
     // TODO: Выкинуть дубликаты
@@ -707,7 +707,7 @@ static void sort_numbers(struct ModelView *mv) {
         for (int i = 0; i < num; i++) {
             pbuf += sprintf(pbuf, "%d ", tmp[i].value);
         }
-        trace("sort_numbers: without dups %s\n", buf);
+        /*trace("sort_numbers: without dups %s\n", buf);*/
     }
 
     memmove(mv->sorted, tmp, sizeof(tmp[0]) * idx);
@@ -1164,7 +1164,6 @@ static void options_window(struct ModelView *mv) {
 
 static void gui(struct ModelView *mv) {
     // {{{
-    rlImGuiBegin();
 
     //if (mv->camera)
         //trace("gui: %s\n", camera2str(*mv->camera));
@@ -1189,9 +1188,6 @@ static void gui(struct ModelView *mv) {
 
     options_window(mv);
     //ecs_window(mv);
-    bool open = false;
-    igShowDemoWindow(&open);
-    rlImGuiEnd();
     // }}}
 }
 
@@ -1237,6 +1233,7 @@ static void destroy_dropped(struct ModelView *mv) {
 }
 
 bool modelview_draw(ModelView *mv) {
+    trace("modelview_draw:\n");
     assert(mv);
 
     bool dir_none = false;
