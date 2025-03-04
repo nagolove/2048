@@ -21,8 +21,15 @@ end
 -- Появляются преграды, добавлются бомбы.
 -- На легком и среднем уровне есть подсказки
 
+-- TODO: Отключаемость анимации подложки
 -- TODO: Делать подсказку наиболее продуктивного хода
 -- TODO: Непроходимые блоки
+
+--[[
+-- Один раунд - с делением от 2048 до 2
+--]]
+
+is_draw_grid = true
 
 local format = string.format
 local ceil = math.ceil
@@ -220,6 +227,14 @@ function update()
     --print('update')
 end
 
+local function cross_remove()
+    while true do
+        DrawText("BANG", 100, RED)
+
+        coroutine.yield()
+    end
+end
+
 function draw_top()
     --print('draw_top')
     local scores = scores_get()
@@ -244,11 +259,21 @@ function draw_top()
         end
 
     end
+
+    if c_draw_grid then
+        coroutine.resume(c_draw_grid)
+    end
 end
 
 function draw_bottom()
     --print('draw_bottom')
-    coroutine.resume(c_draw_grid)
+    if is_draw_grid then
+        coroutine.resume(c_draw_grid)
+    end
+end
+
+function cross_remove()
+    c_cross_remove = coroutine.create(cross_remove)
 end
 
 print("init.lua loaded")
