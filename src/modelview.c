@@ -5,6 +5,7 @@
 #include "test_suite.h"
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 
+#include "koh_lua.h"
 #include "cimgui.h"
 #include "cimgui_impl.h"
 #include "colored_text.h"
@@ -36,6 +37,7 @@ static struct Cell cell_zero = {0};
 
 // XXX: зачем нужна переменная last_state?
 static int *last_state = NULL;
+static bool is_draw_grid = true;
 
 //static struct ecs_circ_buf  ecs_buf = {0};
 static struct ModelTest     model_checker = {0};
@@ -65,6 +67,7 @@ typedef struct DrawOpts {
 } DrawOpts;
 
 static void tile_draw(ModelView *mv, e_id cell_en, DrawOpts opts);
+static float chance_bomb = 0.1;
 
 static const struct DrawOpts dflt_draw_opts = {
     .caption_offset_coef = { 1., 1., },
@@ -115,7 +118,9 @@ static Color colors[] = {
     GOLD,// плохо виден на фоне прозрачного красного?
     GREEN,
     BLUE, 
-    GRAY,
+
+    /*GRAY,*/
+    { 100, 150, 150, 255 }   // Gray
 };
 
 const char *dir2str(enum Direction dir) {
@@ -383,6 +388,9 @@ static void modelview_put_bonus(
     struct Bonus *bonus = e_emplace(mv->r, cell_en, cmp_bonus);
     assert(bonus);
     bonus->type = type;
+    bonus->bomb_color = koh_maybe();
+    bonus->bomb_rot = rand() % 360;
+    bonus->phase = rand() % 1024;
 
     /*modeltest_put(&model_checker, cell->x, cell->y, cell->value);*/
 
@@ -437,7 +445,7 @@ void modelview_put(struct ModelView *mv) {
                 modelview_put_bonus(mv, x, y, BT_BOMB);
                 mv->next_bomb = false;
             } else {
-                if ((double)rand() / (double)RAND_MAX > 0.5)
+                if ((double)rand() / (double)RAND_MAX > chance_bomb)
                     modelview_put_cell(mv, x, y);
                 else
                     modelview_put_bonus(mv, x, y, BT_BOMB);
@@ -475,8 +483,6 @@ static bool move(
     struct Effect *ef = e_get(mv->r, cell_en, cmp_effect);
     assert(ef);
 
-    //struct Bonus *bonus = e_get(mv->r, cell_en, cmp_bonus);
-
     //if (cell->touched)
         //return has_move;
 
@@ -502,6 +508,15 @@ static bool move(
     cell->x += mv->dx;
     cell->y += mv->dy;
     ef->anim_movement = true;
+
+    // Обновление счетчика движения
+    // TODO: Показывать счетчик движений. 
+    // Когда достигается 0, то происходит взрыв.
+    // TODO: Сделать слияние бомб одного типа
+    Bonus *bonus = e_get(mv->r, cell_en, cmp_bonus);
+    if (bonus) {
+        bonus->moves_cnt++;
+    }
 
     *touched = true;
 
@@ -531,6 +546,12 @@ static bool sum(
     bool has_sum = false;
 
     struct Cell *cell = e_get(mv->r, cell_en, cmp_cell);
+    Bonus *b = e_get(mv->r, cell_en, cmp_bonus);
+
+    if (b && b->type == BT_BOMB) {
+        return false;
+    }
+
     //assert(cell);
     if (!cell)
         return false;
@@ -635,9 +656,6 @@ static bool do_action(struct ModelView *mv, Action action) {
                 Cell *cell = modelview_get_cell(mv, x, y, &cell_en);
                 if (!cell) continue;
 
-                /*Bonus *bonus = e_get(mv->r, cell_en, cmp_bonus);*/
-                /*if (bonus) continue;*/
-
                 if (action(mv, cell_en, x, y, &touched))
                     has_action = true;
         }
@@ -691,14 +709,17 @@ static void sort_numbers(struct ModelView *mv) {
     }
 
     // TODO: Выкинуть дубликаты
-    int dup = tmp[0].value;
+    /*int dup = tmp[0].value;*/
     if (idx > 1) {
+        // XXX: Не работает
+        /*
         for (int j = 1; j < idx; j++) {
             while (dup == tmp[j].value && j < idx) {
                 j++;
             }
             dup = tmp[j].value;
         }
+        */
     }
     // XXX:Заполнить остатки массива нулями?
 
@@ -837,28 +858,85 @@ static Vector2 calc_base_pos(ModelView *mv, e_id en, DrawOpts opts) {
     return base_pos;
 }
 
-static void bonus_draw(
+static void bomb_draw(
     ModelView *mv, e_id cell_en, Vector2 base_pos, DrawOpts opts
 ) {
+
+    Texture2D tex = {};
+    Bonus *b = e_get(mv->r, cell_en, cmp_bonus);
+
+    if (b->bomb_color == BC_BLACK) {
+        tex = mv->tex_bomb_black;
+    } else if (b->bomb_color == BC_RED) {
+        tex = mv->tex_bomb_red;
+    }
+
     Vector2 text_bound = { .x = mv->quad_width, .y = mv->quad_width };
     Vector2 _offset = {
-        opts.caption_offset_coef.x * (mv->quad_width - text_bound.x) / 2.,
-        opts.caption_offset_coef.y * (mv->quad_width - text_bound.y) / 2.,
+    opts.caption_offset_coef.x * (mv->quad_width - text_bound.x) / 2.,
+    opts.caption_offset_coef.y * (mv->quad_width - text_bound.y) / 2.,
     };
     Vector2 tmp = Vector2Scale(base_pos, mv->quad_width);
     Vector2 _disp = Vector2Add(tmp, _offset);
     Vector2 _pos = Vector2Add(mv->pos, _disp);
 
     float thick = 40.; // Отступ внутрь квадрата
-    Rectangle src = { 0., 0., mv->tex_bomb.width, mv->tex_bomb.height, },
-              dst = {
-                .x = _pos.x + thick * 1.,
-                .y = _pos.y + thick * 1.,
-                .width = mv->quad_width - thick * 2.,
-                .height = mv->quad_width - thick * 2.,
-              }; 
+    Rectangle src = { 0., 0., tex.width, tex.height, },
+          dst_bomb = {
+            .x = _pos.x + thick * 1.,
+            .y = _pos.y + thick * 1.,
+            .width = mv->quad_width - thick * 2.,
+            .height = mv->quad_width - thick * 2.,
+          }; 
 
-    DrawTexturePro(mv->tex_bomb, src, dst, Vector2Zero(), 0., WHITE);
+    char color_str[32] = {};
+    switch (b->bomb_color) {
+        case BC_BLACK: {
+            sprintf(color_str, "black"); 
+            break;
+        }
+        case BC_RED: {
+            sprintf(color_str, "red");
+            break;
+        }
+    }
+
+    DrawTexturePro(tex, src, dst_bomb, Vector2Zero(), 0., WHITE);
+
+    src = (Rectangle){ 0., 0., mv->tex_aura.width, mv->tex_aura.height, };
+    Vector2 disp = {
+        .x = 234,
+        .y = 20,
+    };
+
+    double t = sin(GetTime() + b->phase) * 10.f;
+    Rectangle dst_aura = (Rectangle){
+        .x = _pos.x + thick * 1. + disp.x,
+        .y = _pos.y + thick * 1. + disp.y,
+        .width = mv->quad_width - thick * 2. + t,
+        .height = mv->quad_width - thick * 2. + t,
+    }; 
+
+    Vector2 origin = { 
+        dst_aura.width / 2.,
+        dst_aura.height / 2.,
+    };
+
+    DrawTexturePro(mv->tex_aura, src, dst_aura, origin, b->bomb_rot, WHITE);
+
+    char buf[32] = {};
+    const int fnt_size = 32;
+    sprintf(buf, "%d", b->moves_cnt);
+    DrawText(buf, dst_bomb.x, dst_bomb.y, fnt_size, BLACK);
+}
+
+static void bonus_draw(
+    ModelView *mv, e_id cell_en, Vector2 base_pos, DrawOpts opts
+) {
+    Bonus *b = e_get(mv->r, cell_en, cmp_bonus);
+    if (b->type == BT_BOMB) {
+        bomb_draw(mv, cell_en, base_pos, opts);
+    }
 }
 
 static void cell_draw(
@@ -923,10 +1001,11 @@ static void tile_draw(ModelView *mv, e_id cell_en, DrawOpts opts) {
     struct Bonus *bonus = e_get(mv->r, cell_en, cmp_bonus);
     Vector2 base_pos = calc_base_pos(mv, cell_en, opts);
 
-    if (bonus)
+    if (bonus) {
         bonus_draw(mv, cell_en, base_pos, opts);
-    else
+    } else {
         cell_draw(mv, cell_en, base_pos, opts);
+    }
 }
 
 static void draw_numbers(struct ModelView *mv) {
@@ -1106,11 +1185,15 @@ static void options_window(struct ModelView *mv) {
     igSliderFloat("tmr_block_time", &mv->tmr_block_time, 0.01, 1., "%f", 0);
     igSliderFloat("tmr_put_time", &mv->tmr_put_time, 0.01, 1., "%f", 0);
 
-    static bool use_bonus = false;
+    igSliderFloat("bomb chance", &chance_bomb, 0.1, 0.9, "%f", 0);
+
+    static bool use_bonus = true;
     igCheckbox("use bonuses", &use_bonus);
 
     static bool strong = false;
-    igCheckbox("strong", &strong);
+    igCheckbox("strong(1 + 3)", &strong);
+
+    igCheckbox("draw animated grid background", &is_draw_grid);
 
     static bool next_bomb = false;
     igCheckbox("next bomb", &next_bomb);
@@ -1232,8 +1315,30 @@ static void destroy_dropped(struct ModelView *mv) {
 
 }
 
+void modelview_cross_remove(ModelView *mv, int x, int y) {
+    /*trace("modelview_cross_remove:\n");*/
+    e_id removing[mv->field_size * 2];
+    memset(removing, 0, sizeof(removing));
+
+    int num = 0;
+
+    e_view v = e_view_create_single(mv->r, cmp_cell);
+    for (; e_view_valid(&v); e_view_next(&v)) {
+        Cell *c = e_view_get(&v, cmp_cell);
+        if (c->x != x && c->y != y) {
+            if (c->x == x || c->y == y) {
+                removing[num++] = e_view_entity(&v);
+            }
+        }
+    }
+
+    for (int i = 0; i < num; i++) {
+        e_destroy(mv->r, removing[i]);
+    }
+}
+
 bool modelview_draw(ModelView *mv) {
-    trace("modelview_draw:\n");
+    /*trace("modelview_draw:\n");*/
     assert(mv);
 
     bool dir_none = false;
@@ -1277,6 +1382,26 @@ bool modelview_draw(ModelView *mv) {
         mv->state = MVS_WIN;
     }
 
+
+    const int moves_limit = 10;
+    e_view v = e_view_create_single(mv->r, cmp_bonus);
+    for (; e_view_valid(&v); e_view_next(&v)) {
+        Bonus *b = e_view_get(&v, cmp_bonus);
+        e_id e = e_view_entity(&v);
+        Cell *c = e_get(mv->r, e, cmp_cell);
+
+        if (b->moves_cnt > moves_limit) {
+            L_pcall(mv->l, "cross_remove", NULL);
+
+            Cell *other_c = e_get(mv->r, e, cmp_cell); 
+
+            // Пройтись по всем клеткам на пересечении x, y
+            e_id e_other;
+
+            modelview_cross_remove(mv, c->x, c->y);
+        }
+    }
+
     sort_numbers(mv);
     ClearBackground(mv->color_theme.background);
     if (mv->draw_field)
@@ -1284,6 +1409,14 @@ bool modelview_draw(ModelView *mv) {
     draw_numbers(mv);
 
     return dir_none;
+}
+
+void modelview_lua_after_load(struct ModelView *mv, lua_State *l) {
+    trace("modelview_lua_after_load:\n");
+    mv->l = l;
+
+    lua_pushboolean(l, is_draw_grid);
+    lua_setglobal(l, "is_draw_grid");
 }
 
 void modelview_init(ModelView *mv, Setup setup) {
@@ -1296,7 +1429,28 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->put_num = 1;
     mv->draw_field = true;
     mv->field_size = setup.field_size;
-    mv->tex_bomb = LoadTexture("assets/bomb.png");
+
+    /*SetTraceLogLevel(LOG_ALL);*/
+    Resource *reslist = &mv->reslist;
+    mv->tex_bomb_black = res_tex_load(reslist, "assets/bomb_black.png");
+    mv->tex_bomb_red = res_tex_load(reslist, "assets/bomb_red.png");
+    mv->tex_aura = res_tex_load(reslist, "assets/aura.png");
+    mv->tex_bomb = res_tex_load(reslist, "assets/bomb.png");
+
+    mv->tex_ex_num = 4;
+    mv->tex_ex = calloc(mv->tex_ex_num, sizeof(mv->tex_ex[0]));
+
+    mv->tex_ex[0] = res_tex_load(reslist, "explosion_01.jpg");
+    mv->tex_ex[1] = res_tex_load(reslist, "explosion_02.png");
+    mv->tex_ex[2] = res_tex_load(reslist, "explosion_03.png");
+    mv->tex_ex[3] = res_tex_load(reslist, "explosion_04.png");
+
+    /*mv->tex_bomb_black = LoadTexture("assets/bomb_black.png");*/
+    /*mv->tex_bomb_red = LoadTexture("assets/bomb_red.png");*/
+    /*mv->tex_aura = LoadTexture("assets/aura.png");*/
+
+    /*SetTraceLogLevel(LOG_ERROR);*/
+
     const int cells_num = mv->field_size * mv->field_size;
 
     const int gap = 300;
@@ -1369,6 +1523,8 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->on_init_lua = setup.on_init_lua;
     colored_text_init(mv->field_size);
 
+    mv->lua_after_load = modelview_lua_after_load;
+
     if (mv->on_init_lua) {
         trace("modeltest_init:\n");
         mv->on_init_lua();
@@ -1378,9 +1534,11 @@ void modelview_init(ModelView *mv, Setup setup) {
 void modelview_shutdown(struct ModelView *mv) {
     assert(mv);
 
-    if (mv->tex_bomb.id) {
-        UnloadTexture(mv->tex_bomb);
-        memset(&mv->tex_bomb, 0, sizeof(mv->tex_bomb));
+    res_unload_all(&mv->reslist, true);
+
+    if (mv->tex_ex) {
+        free(mv->tex_ex);
+        mv->tex_ex = NULL;
     }
 
     if (mv->font_vector) {

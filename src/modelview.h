@@ -1,6 +1,7 @@
 // vim: fdm=marker
 #pragma once
 
+#include "lua.h"
 #include "koh_ecs.h"
 #include "raylib.h"
 #include "koh_timerman.h"
@@ -11,6 +12,7 @@
 #include <stdlib.h>
 #include "koh_fnt_vector.h"
 #include "colored_text.h"
+#include "koh_resource.h"
 
 #define WIN_VALUE   2048
 
@@ -46,9 +48,17 @@ typedef enum BonusType {
     BT_BOMB = 0, 
 } BonusType;
 
+enum BombColor {
+    BC_BLACK,
+    BC_RED,
+};
+
 typedef struct Bonus {
     enum BonusType  type;
     Color           border_color;
+    enum BombColor  bomb_color;
+    float           bomb_rot, phase;
+    int             moves_cnt;
 } Bonus;
 
 typedef struct Effect {
@@ -80,7 +90,23 @@ struct ColorTheme {
     Отображение поля. Все, что связано с анимацией.
  */
 typedef struct ModelView {
-    Texture2D           tex_bomb;
+    lua_State           *l;
+    Resource            reslist;
+
+
+                        // бомба
+    Texture2D           tex_bomb,
+                        // черная бомба
+                        tex_bomb_black,
+                        // красная бомба
+                        tex_bomb_red,
+                        // горение фитиля бомбы
+                        tex_aura;
+
+    // Текстуры взрывов
+    Texture2D           *tex_ex;
+    int                 tex_ex_num;
+
     ecs_t               *r;
     Camera2D            *camera;
     int                 scores;
@@ -123,6 +149,7 @@ typedef struct ModelView {
                         // количество фишек для создания на одном ходу
                         put_num;
     void                (*on_init_lua)();
+    void                (*lua_after_load)(struct ModelView *mv, lua_State *l);
 } ModelView;
 
 extern const struct ColorTheme color_theme_dark, color_theme_light;
@@ -145,12 +172,11 @@ void modelview_put_manual(ModelView *mv, int x, int y, int value);
 void modelview_put(ModelView *mv);
 void modelview_shutdown(ModelView *mv);
 void modelview_save_state2file(ModelView *mv);
+// XXX: Зачем возвращать bool?
 bool modelview_draw(ModelView *mv);
 void modelview_draw_gui(ModelView *mv);
 void modelview_input(ModelView *mv, enum Direction dir);
-Cell *modelview_get_cell(
-    ModelView *mv, int x, int y, e_id *en
-);
+Cell *modelview_get_cell(ModelView *mv, int x, int y, e_id *en);
 char *modelview_state2str(enum ModelViewState state);
 void modelview_field_print(ModelView *mv);
 void modelview_field_print_s(ModelView *mv, char *str, size_t str_sz);

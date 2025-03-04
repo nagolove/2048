@@ -13,7 +13,7 @@ typedef struct Stage_Main {
     bool                is_paused;
 } Stage_Main;
 
-static struct ModelView    main_view;
+static struct ModelView main_view;
 static Camera2D camera = { 0 };
 static lua_State *l = NULL;
 static rlwr_t *rlwr = NULL;
@@ -83,6 +83,7 @@ void mouse_swipe_cell(enum Direction *dir) {
     }
 }
 
+// Загрузка Луа машины
 static void load_init_lua() {
     if (rlwr) {
         rlwr_free(rlwr);
@@ -107,6 +108,9 @@ static void load_init_lua() {
     } else {
         strcpy(error, "");
     }
+
+    if (main_view.lua_after_load)
+        main_view.lua_after_load(&main_view, l);
 }
 
 void hotreload(const char *fname, void *ud) {
@@ -242,7 +246,7 @@ static void stage_main_init(Stage_Main *st) {
 }
 
 static void stage_main_update(Stage_Main *st) {
-    trace("stage_main_update:\n");
+    /*trace("stage_main_update:\n");*/
 
     if (IsKeyPressed(KEY_P)) {
         is_paused = !is_paused;
@@ -261,7 +265,7 @@ static void stage_main_update(Stage_Main *st) {
 }
 
 static void stage_main_gui(Stage_Main *st) {
-    trace("stage_main_gui:\n");
+    /*trace("stage_main_gui:\n");*/
 
     /*
     ImGuiWindowFlags wnd_flags = ImGuiWindowFlags_AlwaysAutoResize;
@@ -286,7 +290,6 @@ static void stage_main_draw(Stage_Main *st) {
         strncpy(error, pcall_err, sizeof(error));
 
     L_call(l, "draw_bottom", &is_ok);
-
 
     if (main_view.state != MVS_GAMEOVER)
         input();
