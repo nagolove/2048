@@ -6,18 +6,8 @@
 #include "koh_hashers.h"
 #include "koh_inotifier.h"
 #include "koh_logger.h"
-#include "koh_lua.h"
-#include "koh_lua.h"
-#include "koh_timerman.h"
-#include "lauxlib.h"
-#include "lua.h"
-#include "lualib.h"
-#include "modelview.h"
 #include "raylib.h"
-#include "raymath.h"
-#include "rlwr.h"
 #include <assert.h>
-#include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -26,8 +16,8 @@
 #include <time.h>
 #include "koh_stages.h"
 #include "koh_stage_sprite_loader.h"
+#include "koh_stage_sprite_loader2.h"
 #include "stage_main.h"
-//#include "test_suite.h"
 
 #if defined(PLATFORM_WEB)
 #include <emscripten.h>
@@ -97,6 +87,7 @@ int main(void) {
     ss = stage_new(NULL);
     stage_add(ss, stage_main_new(NULL), "main");
     stage_add(ss, stage_sprite_loader_new(NULL), "sprite_loader");
+    stage_add(ss, stage_sprite_loader_new2(NULL), "sprite_loader2");
     stage_init(ss);
     stage_active_set(ss, "main");
 
