@@ -192,4 +192,4 @@ void _modelview_field_print_s(
 void _modelview_field_print(ecs_t *r, int field_size);
 Cell *modelview_find_by_value(ecs_t *r, int value);
 
-extern e_cp_type cmp_cell, cmp_bonus, cmp_effect;
+extern e_cp_type cmp_cell, cmp_bonus, cmp_effect, cmp_bomb_exp;

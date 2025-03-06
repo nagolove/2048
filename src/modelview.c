@@ -5,6 +5,7 @@
 #include "test_suite.h"
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 
+#include "koh_common.h"
 #include "koh_lua.h"
 #include "cimgui.h"
 #include "cimgui_impl.h"
@@ -46,7 +47,7 @@ static struct ModelTest     model_checker = {0};
 
 typedef struct TimerData {
     ModelView   *mv;
-    e_id        cell;
+    e_id        e;
 } TimerData;
 
 const struct ColorTheme color_theme_dark = {
@@ -108,6 +109,13 @@ e_cp_type cmp_bonus = {
 e_cp_type cmp_effect = {
     .cp_sizeof = sizeof(struct Effect),
     .name = "effect",
+    .initial_cap = 1000,
+};
+
+// Тег бомбы
+e_cp_type cmp_bomb_exp = {
+    .cp_sizeof = sizeof(char),
+    .name = "bomb explosion tag",
     .initial_cap = 1000,
 };
 
@@ -215,12 +223,14 @@ static struct Cell *create_cell(
 
     e_id en = e_create(mv->r);
     struct Cell *cell = e_emplace(mv->r, en, cmp_cell);
+    memset(cell, 0, sizeof(*cell));
     assert(cell);
     cell->x = x;
     cell->y = y;
     cell->value = -1;
 
     struct Effect *ef = e_emplace(mv->r, en, cmp_effect);
+    memset(ef, 0, sizeof(*ef));
     ef->anim_movement = false;
     ef->phase = rand() % 1024;
 
@@ -233,11 +243,14 @@ static void tmr_cell_draw_stop(struct Timer *t) {
     struct TimerData *timer_data = t->data;
     struct ModelView *mv = timer_data->mv;
 
-    assert(e_valid(mv->r, timer_data->cell));
-    struct Cell *cell = e_get(mv->r, timer_data->cell, cmp_cell);
+    if (!e_valid(mv->r, timer_data->e)) {
+        return;
+    }
+
+    struct Cell *cell = e_get(mv->r, timer_data->e, cmp_cell);
     assert(cell);
 
-    struct Effect *ef = e_get(mv->r, timer_data->cell, cmp_effect);
+    struct Effect *ef = e_get(mv->r, timer_data->e, cmp_effect);
     assert(ef);
 
     ef->anim_movement = false;
@@ -247,14 +260,19 @@ static void tmr_cell_draw_stop(struct Timer *t) {
 
 // какой эффект рисует функция и для какой плитки?
 static bool tmr_cell_draw(struct Timer *t) {
-    struct TimerData *timer_data = t->data;
-    struct ModelView *mv = timer_data->mv;
-    struct DrawOpts opts = dflt_draw_opts;
+    TimerData *timer_data = t->data;
+    ModelView *mv = timer_data->mv;
+    DrawOpts opts = dflt_draw_opts;
 
-    assert(e_valid(mv->r, timer_data->cell));
+    if (!e_valid(mv->r, timer_data->e)) {
+        koh_term_color_set(KOH_TERM_YELLOW);
+        trace("tmr_cell_draw: invalid cell draw timer\n");
+        koh_term_color_reset();
+        return true;
+    }
 
     opts.amount = t->amount;
-    tile_draw(timer_data->mv, timer_data->cell, opts);
+    tile_draw(timer_data->mv, timer_data->e, opts);
     return false;
 }
 
@@ -271,7 +289,7 @@ void modelview_put_manual(struct ModelView *mv, int x, int y, int value) {
 static bool tmr_pulsation_update(struct Timer *t) {
     TimerData *td = t->data;
     ecs_t *r = td->mv->r;
-    e_id e = td->cell;
+    e_id e = td->e;
     /*trace("tmr_pulsation_update:\n");*/
 
     if (!e_valid(r, e))
@@ -287,7 +305,7 @@ static bool tmr_pulsation_update(struct Timer *t) {
 static void tmr_pulsation_stop(Timer *t) {
     TimerData *td = t->data;
     ecs_t *r = td->mv->r;
-    e_id e = td->cell;
+    e_id e = td->e;
 
     if (!e_valid(r, e))
         return;
@@ -337,8 +355,9 @@ static void modelview_put_cell(struct ModelView *mv, int x, int y) {
 
     struct TimerData td = {
         .mv = mv,
-        .cell = cell_en,
+        .e = cell_en,
     };
+
     timerman_add(mv->timers_slides, (struct TimerDef) {
         .duration = mv->tmr_put_time,
         .sz = sizeof(struct TimerData),
@@ -346,7 +365,6 @@ static void modelview_put_cell(struct ModelView *mv, int x, int y) {
         .on_stop = tmr_cell_draw_stop,
         .data = &td,
     });
-
     timerman_add(mv->timers_effects, (TimerDef) {
         .data = &td,
         .duration = 1.,
@@ -354,6 +372,7 @@ static void modelview_put_cell(struct ModelView *mv, int x, int y) {
         .on_update = tmr_pulsation_update,
         .sz = sizeof(struct TimerData),
     });
+
 }
 
 static void modelview_put_bonus(
@@ -365,7 +384,7 @@ static void modelview_put_bonus(
     assert(y >= 0);
     assert(y < mv->field_size);
     e_id cell_en = e_null;
-    struct Cell *cell = create_cell(mv, x, y, &cell_en);
+    Cell *cell = create_cell(mv, x, y, &cell_en);
 
     assert(cell);
 
@@ -383,10 +402,13 @@ static void modelview_put_bonus(
 
     struct Effect *ef = e_get(mv->r, cell_en, cmp_effect);
     assert(ef);
+    memset(ef, 0, sizeof(*ef));
     ef->anim_alpha = AM_FORWARD;
 
     struct Bonus *bonus = e_emplace(mv->r, cell_en, cmp_bonus);
     assert(bonus);
+    memset(bonus, 0, sizeof(*bonus));
+    bonus->moves_cnt = 0;
     bonus->type = type;
     bonus->bomb_color = koh_maybe();
     bonus->bomb_rot = rand() % 360;
@@ -396,7 +418,7 @@ static void modelview_put_bonus(
 
     struct TimerData td = {
         .mv = mv,
-        .cell = cell_en,
+        .e = cell_en,
     };
     timerman_add(mv->timers_slides, (struct TimerDef) {
         .duration = mv->tmr_put_time,
@@ -529,7 +551,7 @@ static bool move(
         .on_stop = tmr_cell_draw_stop,
         .data = &(struct TimerData) {
             .mv = mv,
-            .cell = cell_en,
+            .e = cell_en,
         },
     });
 
@@ -603,7 +625,7 @@ static bool sum(
         .sz = sizeof(struct TimerData),
         .data = &(struct TimerData) {
             .mv = mv,
-            .cell = cell_en,
+            .e = cell_en,
         },
     });
 
@@ -616,7 +638,7 @@ static bool sum(
         .sz = sizeof(struct TimerData),
         .data = &(struct TimerData) {
             .mv = mv,
-            .cell = neighbour_en,
+            .e = neighbour_en,
         },
     });
 
@@ -833,7 +855,7 @@ static Color calc_alpha(
     return color;
 }
 
-// XXX: Что возвращает функция?
+// Возвращает индексы от 0 до mv->field_size возможно с дробной интерполяцией
 static Vector2 calc_base_pos(ModelView *mv, e_id en, DrawOpts opts) {
     Vector2 base_pos;
 
@@ -990,6 +1012,39 @@ static void cell_draw(
     colored_text_print(texts, texts_num, mv->text_opts, mv->r, cell_en);
 }
 
+static void exp_draw(
+    ModelView *mv, e_id cell_en, Vector2 base_pos, DrawOpts opts
+) {
+    /*struct Cell *cell = e_get(mv->r, cell_en, cmp_cell);*/
+    trace("exp_draw:\n");
+
+    Vector2 offset = {
+    };
+
+    /*
+        opts.caption_offset_coef.x * (mv->quad_width - 0.) / 2.,
+        opts.caption_offset_coef.y * (mv->quad_width - 0.) / 2.,
+    };
+    */
+
+    Vector2 disp = Vector2Add(Vector2Scale(base_pos, mv->quad_width), offset);
+    Vector2 pos = Vector2Add(mv->pos, disp);
+
+    Texture2D tex = mv->tex_ex[0];
+    Rectangle src = {
+            .x = 0, .y = 0,
+            .width = tex.width,
+            .height = tex.height,
+        }, dst = { 
+            .x = pos.x, .y = pos.y,
+            .width = mv->quad_width,
+            .height = mv->quad_width,
+        };
+
+    /*DrawTexturePro(tex, src, dst, Vector2Zero(), 0.f, WHITE);*/
+    DrawRectangle(dst.x, dst.y, mv->quad_width, mv->quad_width, RED);
+}
+
 static void tile_draw(ModelView *mv, e_id cell_en, DrawOpts opts) {
     assert(mv);
 
@@ -1001,11 +1056,17 @@ static void tile_draw(ModelView *mv, e_id cell_en, DrawOpts opts) {
     struct Bonus *bonus = e_get(mv->r, cell_en, cmp_bonus);
     Vector2 base_pos = calc_base_pos(mv, cell_en, opts);
 
-    if (bonus) {
-        bonus_draw(mv, cell_en, base_pos, opts);
+    char *bomb_tag = e_get(mv->r, cell_en, cmp_bomb_exp);
+    if (bomb_tag) {
+        exp_draw(mv, cell_en, base_pos, opts);
     } else {
-        cell_draw(mv, cell_en, base_pos, opts);
+        if (bonus) {
+            bonus_draw(mv, cell_en, base_pos, opts);
+        } else {
+            cell_draw(mv, cell_en, base_pos, opts);
+        }
     }
+
 }
 
 static void draw_numbers(struct ModelView *mv) {
@@ -1309,31 +1370,129 @@ static void destroy_dropped(struct ModelView *mv) {
 
     for (int j = 0; j < destroy_num; ++j) {
         e_id e = destroy_arr[j];
-
         e_destroy(mv->r, e);
     }
 
 }
 
+static void tmr_bomb_stop(Timer *t) {
+    struct TimerData *td = t->data;
+    ecs_t *r = td->mv->r;
+
+    trace("tmr_bomb_stop:\n");
+
+    // Удалить компонент взрыва
+    if (e_valid(r, td->e)) {
+        /*modelview_get_cell()l*/
+
+
+        e_remove(r, td->e, cmp_bomb_exp);
+    }
+}
+
+static bool tmr_bomb_update(Timer *t) {
+    trace("tmr_bomb_update:\n");
+
+    TimerData *timer_data = t->data;
+    ModelView *mv = timer_data->mv;
+    DrawOpts opts = dflt_draw_opts;
+
+    if (!e_valid(mv->r, timer_data->e)) {
+        koh_term_color_set(KOH_TERM_YELLOW);
+        trace("tmr_bomb_update: invalid cell draw timer\n");
+        koh_term_color_reset();
+        return true;
+    }
+
+    opts.amount = t->amount;
+    tile_draw(timer_data->mv, timer_data->e, opts);
+
+    return false;
+}
+
+// Удалить все клетки на пересечении x и y, кроме данной клетки
 void modelview_cross_remove(ModelView *mv, int x, int y) {
-    /*trace("modelview_cross_remove:\n");*/
     e_id removing[mv->field_size * 2];
     memset(removing, 0, sizeof(removing));
 
     int num = 0;
 
+    trace("modelview_cross_remove: x %d, y %d\n", x, y);
+
     e_view v = e_view_create_single(mv->r, cmp_cell);
     for (; e_view_valid(&v); e_view_next(&v)) {
         Cell *c = e_view_get(&v, cmp_cell);
-        if (c->x != x && c->y != y) {
+            /*if ((c->x == x || c->y == y) && (c->x != x && c->y != y)) {*/
             if (c->x == x || c->y == y) {
-                removing[num++] = e_view_entity(&v);
-            }
+                trace("modelview_cross_remove: c %d, %d\n", c->x, c->y);
+                e_id e = e_view_entity(&v);
+                removing[num++] = e;
+
+                trace("c %d, %d\n", c->x, c->y);
+
+                // Создать таймер взрыва
+                Bonus *b = e_get(mv->r, e, cmp_bonus);
+                if (!b) {
+                    char *bomb_tag = e_emplace(mv->r, e, cmp_bomb_exp);
+                    if (bomb_tag) {
+                        *bomb_tag = 1;
+
+                        TimerData td = { .mv = mv, .e = e, };
+                        timerman_add(mv->timers_effects, (TimerDef) {
+                            .data = &td,
+                            .duration = 3.,
+                            .on_stop = tmr_bomb_stop,
+                            .on_update = tmr_bomb_update,
+                            .sz = sizeof(struct TimerData),
+                        });
+                    }
+                }
+        }
+
+        if (c->x == x && c->y == y) {
+            e_destroy(mv->r, e_view_entity(&v));
         }
     }
 
+    trace("modelview_cross_remove: num %d\n", num);
     for (int i = 0; i < num; i++) {
-        e_destroy(mv->r, removing[i]);
+        /*e_destroy(mv->r, removing[i]);*/
+    }
+}
+
+static void modelview_call_cross_remove(ModelView *mv, int x, int y) {
+    // Вызов луа функции с двумя аргументами
+    lua_State *l = mv->l;
+    const char *func_name = "cross_remove";
+    lua_getglobal(l, func_name);
+    const char *top = lua_tostring(l, -1);
+    if (top && strcmp(top, func_name) == 0) {
+        lua_pushnumber(l, x);
+        lua_pushnumber(l, y);
+        if (lua_pcall(l, 2, 0, 0) != LUA_OK) {
+            const char *err = lua_tostring(l, -1);
+            trace("modelview_call_cross_remove: lua error '%s'\n", err);
+            lua_pop(l, 1);
+        }
+    }
+    // XXX: правильно ли идет работа со стеком?
+}
+
+static void bomb_scan(ModelView *mv) {
+    assert(mv);
+
+    const int moves_limit = 10;
+    e_view v = e_view_create_single(mv->r, cmp_bonus);
+    for (; e_view_valid(&v); e_view_next(&v)) {
+        Bonus *b = e_view_get(&v, cmp_bonus);
+        if (b->moves_cnt > moves_limit) {
+            e_id e = e_view_entity(&v);
+            Cell *c = e_get(mv->r, e, cmp_cell);
+            trace("bomb_scan: bomb at %d, %d\n", c->x, c->y);
+
+            modelview_call_cross_remove(mv, c->x, c->y);
+            modelview_cross_remove(mv, c->x, c->y);
+        }
     }
 }
 
@@ -1355,11 +1514,31 @@ bool modelview_draw(ModelView *mv) {
     }
 
     if (mv->state == MVS_READY) {
+
+        bool has_bomb_exp = false;
+        // Поиск взрывающейся бомбы
+        e_view v = e_view_create_single(mv->r, cmp_bomb_exp);
+        for (; e_view_valid(&v); e_view_next(&v)) {
+            has_bomb_exp = true;
+            break;
+        }
+
+        if (has_bomb_exp) {
+            mv->dx = mv->dy = 0;
+        }
+
         if (mv->dx || mv->dy) {
             destroy_dropped(mv);
 
-            mv->has_move = do_action(mv, move);
-            mv->has_sum = do_action(mv, sum);
+            if (!has_bomb_exp) {
+                mv->has_move = do_action(mv, move);
+                mv->has_sum = do_action(mv, sum);
+            }
+
+        }
+
+        if (mv->has_move) {
+            bomb_scan(mv);
         }
 
         if (!mv->has_sum && !mv->has_move && (mv->dx || mv->dy)) {
@@ -1382,25 +1561,6 @@ bool modelview_draw(ModelView *mv) {
         mv->state = MVS_WIN;
     }
 
-
-    const int moves_limit = 10;
-    e_view v = e_view_create_single(mv->r, cmp_bonus);
-    for (; e_view_valid(&v); e_view_next(&v)) {
-        Bonus *b = e_view_get(&v, cmp_bonus);
-        e_id e = e_view_entity(&v);
-        Cell *c = e_get(mv->r, e, cmp_cell);
-
-        if (b->moves_cnt > moves_limit) {
-            L_pcall(mv->l, "cross_remove", NULL);
-
-            Cell *other_c = e_get(mv->r, e, cmp_cell); 
-
-            // Пройтись по всем клеткам на пересечении x, y
-            e_id e_other;
-
-            modelview_cross_remove(mv, c->x, c->y);
-        }
-    }
 
     sort_numbers(mv);
     ClearBackground(mv->color_theme.background);
@@ -1440,10 +1600,10 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->tex_ex_num = 4;
     mv->tex_ex = calloc(mv->tex_ex_num, sizeof(mv->tex_ex[0]));
 
-    mv->tex_ex[0] = res_tex_load(reslist, "explosion_01.jpg");
-    mv->tex_ex[1] = res_tex_load(reslist, "explosion_02.png");
-    mv->tex_ex[2] = res_tex_load(reslist, "explosion_03.png");
-    mv->tex_ex[3] = res_tex_load(reslist, "explosion_04.png");
+    mv->tex_ex[0] = res_tex_load(reslist, "assets/explosion_01.jpg");
+    mv->tex_ex[1] = res_tex_load(reslist, "assets/explosion_02.png");
+    mv->tex_ex[2] = res_tex_load(reslist, "assets/explosion_03.png");
+    mv->tex_ex[3] = res_tex_load(reslist, "assets/explosion_04.png");
 
     /*mv->tex_bomb_black = LoadTexture("assets/bomb_black.png");*/
     /*mv->tex_bomb_red = LoadTexture("assets/bomb_red.png");*/
@@ -1482,6 +1642,7 @@ void modelview_init(ModelView *mv, Setup setup) {
     e_register(mv->r, &cmp_bonus);
     e_register(mv->r, &cmp_cell);
     e_register(mv->r, &cmp_effect);
+    e_register(mv->r, &cmp_bomb_exp);
 
     mv->camera = setup.cam;
     mv->use_gui = setup.use_gui;

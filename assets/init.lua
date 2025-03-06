@@ -181,7 +181,7 @@ local function print_gameover()
     -- {{{
 
     local j = 0
-    local fnt_size = 400
+    local fnt_size = 600
     local color = { 0, 0, 0 }
     local x = 0
     local colord = 1
@@ -217,22 +217,23 @@ local function print_gameover()
     -- }}}
 end
 
+local function cross_remove()
+    while true do
+        print('cross_remove')
+        DrawText("BANG", 100, RED)
+        coroutine.yield()
+    end
+end
+
 -- Вся рисовашка будет на корутинах
 local c_print_gameover = coroutine.create(print_gameover)
 local c_print_win = coroutine.create(print_win)
 local c_print_scores = coroutine.create(print_scores)
 local c_draw_grid = coroutine.create(draw_grid)
+local c_cross_remove = coroutine.create(cross_remove)
 
 function update()
     --print('update')
-end
-
-local function cross_remove()
-    while true do
-        DrawText("BANG", 100, RED)
-
-        coroutine.yield()
-    end
 end
 
 function draw_top()
@@ -260,8 +261,8 @@ function draw_top()
 
     end
 
-    if c_draw_grid then
-        coroutine.resume(c_draw_grid)
+    if c_cross_remove then
+        coroutine.resume(c_cross_remove)
     end
 end
 
@@ -270,9 +271,11 @@ function draw_bottom()
     if is_draw_grid then
         coroutine.resume(c_draw_grid)
     end
+
 end
 
 function cross_remove()
+    print("cross_remove")
     c_cross_remove = coroutine.create(cross_remove)
 end
 

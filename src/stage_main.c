@@ -289,7 +289,7 @@ static void stage_main_draw(Stage_Main *st) {
     if (!is_ok)
         strncpy(error, pcall_err, sizeof(error));
 
-    L_call(l, "draw_bottom", &is_ok);
+    L_pcall(l, "draw_bottom", &is_ok);
 
     if (main_view.state != MVS_GAMEOVER)
         input();
