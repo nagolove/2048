@@ -41,7 +41,9 @@ enum AlphaMode {
 typedef struct Cell {
                     // ячейка подлежит удалению 
     bool            dropped;        
-    int             x, y, value;
+    int             x, y, 
+                    // клетка не рисуется при значении равном 0
+                    value;
 } Cell;
 
 typedef enum BonusType {
@@ -90,6 +92,12 @@ struct ColorTheme {
     Отображение поля. Все, что связано с анимацией.
  */
 typedef struct ModelView {
+
+    // Массив field_size * field_size - временное хранения сущностей для
+    // удаления
+    e_id                *e_2destroy;
+    int                 e_2destroy_num;
+
     lua_State           *l;
     Resource            reslist;
 
@@ -128,7 +136,7 @@ typedef struct ModelView {
     struct TimerMan     *timers_slides,     // Таймеры анимации плиток
                         *timers_effects;    // Таймеры эффектов
 
-    struct Cell         *sorted;
+    Cell                *sorted;
     int                 sorted_num;
 
     Vector2             pos;
@@ -150,6 +158,7 @@ typedef struct ModelView {
                         put_num;
     void                (*on_init_lua)();
     void                (*lua_after_load)(struct ModelView *mv, lua_State *l);
+
 } ModelView;
 
 extern const struct ColorTheme color_theme_dark, color_theme_light;

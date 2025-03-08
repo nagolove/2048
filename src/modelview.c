@@ -69,6 +69,7 @@ typedef struct DrawOpts {
 
 static void tile_draw(ModelView *mv, e_id cell_en, DrawOpts opts);
 static float chance_bomb = 0.1;
+static const int bomb_moves_limit = 9;
 
 static const struct DrawOpts dflt_draw_opts = {
     .caption_offset_coef = { 1., 1., },
@@ -227,7 +228,7 @@ static struct Cell *create_cell(
     assert(cell);
     cell->x = x;
     cell->y = y;
-    cell->value = -1;
+    cell->value = 0;
 
     struct Effect *ef = e_emplace(mv->r, en, cmp_effect);
     memset(ef, 0, sizeof(*ef));
@@ -341,7 +342,7 @@ static void modelview_put_cell(struct ModelView *mv, int x, int y) {
         }
     }
 
-    assert(cell->value > 0);
+    assert(cell->value >= 0);
     cell->x = x;
     cell->y = y;
     //cell->anima = true;
@@ -395,7 +396,7 @@ static void modelview_put_bonus(
         cell->value = 4;
     }
 
-    assert(cell->value > 0);
+    assert(cell->value >= 0);
     cell->x = x;
     cell->y = y;
     cell->dropped = false;
@@ -408,7 +409,7 @@ static void modelview_put_bonus(
     struct Bonus *bonus = e_emplace(mv->r, cell_en, cmp_bonus);
     assert(bonus);
     memset(bonus, 0, sizeof(*bonus));
-    bonus->moves_cnt = 0;
+    bonus->moves_cnt = bomb_moves_limit;
     bonus->type = type;
     bonus->bomb_color = koh_maybe();
     bonus->bomb_rot = rand() % 360;
@@ -537,7 +538,7 @@ static bool move(
     // TODO: Сделать слияние бомб одного типа
     Bonus *bonus = e_get(mv->r, cell_en, cmp_bonus);
     if (bonus) {
-        bonus->moves_cnt++;
+        bonus->moves_cnt--;
     }
 
     *touched = true;
@@ -857,12 +858,15 @@ static Color calc_alpha(
 
 // Возвращает индексы от 0 до mv->field_size возможно с дробной интерполяцией
 static Vector2 calc_base_pos(ModelView *mv, e_id en, DrawOpts opts) {
-    Vector2 base_pos;
 
     struct Cell *cell = e_get(mv->r, en, cmp_cell);
     assert(cell);
     struct Effect *ef = e_get(mv->r, en, cmp_effect);
-    assert(ef);
+
+    Vector2 base_pos = { cell->x, cell->y, };
+    if (!ef)
+        return base_pos;
+    /*assert(ef);*/
 
     if (ef->anim_movement) {
         base_pos = (Vector2) {
@@ -870,10 +874,6 @@ static Vector2 calc_base_pos(ModelView *mv, e_id en, DrawOpts opts) {
             //Lerp(cell->y, cell->y + mv->dy, opts.amount),
             Lerp(cell->x - mv->dx, cell->x, opts.amount),
             Lerp(cell->y - mv->dy, cell->y, opts.amount),
-        };
-    } else {
-        base_pos = (Vector2) {
-            cell->x, cell->y,
         };
     }
 
@@ -964,7 +964,11 @@ static void bonus_draw(
 static void cell_draw(
     ModelView *mv, e_id cell_en, Vector2 base_pos, DrawOpts opts
 ) {
-    struct Cell *cell = e_get(mv->r, cell_en, cmp_cell);
+    Cell *cell = e_get(mv->r, cell_en, cmp_cell);
+
+    if (cell->dropped || cell->value == 0)
+        return;
+
     char cell_text[64] = {0};
     sprintf(cell_text, "%d", cell->value);
 
@@ -1030,12 +1034,17 @@ static void exp_draw(
     Vector2 disp = Vector2Add(Vector2Scale(base_pos, mv->quad_width), offset);
     Vector2 pos = Vector2Add(mv->pos, disp);
 
+    // XXX: С текстурами что-то непонятное происходит.
     Texture2D tex = mv->tex_ex[0];
-    Rectangle src = {
+    Rectangle 
+
+        src = {
             .x = 0, .y = 0,
             .width = tex.width,
             .height = tex.height,
-        }, dst = { 
+        }, 
+
+        dst = { 
             .x = pos.x, .y = pos.y,
             .width = mv->quad_width,
             .height = mv->quad_width,
@@ -1043,6 +1052,7 @@ static void exp_draw(
 
     /*DrawTexturePro(tex, src, dst, Vector2Zero(), 0.f, WHITE);*/
     DrawRectangle(dst.x, dst.y, mv->quad_width, mv->quad_width, RED);
+    DrawTexturePro(tex, src, dst, Vector2Zero(), 0.f, WHITE);
 }
 
 static void tile_draw(ModelView *mv, e_id cell_en, DrawOpts opts) {
@@ -1075,10 +1085,15 @@ static void draw_numbers(struct ModelView *mv) {
         for (int x = 0; x < mv->field_size; x++) {
             e_id en = e_null;
             struct Cell *cell = modelview_get_cell(mv, x, y, &en);
+
             if (!cell) continue;
+            if (cell->dropped) continue;
+            if (cell->value == 0) continue;
+
             assert(en.id != e_null.id);
             struct Effect *ef = e_get(mv->r, en, cmp_effect);
-            assert(ef);
+            if (!ef) continue;
+            /*assert(ef);*/
 
             bool can_draw = cell && !ef->anim_movement && 
                             !ef->anim_size && ef->anim_alpha == AM_NONE;
@@ -1256,7 +1271,9 @@ static void options_window(struct ModelView *mv) {
 
     igCheckbox("draw animated grid background", &is_draw_grid);
 
-    static bool next_bomb = false;
+    // INFO: Во избежании постронних эффектов - переменную не удалять
+    static bool next_bomb;
+    next_bomb = mv->next_bomb;
     igCheckbox("next bomb", &next_bomb);
 
     static bool use_fnt_vector = false;
@@ -1375,19 +1392,28 @@ static void destroy_dropped(struct ModelView *mv) {
 
 }
 
+// Происходит при остановке таймера бомбы
 static void tmr_bomb_stop(Timer *t) {
-    struct TimerData *td = t->data;
+    TimerData *td = t->data;
     ecs_t *r = td->mv->r;
-
+    ModelView *mv = td->mv;
     trace("tmr_bomb_stop:\n");
+
+    // Уничтожить 
+    for (int i = 0; i < mv->e_2destroy_num; i++) {
+        e_destroy(mv->r, mv->e_2destroy[i]);
+    }
+
+    // Сброс состояния массива
+    memset(mv->e_2destroy, 0, sizeof(mv->e_2destroy[0]) * mv->e_2destroy_num);
+    mv->e_2destroy_num = 0;
 
     // Удалить компонент взрыва
     if (e_valid(r, td->e)) {
         /*modelview_get_cell()l*/
-
-
         e_remove(r, td->e, cmp_bomb_exp);
     }
+
 }
 
 static bool tmr_bomb_update(Timer *t) {
@@ -1412,23 +1438,41 @@ static bool tmr_bomb_update(Timer *t) {
 
 // Удалить все клетки на пересечении x и y, кроме данной клетки
 void modelview_cross_remove(ModelView *mv, int x, int y) {
-    e_id removing[mv->field_size * 2];
-    memset(removing, 0, sizeof(removing));
-
+    /*e_id removing[mv->field_size * 2];*/
+    /*memset(removing, 0, sizeof(removing));*/
+    e_id *e_2destroy = mv->e_2destroy;
     int num = 0;
 
     trace("modelview_cross_remove: x %d, y %d\n", x, y);
+
+    assert(mv->field_size > 0);
+    int horizont[mv->field_size + 1] = {}, 
+        vertical[mv->field_size + 1] = {};
 
     e_view v = e_view_create_single(mv->r, cmp_cell);
     for (; e_view_valid(&v); e_view_next(&v)) {
         Cell *c = e_view_get(&v, cmp_cell);
             /*if ((c->x == x || c->y == y) && (c->x != x && c->y != y)) {*/
             if (c->x == x || c->y == y) {
+
+                // Добавить клетку в вертикаль или горизонталь
+                if (c->x == x)
+                    horizont[c->x] = true;
+
+                if (c->y == y)
+                    vertical[c->y] = true;
+
                 trace("modelview_cross_remove: c %d, %d\n", c->x, c->y);
                 e_id e = e_view_entity(&v);
-                removing[num++] = e;
+                e_2destroy[num++] = e;
 
                 trace("c %d, %d\n", c->x, c->y);
+
+                // XXX: Проблема в том, что взрыв создается только там,
+                // где есть клетки Cell. Там где клеток нет - анимация не
+                // рисуется. Но клетки все отображаются на игровом поле.
+                // Как создать новые клетки для всех позиций что-бы они не 
+                // отоброжались на игровом поле?
 
                 // Создать таймер взрыва
                 Bonus *b = e_get(mv->r, e, cmp_bonus);
@@ -1449,15 +1493,33 @@ void modelview_cross_remove(ModelView *mv, int x, int y) {
                 }
         }
 
+        // Удалить сущность бомбы
         if (c->x == x && c->y == y) {
-            e_destroy(mv->r, e_view_entity(&v));
+            /*e_destroy(mv->r, e_view_entity(&v));*/
         }
     }
 
-    trace("modelview_cross_remove: num %d\n", num);
-    for (int i = 0; i < num; i++) {
-        /*e_destroy(mv->r, removing[i]);*/
+    for (int i = 0; i < mv->field_size; i++) {
+        if (!horizont[i]) {
+            e_id e = e_create(mv->r);
+            Cell *c = e_emplace(mv->r, e, cmp_cell);
+            c->x = i;
+            c->y = y;
+        }
     }
+
+    for (int i = 0; i < mv->field_size; i++) {
+        if (!vertical[i]) {
+            e_id e = e_create(mv->r);
+            Cell *c = e_emplace(mv->r, e, cmp_cell);
+            c->x = x;
+            c->y = i;
+        }
+    }
+
+    mv->e_2destroy_num = num;
+
+    trace("modelview_cross_remove: num %d\n", num);
 }
 
 static void modelview_call_cross_remove(ModelView *mv, int x, int y) {
@@ -1478,14 +1540,18 @@ static void modelview_call_cross_remove(ModelView *mv, int x, int y) {
     // XXX: правильно ли идет работа со стеком?
 }
 
+// Найти бомбы превысившие лимит передвижений
+// TODO: Взрыв бомбы от другой бомбы
+// TODO: Условие выпадения второй бомбы(для последовательной детонации)
+// Вторая бомба должна редко должна когда есть открытая первая бомба.
 static void bomb_scan(ModelView *mv) {
     assert(mv);
 
-    const int moves_limit = 10;
     e_view v = e_view_create_single(mv->r, cmp_bonus);
     for (; e_view_valid(&v); e_view_next(&v)) {
         Bonus *b = e_view_get(&v, cmp_bonus);
-        if (b->moves_cnt > moves_limit) {
+        /*if (b->moves_cnt > bomb_moves_limit) {*/
+        if (b->moves_cnt < 1) {
             e_id e = e_view_entity(&v);
             Cell *c = e_get(mv->r, e, cmp_cell);
             trace("bomb_scan: bomb at %d, %d\n", c->x, c->y);
@@ -1589,6 +1655,11 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->put_num = 1;
     mv->draw_field = true;
     mv->field_size = setup.field_size;
+    
+    int num = mv->field_size * mv->field_size;
+    trace("modeltest_init: e_2destroy size %d\n", num);
+    mv->e_2destroy = calloc(num, sizeof(mv->e_2destroy[0]));
+    mv->e_2destroy_num = 0;
 
     /*SetTraceLogLevel(LOG_ALL);*/
     Resource *reslist = &mv->reslist;
@@ -1597,13 +1668,14 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->tex_aura = res_tex_load(reslist, "assets/aura.png");
     mv->tex_bomb = res_tex_load(reslist, "assets/bomb.png");
 
-    mv->tex_ex_num = 4;
+    /*mv->tex_ex_num = 4;*/
+    mv->tex_ex_num = 3;
     mv->tex_ex = calloc(mv->tex_ex_num, sizeof(mv->tex_ex[0]));
 
-    mv->tex_ex[0] = res_tex_load(reslist, "assets/explosion_01.jpg");
-    mv->tex_ex[1] = res_tex_load(reslist, "assets/explosion_02.png");
-    mv->tex_ex[2] = res_tex_load(reslist, "assets/explosion_03.png");
-    mv->tex_ex[3] = res_tex_load(reslist, "assets/explosion_04.png");
+    /*mv->tex_ex[0] = res_tex_load(reslist, "assets/explosion_01.jpg");*/
+    mv->tex_ex[0] = res_tex_load(reslist, "assets/explosion_02.png");
+    mv->tex_ex[1] = res_tex_load(reslist, "assets/explosion_03.png");
+    mv->tex_ex[2] = res_tex_load(reslist, "assets/explosion_04.png");
 
     /*mv->tex_bomb_black = LoadTexture("assets/bomb_black.png");*/
     /*mv->tex_bomb_red = LoadTexture("assets/bomb_red.png");*/
@@ -1696,6 +1768,11 @@ void modelview_shutdown(struct ModelView *mv) {
     assert(mv);
 
     res_unload_all(&mv->reslist, true);
+
+    if (mv->e_2destroy) {
+        free(mv->e_2destroy);
+        mv->e_2destroy = NULL;
+    }
 
     if (mv->tex_ex) {
         free(mv->tex_ex);
