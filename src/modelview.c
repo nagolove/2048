@@ -67,9 +67,11 @@ typedef struct DrawOpts {
     double              amount;             // 0 .. 1.
 } DrawOpts;
 
+static void field_update(ModelView *mv);
 static void tile_draw(ModelView *mv, e_id cell_en, DrawOpts opts);
 static float chance_bomb = 0.1;
 static const int bomb_moves_limit = 9;
+static float tmr_bomb_duration = 3.f;
 
 static const struct DrawOpts dflt_draw_opts = {
     .caption_offset_coef = { 1., 1., },
@@ -171,14 +173,14 @@ static bool is_over(struct ModelView *mv) {
     return mv->field_size * mv->field_size == num;
 }
 
-struct Cell *modelview_get_cell(
-    struct ModelView *mv, int x, int y, e_id *en
-) {
+// Получить ячейку и сущность на данной позиции
+Cell *modelview_get_cell(ModelView *mv, int x, int y, e_id *en) {
     assert(mv);
     assert(mv->r);
 
     if (en) *en = e_null;
 
+    // TODO: Избавится от полного перебора
     for (e_view v = e_view_create_single(mv->r, cmp_cell);
         e_view_valid(&v); e_view_next(&v)) {
         struct Cell *c = e_view_get(&v, cmp_cell);
@@ -191,11 +193,26 @@ struct Cell *modelview_get_cell(
             return c;
         }
     }
-
     return NULL;
+    // */
+
+    /*
+    // XXX: Не работает field_update() и такое кэширование
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x >= mv->field_size) x = mv->field_size - 1;
+    if (y >= mv->field_size) y = mv->field_size - 1;
+
+    e_id e = mv->field[y * mv->field_size + x];
+    if (e_valid(mv->r, e)) {
+        if (en) *en = e;
+        return e_get(mv->r, e, cmp_cell);
+    } else
+        return NULL;
+     //   */
 }
 
-static int get_cell_count(struct ModelView *mv) {
+static int get_cell_count(ModelView *mv) {
     assert(mv);
     assert(mv->r);
     int num = 0;
@@ -441,15 +458,16 @@ static void modelview_put_bonus(
 // TODO: Чем более крупная фишка есть на поле, тем более крупная может выпадать
 // ячейка, но до определенного предела.
 void modelview_put(struct ModelView *mv) {
-    
+   
     assert(mv);
+    /*field_update(mv);*/
 
     for (int i = 0; i < mv->put_num; i++) {
         int x = rand() % mv->field_size;
         int y = rand() % mv->field_size;
         // Максимальное количество проб клетки на возможность заполнения
         int j = mv->field_size * mv->field_size * 10; 
-        struct Cell *cell = modelview_get_cell(mv, x, y, NULL);
+        Cell *cell = modelview_get_cell(mv, x, y, NULL);
 
         while (cell) {
             x = rand() % mv->field_size;
@@ -504,7 +522,9 @@ static bool move(
     //assert(cell);
 
     struct Effect *ef = e_get(mv->r, cell_en, cmp_effect);
-    assert(ef);
+    if (!ef)
+        return false;
+    /*assert(ef);*/
 
     //if (cell->touched)
         //return has_move;
@@ -580,7 +600,9 @@ static bool sum(
         return false;
 
     struct Effect *ef = e_get(mv->r, cell_en, cmp_effect);
-    assert(ef);
+    if (!ef)
+        return false;
+    /*assert(ef);*/
 
     if (cell->dropped) 
         return has_sum;
@@ -695,12 +717,8 @@ void modelview_input(struct ModelView *mv, enum Direction dir) {
         case DIR_DOWN: mv->dy = 1; break;
         case DIR_LEFT: mv->dx = -1; break;
         case DIR_RIGHT: mv->dx = 1; break;
-        default: 
-            //mv->dx = 0;
-            //mv->dy = 0;
-            break;
+        default: break;
     }
-    //trace("modelview_input: dir %s\n", dir2str(dir));
 }
 
 static int cmp(const void *pa, const void *pb) {
@@ -1035,7 +1053,7 @@ static void exp_draw(
     Vector2 pos = Vector2Add(mv->pos, disp);
 
     // XXX: С текстурами что-то непонятное происходит.
-    Texture2D tex = mv->tex_ex[0];
+    Texture2D tex = mv->tex_ex[mv->tex_ex_index];
     Rectangle 
 
         src = {
@@ -1051,7 +1069,7 @@ static void exp_draw(
         };
 
     /*DrawTexturePro(tex, src, dst, Vector2Zero(), 0.f, WHITE);*/
-    DrawRectangle(dst.x, dst.y, mv->quad_width, mv->quad_width, RED);
+    /*DrawRectangle(dst.x, dst.y, mv->quad_width, mv->quad_width, RED);*/
     DrawTexturePro(tex, src, dst, Vector2Zero(), 0.f, WHITE);
 }
 
@@ -1258,6 +1276,7 @@ static void options_window(struct ModelView *mv) {
     static int put_num = 1;
     igSliderInt("put cells num", &put_num, 1, mv->field_size, "%d", 0);
 
+    igSliderFloat("tmr_bomb_duration", &tmr_bomb_duration, 0.01, 2., "%f", 0);
     igSliderFloat("tmr_block_time", &mv->tmr_block_time, 0.01, 1., "%f", 0);
     igSliderFloat("tmr_put_time", &mv->tmr_put_time, 0.01, 1., "%f", 0);
 
@@ -1292,6 +1311,12 @@ static void options_window(struct ModelView *mv) {
     static int win_value = 2048;
     igSliderInt("points for win", &win_value, 0, 2048 * 4, "%d", 0);
 
+    static int tex_ex_index = 0;
+    igSliderInt(
+        "explosion texture index", &tex_ex_index, 0,
+        mv->tex_ex_num - 1, "%d", 0
+    );
+
     if (igButton("restart", (ImVec2) {0, 0})) {
         modelview_shutdown(mv);
         struct Setup setup = {
@@ -1315,6 +1340,7 @@ static void options_window(struct ModelView *mv) {
         mv->draw_field = draw_field;
         mv->next_bomb = next_bomb;
         mv->strong = strong;
+        mv->tex_ex_index = tex_ex_index;
 
         modelview_put(mv);
     }
@@ -1436,6 +1462,58 @@ static bool tmr_bomb_update(Timer *t) {
     return false;
 }
 
+static void make_ex(ModelView *mv, Cell *c, e_id e, int x, int y) {
+    e_id *e_2destroy = mv->e_2destroy;
+
+    if (e.id == e_null.id)
+        e = e_create(mv->r);
+
+    if (!c) {
+        Cell *c_new = e_emplace(mv->r, e, cmp_cell);
+        assert(c_new);
+        c_new->x = x;
+        c_new->y = y;
+    } else {
+        e_2destroy[mv->e_2destroy_num++] = e;
+    }
+
+    char *bomb_tag = e_emplace(mv->r, e, cmp_bomb_exp);
+    if (bomb_tag) {
+        *bomb_tag = 1;
+
+        TimerData td = { .mv = mv, .e = e, };
+        timerman_add(mv->timers_effects, (TimerDef) {
+            .data = &td,
+            .duration = tmr_bomb_duration,
+            .on_stop = tmr_bomb_stop,
+            .on_update = tmr_bomb_update,
+            .sz = sizeof(td),
+        });
+    }
+}
+
+void modelview_cross_remove2(ModelView *mv, int x, int y) {
+    assert(mv->field_size > 0);
+
+    mv->e_2destroy_num = 0;
+
+    for (int i = 0; i < mv->field_size; i++) {
+        e_id e = e_null;
+        Cell *c = modelview_get_cell(mv, i, y, &e);
+
+        make_ex(mv, c, e, i, y);
+    }
+
+    for (int i = 0; i < mv->field_size; i++) {
+        e_id e = e_null;
+        Cell *c = modelview_get_cell(mv, x, i, &e);
+
+        make_ex(mv, c, e, x, i);
+    }
+
+}
+
+
 // Удалить все клетки на пересечении x и y, кроме данной клетки
 void modelview_cross_remove(ModelView *mv, int x, int y) {
     /*e_id removing[mv->field_size * 2];*/
@@ -1449,10 +1527,12 @@ void modelview_cross_remove(ModelView *mv, int x, int y) {
     int horizont[mv->field_size + 1] = {}, 
         vertical[mv->field_size + 1] = {};
 
+
+    // {{{
     e_view v = e_view_create_single(mv->r, cmp_cell);
     for (; e_view_valid(&v); e_view_next(&v)) {
         Cell *c = e_view_get(&v, cmp_cell);
-            /*if ((c->x == x || c->y == y) && (c->x != x && c->y != y)) {*/
+            //if ((c->x == x || c->y == y) && (c->x != x && c->y != y)) {
             if (c->x == x || c->y == y) {
 
                 // Добавить клетку в вертикаль или горизонталь
@@ -1462,11 +1542,14 @@ void modelview_cross_remove(ModelView *mv, int x, int y) {
                 if (c->y == y)
                     vertical[c->y] = true;
 
-                trace("modelview_cross_remove: c %d, %d\n", c->x, c->y);
+                /*trace("modelview_cross_remove: c %d, %d\n", c->x, c->y);*/
                 e_id e = e_view_entity(&v);
-                e_2destroy[num++] = e;
 
-                trace("c %d, %d\n", c->x, c->y);
+                /*trace("modelview_cross_remove: num %d\n", num);*/
+                if (num + 1 < mv->field_size * 2)
+                    e_2destroy[num++] = e;
+
+                /*trace("c %d, %d\n", c->x, c->y);*/
 
                 // XXX: Проблема в том, что взрыв создается только там,
                 // где есть клетки Cell. Там где клеток нет - анимация не
@@ -1493,11 +1576,30 @@ void modelview_cross_remove(ModelView *mv, int x, int y) {
                 }
         }
 
-        // Удалить сущность бомбы
-        if (c->x == x && c->y == y) {
-            /*e_destroy(mv->r, e_view_entity(&v));*/
-        }
     }
+    // }}}
+    
+
+    /*
+        e_id e = e_null;
+        modelview_get_cell(mv, x, y, &e);
+        Bonus *b = e_get(mv->r, e, cmp_bonus);
+        if (!b) {
+            char *bomb_tag = e_emplace(mv->r, e, cmp_bomb_exp);
+            if (bomb_tag) {
+                *bomb_tag = 1;
+
+                TimerData td = { .mv = mv, .e = e, };
+                timerman_add(mv->timers_effects, (TimerDef) {
+                    .data = &td,
+                    .duration = 3.,
+                    .on_stop = tmr_bomb_stop,
+                    .on_update = tmr_bomb_update,
+                    .sz = sizeof(struct TimerData),
+                });
+            }
+        }
+        */
 
     for (int i = 0; i < mv->field_size; i++) {
         if (!horizont[i]) {
@@ -1506,6 +1608,27 @@ void modelview_cross_remove(ModelView *mv, int x, int y) {
             c->x = i;
             c->y = y;
         }
+
+        // XXX: Поиск компонент по позиции требует полного перебора
+
+        /*
+        Bonus *b = e_get(mv->r, e, cmp_bonus);
+        if (!b) {
+            char *bomb_tag = e_emplace(mv->r, e, cmp_bomb_exp);
+            if (bomb_tag) {
+                *bomb_tag = 1;
+
+                TimerData td = { .mv = mv, .e = e, };
+                timerman_add(mv->timers_effects, (TimerDef) {
+                    .data = &td,
+                    .duration = 3.,
+                    .on_stop = tmr_bomb_stop,
+                    .on_update = tmr_bomb_update,
+                    .sz = sizeof(struct TimerData),
+                });
+            }
+        }
+        */
     }
 
     for (int i = 0; i < mv->field_size; i++) {
@@ -1517,7 +1640,8 @@ void modelview_cross_remove(ModelView *mv, int x, int y) {
         }
     }
 
-    mv->e_2destroy_num = num;
+    /*mv->e_2destroy_num = num > 0 ? num - 1 : 0;*/
+    mv->e_2destroy_num = num - 1;
 
     trace("modelview_cross_remove: num %d\n", num);
 }
@@ -1557,9 +1681,28 @@ static void bomb_scan(ModelView *mv) {
             trace("bomb_scan: bomb at %d, %d\n", c->x, c->y);
 
             modelview_call_cross_remove(mv, c->x, c->y);
-            modelview_cross_remove(mv, c->x, c->y);
+            modelview_cross_remove2(mv, c->x, c->y);
         }
     }
+}
+
+// Обновить значения сущностей в поле для быстрого получения по [x, y]
+static void field_update(ModelView *mv) {
+
+    for (int i = 0; i < mv->field_size * mv->field_size; i++) {
+        mv->field[i] = e_null;
+    }
+
+    int i = 0;
+    for (e_view v = e_view_create_single(mv->r, cmp_cell);
+        e_view_valid(&v); e_view_next(&v)) {
+        Cell *c = e_view_get(&v, cmp_cell);
+        assert(c);
+        i++;
+        mv->field[c->y * mv->field_size + c->x] = e_view_entity(&v);
+    }
+
+    /*trace("field_update: cmp_cell num %d\n", i);*/
 }
 
 bool modelview_draw(ModelView *mv) {
@@ -1579,6 +1722,8 @@ bool modelview_draw(ModelView *mv) {
         prev_state = mv->state;
     }
 
+    field_update(mv);
+
     if (mv->state == MVS_READY) {
 
         bool has_bomb_exp = false;
@@ -1596,16 +1741,24 @@ bool modelview_draw(ModelView *mv) {
         if (mv->dx || mv->dy) {
             destroy_dropped(mv);
 
+            field_update(mv);
+
             if (!has_bomb_exp) {
                 mv->has_move = do_action(mv, move);
+                field_update(mv);
                 mv->has_sum = do_action(mv, sum);
+                field_update(mv);
             }
 
         }
 
+        field_update(mv);
+
         if (mv->has_move) {
             bomb_scan(mv);
         }
+
+        field_update(mv);
 
         if (!mv->has_sum && !mv->has_move && (mv->dx || mv->dy)) {
             mv->dx = 0;
@@ -1617,6 +1770,8 @@ bool modelview_draw(ModelView *mv) {
                 modelview_put(mv);
         }
     }
+
+    field_update(mv);
 
     if (is_over(mv)) {
         mv->state = MVS_GAMEOVER;
@@ -1655,8 +1810,11 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->put_num = 1;
     mv->draw_field = true;
     mv->field_size = setup.field_size;
-    
+
     int num = mv->field_size * mv->field_size;
+
+    mv->field = calloc(num, sizeof(mv->field[0]));
+    
     trace("modeltest_init: e_2destroy size %d\n", num);
     mv->e_2destroy = calloc(num, sizeof(mv->e_2destroy[0]));
     mv->e_2destroy_num = 0;
@@ -1673,6 +1831,7 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->tex_ex = calloc(mv->tex_ex_num, sizeof(mv->tex_ex[0]));
 
     /*mv->tex_ex[0] = res_tex_load(reslist, "assets/explosion_01.jpg");*/
+    mv->tex_ex_index = 0;
     mv->tex_ex[0] = res_tex_load(reslist, "assets/explosion_02.png");
     mv->tex_ex[1] = res_tex_load(reslist, "assets/explosion_03.png");
     mv->tex_ex[2] = res_tex_load(reslist, "assets/explosion_04.png");
@@ -1753,6 +1912,8 @@ void modelview_init(ModelView *mv, Setup setup) {
         .use_fnt_vector = false,
     };
 
+    field_update(mv);
+
     mv->on_init_lua = setup.on_init_lua;
     colored_text_init(mv->field_size);
 
@@ -1768,6 +1929,11 @@ void modelview_shutdown(struct ModelView *mv) {
     assert(mv);
 
     res_unload_all(&mv->reslist, true);
+
+    if (mv->field) {
+        free(mv->field);
+        mv->field = NULL;
+    }
 
     if (mv->e_2destroy) {
         free(mv->e_2destroy);

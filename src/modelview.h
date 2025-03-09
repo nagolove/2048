@@ -113,7 +113,10 @@ typedef struct ModelView {
 
     // Текстуры взрывов
     Texture2D           *tex_ex;
-    int                 tex_ex_num;
+                        // общее количество тектстур
+    int                 tex_ex_num, 
+                        // индекс активной текстуры
+                        tex_ex_index;
 
     ecs_t               *r;
     Camera2D            *camera;
@@ -159,6 +162,8 @@ typedef struct ModelView {
     void                (*on_init_lua)();
     void                (*lua_after_load)(struct ModelView *mv, lua_State *l);
 
+    // [y * field_size + x] - сущности с прикрепленными ячейками
+    e_id                *field;
 } ModelView;
 
 extern const struct ColorTheme color_theme_dark, color_theme_light;
