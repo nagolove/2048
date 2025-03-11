@@ -38,6 +38,8 @@ enum AlphaMode {
 };
 
 // Клетка задает только положение
+// XXX: Стоит отделить клетку от позиции?
+// Позиция будет использоваться в бонусах и преградах.
 typedef struct Cell {
                     // ячейка подлежит удалению 
     bool            dropped;        
@@ -45,6 +47,47 @@ typedef struct Cell {
                     // клетка не рисуется при значении равном 0
                     value;
 } Cell;
+
+/*
+
+struct Position {
+    int             x, y, 
+};
+
+typedef struct Cell {
+          // ячейка подлежит удалению 
+    bool  dropped;        
+          // клетка не рисуется при значении равном 0
+    int   value;
+
+          // Для пульсации шрифта 
+          // коэффициент масштаба
+    float coef, 
+          // начальная фаза колебания
+          phase;
+} Cell;
+
+typedef struct Transition {
+    enum AlphaMode  anim_alpha;
+    bool            anim_movement,  // ячейка в движении
+                    anim_size;      // ячейка меняет размер
+} Effect;
+
+typedef struct Bomb {
+    enum BombColor  bomb_color;
+                    // угол поворота огонька фитиля
+    float           aura_rot,
+                    // фаза для поворота огонька фитиля
+                    aura_phase;
+                    // количество оставшихся ходов, до 0
+    int             moves_cnt;
+} Bonus;
+
+Возможные сочетания компонентов
+Position + Cell + Transition
+Position + Transition + Bomb
+
+*/
 
 typedef enum BonusType {
     BT_BOMB = 0, 
@@ -66,6 +109,7 @@ typedef struct Bonus {
     int             moves_cnt;
 } Bonus;
 
+// TODO: Переименовать в Transition
 typedef struct Effect {
     enum AlphaMode  anim_alpha;
     bool            anim_movement,  // ячейка в движении
@@ -79,6 +123,7 @@ typedef struct Effect {
 } Effect;
 
 enum ModelViewState {
+    // Есть активные анимации
     MVS_ANIMATION,
     MVS_READY,
     MVS_WIN,
