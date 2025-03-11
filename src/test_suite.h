@@ -41,8 +41,10 @@ struct TestCtx {
     struct Pair *trap;
 };
 
+/*
 void test_modelviews_multiple();
 void setup_field(struct ModelView *mv, const int values[5][5]);
 bool check_field(
     struct ModelView *mv, const int values[5][5], const struct TestCtx *ctx
 );
+*/
