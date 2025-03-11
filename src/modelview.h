@@ -57,9 +57,12 @@ enum BombColor {
 
 typedef struct Bonus {
     enum BonusType  type;
-    Color           border_color;
     enum BombColor  bomb_color;
-    float           bomb_rot, phase;
+                    // угол поворота огонька фитиля
+    float           aura_rot,
+                    // фаза для поворота огонька фитиля
+                    aura_phase;
+                    // количество оставшихся ходов, до 0
     int             moves_cnt;
 } Bonus;
 
@@ -68,7 +71,7 @@ typedef struct Effect {
     bool            anim_movement,  // ячейка в движении
                     anim_size;      // ячейка меняет размер
 
-    // Для пульсации шрифта 
+          // Для пульсации шрифта 
           // коэффициент масштаба
     float coef, 
           // начальная фаза колебания
@@ -145,7 +148,10 @@ typedef struct ModelView {
     Vector2             pos;
     enum ModelViewState state;
     bool                dropped;    //Флаг деинициализации структуры
+                        // использовать какие-нибудь бонусы или только цифрв
     bool                use_bonus,
+                        // можно сканировать на бомбы
+                        can_scan_bombs,
                         // следующая фигура - бомба
                         next_bomb,
                         // выпадают 1 или 3
@@ -192,18 +198,5 @@ void modelview_draw_gui(ModelView *mv);
 void modelview_input(ModelView *mv, enum Direction dir);
 Cell *modelview_get_cell(ModelView *mv, int x, int y, e_id *en);
 char *modelview_state2str(enum ModelViewState state);
-void modelview_field_print(ModelView *mv);
-void modelview_field_print_s(ModelView *mv, char *str, size_t str_sz);
-
-void model_global_init();
-void model_global_shutdown();
-
-void test_divide_slides();
-
-void _modelview_field_print_s(
-    ecs_t *r, int field_size, char *str, size_t str_sz
-);
-void _modelview_field_print(ecs_t *r, int field_size);
-Cell *modelview_find_by_value(ecs_t *r, int value);
 
 extern e_cp_type cmp_cell, cmp_bonus, cmp_effect, cmp_bomb_exp;
