@@ -75,6 +75,10 @@ typedef struct Bomb {
     int             moves_cnt;
 } Bomb;
 
+typedef struct Explosition {
+    int i;
+} Explosition;
+
 /*
 Возможные сочетания компонентов
 Position + Cell + Transition

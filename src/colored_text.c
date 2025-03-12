@@ -110,7 +110,7 @@ void colored_text_print(
         float phase = 0.f;
 
         if (e_valid(r, cell_en)) {
-            Effect *ef = e_get(r, cell_en, cmp_effect);
+            Cell *ef = e_get(r, cell_en, cmp_cell);
 
             if (ef) {
                 phase = ef->phase;

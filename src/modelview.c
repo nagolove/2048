@@ -64,6 +64,7 @@ typedef struct DrawOpts {
     Vector2             caption_offset_coef; // 1. is default value
     bool                custom_color;
     Color               color;
+    // XXX: За что отвечает?
     double              amount;             // 0 .. 1.
 } DrawOpts;
 
@@ -100,6 +101,7 @@ static StrBuf str_repr_buf_cell(void *payload, e_id e) {
 */
 
 // {{{ components
+
 e_cp_type cmp_position = {
     .cp_sizeof = sizeof(struct Position),
     .name = "position",
@@ -124,6 +126,13 @@ e_cp_type cmp_transition = {
     .name = "transition",
     .initial_cap = 1000,
 };
+
+e_cp_type cmp_exp = {
+    .cp_sizeof = sizeof(struct Explosition),
+    .name = "explosition",
+    .initial_cap = 1000,
+};
+
 // }}}
 
 static Color colors[] = {
@@ -468,15 +477,15 @@ static void bomb_put(ModelView *mv, int x, int y) {
 }
 
 // INFO: Добавлять бомбу, которая может уничтожить самыый большой элемент
-
 // INFO: Добавлять второй элемент только тогда когда и только туда, где он
 // может быть уничтожен. Успех зависит от игрока - ошибется он или примет
 // верное решение
-
 // XXX:Количество цифр должно зависеть от совбодной площади
 // TODO: Чем более крупная фишка есть на поле, тем более крупная может выпадать
 // ячейка, но до определенного предела.
-void modelview_put(struct ModelView *mv) {
+
+// Разместить новую клетку или бомбу
+void modelview_put(ModelView *mv) {
    
     assert(mv);
     /*field_update(mv);*/
@@ -486,12 +495,17 @@ void modelview_put(struct ModelView *mv) {
         int y = rand() % mv->field_size;
         // Максимальное количество проб клетки на возможность заполнения
         int j = mv->field_size * mv->field_size * 10; 
-        Cell *cell = modelview_get_cell(mv, x, y, NULL);
 
-        while (cell) {
+        e_id e = get_entity(mv, x, y);
+
+        /*Cell *cell = modelview_get_cell(mv, x, y, NULL);*/
+
+        while (e.id != e_null.id) {
             x = rand() % mv->field_size;
             y = rand() % mv->field_size;
-            cell = modelview_get_cell(mv, x, y, NULL);
+
+            /*cell = modelview_get_cell(mv, x, y, NULL);*/
+            e = get_entity(mv, x, y);
 
             j--;
             if (j <= 0) {
@@ -625,7 +639,7 @@ static bool sum(
     struct Cell *cell = e_get(mv->r, cell_en, cmp_cell);
     /*assert(cell);*/
 
-    Position *pos = e_get(mv->r, cell_en, cmp_position);
+    /*Position *pos = e_get(mv->r, cell_en, cmp_position);*/
     Bomb *b = e_get(mv->r, cell_en, cmp_bomb);
 
     if (b) {
@@ -646,29 +660,30 @@ static bool sum(
 
     e_id neighbour_en = get_entity(mv, x + mv->dx, y + mv->dy);
 
-    struct Cell *neighbour_cell = e_get(mv->r, neighbour_en, cmp_cell);
+    Cell *neighbour_cell = e_get(mv->r, neighbour_en, cmp_cell);
 
-    if (!neighbour) 
+    if (neighbour_en.id == e_null.id) 
         return has_sum;
-    if (neighbour->dropped) 
+
+    if (cell && neighbour_cell->dropped) 
         return has_sum;
 
     // Если соседом оказался бонус - выход
-    Bonus *neighbour_bonus = e_get(mv->r, neighbour_en, cmp_bonus);
+    Bomb *neighbour_bonus = e_get(mv->r, neighbour_en, cmp_bomb);
     if (neighbour_bonus)
         return has_sum;
 
-    struct Effect *neighbour_ef = e_get(mv->r, neighbour_en, cmp_effect);
+    Transition *neighbour_ef = e_get(mv->r, neighbour_en, cmp_transition);
 
     assert(cell_en.id != e_null.id);
     assert(neighbour_en.id != e_null.id);
 
-    if (cell->value != neighbour->value)
+    if (cell->value != neighbour_cell->value)
         return has_sum;
 
     has_sum = true;
     *touched = true;
-    neighbour->value += cell->value;
+    neighbour_cell->value += cell->value;
     mv->scores += cell->value;
 
     assert(e_valid(mv->r, cell_en));
@@ -732,9 +747,14 @@ static bool do_action(struct ModelView *mv, Action action) {
         touched = false;
         for (int y = 0; y < mv->field_size; ++y) 
             for (int x = 0; x < mv->field_size; ++x) {
-                e_id cell_en = e_null;
-                Cell *cell = modelview_get_cell(mv, x, y, &cell_en);
-                if (!cell) continue;
+                e_id cell_en = get_entity(mv, x, y);
+
+                if (cell_en.id == e_null.id)
+                    continue;
+
+                Cell *cell = e_get(mv->r, cell_en, cmp_cell);
+                if (!cell) 
+                    continue;
 
                 if (action(mv, cell_en, x, y, &touched))
                     has_action = true;
@@ -768,7 +788,8 @@ static void sort_numbers(struct ModelView *mv) {
     int idx = 0; // Количество клеток
     for (int y = 0; y < mv->field_size; y++)
         for (int x = 0; x < mv->field_size; x++) {
-            struct Cell *cell = modelview_get_cell(mv, x, y, NULL);
+            e_id e = get_entity(mv, x, y);
+            Cell *cell = e_get(mv->r, e, cmp_cell);
             if (cell)
                 tmp[idx++].value = cell->value;
         }
@@ -874,11 +895,9 @@ static Vector2 decrease_font_size(
     return textsize;
 }
 
-static int calc_font_size_anim(
-    struct ModelView *mv, e_id en, struct DrawOpts opts
-) {
+static int calc_font_size_anim(ModelView *mv, e_id en, DrawOpts opts) {
     int fontsize = opts.fontsize;
-    struct Effect *ef = e_get(mv->r, en, cmp_effect);
+    Transition *ef = e_get(mv->r, en, cmp_transition);
     assert(ef);
     if (ef->anim_size) {
         const float font_scale = 6.;
@@ -890,11 +909,9 @@ static int calc_font_size_anim(
     return fontsize;
 }
 
-static Color calc_alpha(
-    struct ModelView *mv, e_id en, Color color, struct DrawOpts opts
-) {
+static Color calc_alpha(ModelView *mv, e_id en, Color color, DrawOpts opts) {
     assert(mv);
-    struct Effect *ef = e_get(mv->r, en, cmp_effect);
+    Transition *ef = e_get(mv->r, en, cmp_transition);
     assert(ef);
     switch (ef->anim_alpha) {
         case AM_FORWARD:
@@ -912,21 +929,23 @@ static Color calc_alpha(
 // Возвращает индексы от 0 до mv->field_size возможно с дробной интерполяцией
 static Vector2 calc_base_pos(ModelView *mv, e_id en, DrawOpts opts) {
 
-    struct Cell *cell = e_get(mv->r, en, cmp_cell);
-    assert(cell);
-    struct Effect *ef = e_get(mv->r, en, cmp_effect);
+    Position *pos = e_get(mv->r, en, cmp_position);
+    assert(pos);
 
-    Vector2 base_pos = { cell->x, cell->y, };
+    Transition *ef = e_get(mv->r, en, cmp_transition);
+    /*assert(ef);*/
+
+    Vector2 base_pos = { pos->x, pos->y, };
     if (!ef)
         return base_pos;
     /*assert(ef);*/
 
     if (ef->anim_movement) {
         base_pos = (Vector2) {
-            //Lerp(cell->x, cell->x + mv->dx, opts.amount),
-            //Lerp(cell->y, cell->y + mv->dy, opts.amount),
-            Lerp(cell->x - mv->dx, cell->x, opts.amount),
-            Lerp(cell->y - mv->dy, cell->y, opts.amount),
+            //Lerp(pos->x, pos->x + mv->dx, opts.amount),
+            //Lerp(pos->y, pos->y + mv->dy, opts.amount),
+            Lerp(pos->x - mv->dx, pos->x, opts.amount),
+            Lerp(pos->y - mv->dy, pos->y, opts.amount),
         };
     }
 
@@ -938,7 +957,7 @@ static void bomb_draw(
 ) {
 
     Texture2D tex = {};
-    Bonus *b = e_get(mv->r, cell_en, cmp_bonus);
+    Bomb *b = e_get(mv->r, cell_en, cmp_bomb);
 
     if (b->bomb_color == BC_BLACK) {
         tex = mv->tex_bomb_black;
@@ -1005,24 +1024,14 @@ static void bomb_draw(
     DrawText(buf, dst_bomb.x, dst_bomb.y, fnt_size, BLACK);
 }
 
-static void bonus_draw(
-    ModelView *mv, e_id cell_en, Vector2 base_pos, DrawOpts opts
-) {
-    Bonus *b = e_get(mv->r, cell_en, cmp_bonus);
-    if (b->type == BT_BOMB) {
-        bomb_draw(mv, cell_en, base_pos, opts);
-    }
-}
-
 static void cell_draw(
     ModelView *mv, e_id cell_en, Vector2 base_pos, DrawOpts opts
 ) {
     Cell *cell = e_get(mv->r, cell_en, cmp_cell);
 
-    // HACK: Не рисовать если на сущности висит тэг взрыва бомбы
-    //*
-    char *bomb_tag = e_get(mv->r, cell_en, cmp_bomb_exp);
-    if (bomb_tag)
+    // Если бомба, то выхожу
+    Bomb *b = e_get(mv->r, cell_en, cmp_bomb);
+    if (b)
         return;
     // */
 
@@ -1134,15 +1143,15 @@ static void tile_draw(ModelView *mv, e_id cell_en, DrawOpts opts) {
     if (!cell)
         return;
 
-    Bonus *bonus = e_get(mv->r, cell_en, cmp_bonus);
     Vector2 base_pos = calc_base_pos(mv, cell_en, opts);
 
-    char *bomb_tag = e_get(mv->r, cell_en, cmp_bomb_exp);
-    if (bomb_tag) {
+    Explosition *exp = e_get(mv->r, cell_en, cmp_exp);
+    if (exp) {
         exp_draw(mv, cell_en, base_pos, opts);
     } else {
-        if (bonus) {
-            bonus_draw(mv, cell_en, base_pos, opts);
+        Bomb *bomb = e_get(mv->r, cell_en, cmp_bomb);
+        if (bomb) {
+            bomb_draw(mv, cell_en, base_pos, opts);
         } else {
             cell_draw(mv, cell_en, base_pos, opts);
         }
@@ -1152,17 +1161,20 @@ static void tile_draw(ModelView *mv, e_id cell_en, DrawOpts opts) {
 
 static void draw_numbers(ModelView *mv) {
     assert(mv);
+
+    // TODO: Переписать через итерацию всех cmp_cell ??
+
     for (int y = 0; y < mv->field_size; y++) {
         for (int x = 0; x < mv->field_size; x++) {
-            e_id en = e_null;
-            Cell *cell = modelview_get_cell(mv, x, y, &en);
+            e_id en = get_entity(mv, x, y);
+            Cell *cell = e_get(mv->r, en, cmp_cell);
 
             if (!cell) continue;
             if (cell->dropped) continue;
             if (cell->value == 0) continue;
 
             assert(en.id != e_null.id);
-            Effect *ef = e_get(mv->r, en, cmp_effect);
+            Transition *ef = e_get(mv->r, en, cmp_transition);
             if (!ef) continue;
             /*assert(ef);*/
 
@@ -1243,6 +1255,7 @@ static void movements_window() {
 }
 */
 
+/*
 static void print_node_cell(struct Cell *c) {
     assert(c);
     igText("pos     %d, %d", c->x, c->y);
@@ -1251,13 +1264,16 @@ static void print_node_cell(struct Cell *c) {
     igText("val     %d", c->value);
     igText("dropped %s", c->dropped ? "t" : "f");
 }
+*/
 
+/*
 static void print_node_effect(struct Effect *ef) {
     assert(ef);
     igText("anim_movement   %s", ef->anim_movement ? "t" : "f");
     igText("anim_size %s", ef->anim_size ? "t" : "f");
     igText("anim_alpha %d", ef->anim_alpha);
 }
+*/
 
 /*
 static void removed_entities_window() {
@@ -1278,6 +1294,7 @@ static void removed_entities_window() {
 }
 */
 
+/*
 static void entities_window(struct ModelView *mv) {
     // {{{
     bool open = true;
@@ -1315,6 +1332,7 @@ _exit:
     igEnd();
     // }}}
 }
+*/
 
 static void options_window(struct ModelView *mv) {
     // {{{
@@ -1421,7 +1439,7 @@ static void gui(struct ModelView *mv) {
 
     //paths_window();
 
-    entities_window(mv);
+    /*entities_window(mv);*/
     e_gui_buf(mv->r);
 
     /*
@@ -1538,30 +1556,31 @@ static bool tmr_bomb_update(Timer *t) {
 static void make_ex(ModelView *mv, int x, int y) {
     e_id *e_2destroy = mv->e_2destroy;
 
-    e_id e = e_null;
-    Cell *c = modelview_get_cell(mv, x, y, &e);
-
+    e_id e = get_entity(mv, x, y);
+    Cell *c = e_get(mv->r, e, cmp_cell);
 
     if (e.id == e_null.id)
         e = e_create(mv->r);
 
     if (!c) {
-        Cell *c_new = e_emplace(mv->r, e, cmp_cell);
-        assert(c_new);
-        c_new->x = x;
-        c_new->y = y;
+        // Создание позиции для пустых клеток, что-бы отображать в них
+        // взрыв
+        Position *pos = e_emplace(mv->r, e, cmp_position);
+        assert(pos);
+        pos->x = x;
+        pos->y = y;
     } else {
         e_2destroy[mv->e_2destroy_num++] = e;
     }
 
     /*char *bomb_tag = e_emplace(mv->r, e, cmp_bomb_exp);*/
-    char *bomb_tag = e_get(mv->r, e, cmp_bomb_exp);
+    Explosition *exp = e_get(mv->r, e, cmp_exp);
 
-    if (!bomb_tag)
-        bomb_tag = e_emplace(mv->r, e, cmp_bomb_exp);
+    if (!exp)
+        exp = e_emplace(mv->r, e, cmp_exp);
 
-    if (bomb_tag) {
-        *bomb_tag = 1;
+    if (exp) {
+        exp->i = 1;
 
         TimerData td = { .mv = mv, .e = e, };
         timerman_add(mv->timers_effects, (TimerDef) {
@@ -1578,7 +1597,7 @@ static void make_ex(ModelView *mv, int x, int y) {
 void modelview_cross_remove2(ModelView *mv, e_id e) {
     assert(mv->field_size > 0);
 
-    Cell *c = e_get(mv->r, e, cmp_cell);
+    Position *c = e_get(mv->r, e, cmp_position);
     int x = c->x, y = c->y;
     mv->e_2destroy_num = 0;
 
@@ -1621,9 +1640,9 @@ static void bomb_scan(ModelView *mv) {
     if (!mv->can_scan_bombs)
         return;
 
-    e_view v = e_view_create_single(mv->r, cmp_bonus);
+    e_view v = e_view_create_single(mv->r, cmp_bomb);
     for (; e_view_valid(&v); e_view_next(&v)) {
-        Bonus *b = e_view_get(&v, cmp_bonus);
+        Bomb *b = e_view_get(&v, cmp_bomb);
         // Нашел бомбу которую нужно взрывать
         if (b->moves_cnt < 1) {
             e_id e = e_view_entity(&v);
@@ -1650,7 +1669,8 @@ static void field_update(ModelView *mv) {
     int i = 0;
     for (e_view v = e_view_create_single(mv->r, cmp_cell);
         e_view_valid(&v); e_view_next(&v)) {
-        Cell *c = e_view_get(&v, cmp_cell);
+        /*Cell *c = e_view_get(&v, cmp_cell);*/
+        Position *c = e_get(mv->r, e_view_entity(&v), cmp_position);
         assert(c);
         i++;
         mv->field[c->y * mv->field_size + c->x] = e_view_entity(&v);
@@ -1681,8 +1701,9 @@ bool modelview_draw(ModelView *mv) {
     if (mv->state == MVS_READY) {
 
         bool has_bomb_exp = false;
+
         // Поиск взрывающейся бомбы
-        e_view v = e_view_create_single(mv->r, cmp_bomb_exp);
+        e_view v = e_view_create_single(mv->r, cmp_exp);
         for (; e_view_valid(&v); e_view_next(&v)) {
             has_bomb_exp = true;
             break;
@@ -1826,10 +1847,10 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->win_value = setup.win_value;
 
     mv->r = e_new(NULL);
-    e_register(mv->r, &cmp_bonus);
+    e_register(mv->r, &cmp_bomb);
     e_register(mv->r, &cmp_cell);
-    e_register(mv->r, &cmp_effect);
-    e_register(mv->r, &cmp_bomb_exp);
+    e_register(mv->r, &cmp_transition);
+    e_register(mv->r, &cmp_exp);
 
     mv->camera = setup.cam;
     mv->use_gui = setup.use_gui;
