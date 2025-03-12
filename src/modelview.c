@@ -260,9 +260,9 @@ static e_id create_cell(ModelView *mv, int x, int y) {
     return en;
 }
 
-static void tmr_cell_draw_stop(struct Timer *t) {
-    struct TimerData *timer_data = t->data;
-    struct ModelView *mv = timer_data->mv;
+static void tmr_cell_draw_stop(Timer *t) {
+    TimerData *timer_data = t->data;
+    ModelView *mv = timer_data->mv;
 
     if (!e_valid(mv->r, timer_data->e)) {
         return;
@@ -272,11 +272,12 @@ static void tmr_cell_draw_stop(struct Timer *t) {
     /*assert(cell);*/
 
     struct Transition *tr = e_get(mv->r, timer_data->e, cmp_transition);
-    assert(tr);
-
-    tr->anim_movement = false;
-    tr->anim_alpha = AM_NONE;
-    tr->anim_size = false;
+    /*assert(tr);*/
+    if (tr) {
+        tr->anim_movement = false;
+        tr->anim_alpha = AM_NONE;
+        tr->anim_size = false;
+    }
 }
 
 // какой эффект рисует функция и для какой плитки?
@@ -389,7 +390,7 @@ static void modelview_put_cell(struct ModelView *mv, int x, int y) {
 
     timerman_add(mv->timers_slides, (struct TimerDef) {
         .duration = mv->tmr_put_time,
-        .sz = sizeof(struct TimerData),
+        .sz = sizeof(td),
         .on_update = tmr_cell_draw,
         .on_stop = tmr_cell_draw_stop,
         .data = &td,
@@ -399,7 +400,7 @@ static void modelview_put_cell(struct ModelView *mv, int x, int y) {
         .duration = 1.,
         .on_stop = tmr_pulsation_stop,
         .on_update = tmr_pulsation_update,
-        .sz = sizeof(struct TimerData),
+        .sz = sizeof(td),
     });
 
 }
@@ -660,12 +661,15 @@ static bool sum(
 
     e_id neighbour_en = get_entity(mv, x + mv->dx, y + mv->dy);
 
-    Cell *neighbour_cell = e_get(mv->r, neighbour_en, cmp_cell);
-
     if (neighbour_en.id == e_null.id) 
         return has_sum;
 
-    if (cell && neighbour_cell->dropped) 
+    Cell *neighbour_cell = e_get(mv->r, neighbour_en, cmp_cell);
+    if (!neighbour_cell)
+        return has_sum;
+
+    /*if (cell && neighbour_cell->dropped) */
+    if (neighbour_cell && neighbour_cell->dropped) 
         return has_sum;
 
     // Если соседом оказался бонус - выход
@@ -678,7 +682,7 @@ static bool sum(
     assert(cell_en.id != e_null.id);
     assert(neighbour_en.id != e_null.id);
 
-    if (cell->value != neighbour_cell->value)
+    if (cell && neighbour_cell && cell->value != neighbour_cell->value)
         return has_sum;
 
     has_sum = true;
@@ -1848,6 +1852,7 @@ void modelview_init(ModelView *mv, Setup setup) {
 
     mv->r = e_new(NULL);
     e_register(mv->r, &cmp_bomb);
+    e_register(mv->r, &cmp_position);
     e_register(mv->r, &cmp_cell);
     e_register(mv->r, &cmp_transition);
     e_register(mv->r, &cmp_exp);
@@ -1879,8 +1884,7 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->sorted = calloc(cells_num, sizeof(mv->sorted[0]));
 
     /*global_cells_num = 0;*/
-    mv->font_vector = fnt_vector_new("assets/djv.ttf", &(FntVectorOpts) {
-        .line_thick = 10.f,
+    mv->font_vector = fnt_vector_new("assets/djv.ttf", &(FntVectorOpts) { .line_thick = 10.f,
     });
 
     mv->text_opts = (ColoredTextOpts) {
