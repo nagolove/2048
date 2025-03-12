@@ -32,9 +32,9 @@
 // {{{ debug shit zone
 #define GLOBAL_CELLS_CAP    100000
 
-static struct Cell global_cells[GLOBAL_CELLS_CAP] = {0};
-static int global_cells_num = 0;
-static struct Cell cell_zero = {0};
+//static struct Cell global_cells[GLOBAL_CELLS_CAP] = {0};
+/*static int global_cells_num = 0;*/
+/*static struct Cell cell_zero = {0};*/
 
 // XXX: зачем нужна переменная last_state?
 static int *last_state = NULL;
@@ -1171,6 +1171,7 @@ static void draw_numbers(ModelView *mv) {
     }
 }
 
+/*
 static void movements_window() {
     // {{{
     bool open = true;
@@ -1237,6 +1238,7 @@ static void movements_window() {
     igEnd();
     // }}}
 }
+*/
 
 static void print_node_cell(struct Cell *c) {
     assert(c);
@@ -1254,6 +1256,7 @@ static void print_node_effect(struct Effect *ef) {
     igText("anim_alpha %d", ef->anim_alpha);
 }
 
+/*
 static void removed_entities_window() {
     bool open = true;
     ImGuiWindowFlags flags = 0;
@@ -1270,6 +1273,7 @@ static void removed_entities_window() {
 
     igEnd();
 }
+*/
 
 static void entities_window(struct ModelView *mv) {
     // {{{
@@ -1369,7 +1373,7 @@ static void options_window(struct ModelView *mv) {
         mv->tex_ex_num - 1, "%d", 0
     );
 
-    if (igButton("restart", (ImVec2) {0, 0})) {
+    if (IsKeyPressed(KEY_R) || igButton("restart", (ImVec2) {0, 0})) {
         modelview_shutdown(mv);
         struct Setup setup = {
             .win_value = win_value,
@@ -1408,8 +1412,10 @@ static void gui(struct ModelView *mv) {
         //trace("gui: %s\n", camera2str(*mv->camera));
 
     //rlImGuiBegin(false, NULL);
-    movements_window();
-    removed_entities_window();
+    
+    /*movements_window();*/
+    /*removed_entities_window();*/
+
     //paths_window();
 
     entities_window(mv);
@@ -1848,7 +1854,7 @@ void modelview_init(ModelView *mv, Setup setup) {
     );
     mv->sorted = calloc(cells_num, sizeof(mv->sorted[0]));
 
-    global_cells_num = 0;
+    /*global_cells_num = 0;*/
     mv->font_vector = fnt_vector_new("assets/djv.ttf", &(FntVectorOpts) {
         .line_thick = 10.f,
     });
