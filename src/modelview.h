@@ -37,22 +37,14 @@ enum AlphaMode {
     AM_BACKWARD,
 };
 
-// Клетка задает только положение
-// XXX: Стоит отделить клетку от позиции?
-// Позиция будет использоваться в бонусах и преградах.
-typedef struct Cell {
-                    // ячейка подлежит удалению 
-    bool            dropped;        
-    int             x, y, 
-                    // клетка не рисуется при значении равном 0
-                    value;
-} Cell;
-
-/*
-
-struct Position {
-    int             x, y, 
+enum BombColor {
+    BC_BLACK,
+    BC_RED,
 };
+
+typedef struct Position {
+    int x, y; 
+} Position;
 
 typedef struct Cell {
           // ячейка подлежит удалению 
@@ -71,7 +63,7 @@ typedef struct Transition {
     enum AlphaMode  anim_alpha;
     bool            anim_movement,  // ячейка в движении
                     anim_size;      // ячейка меняет размер
-} Effect;
+} Transition;
 
 typedef struct Bomb {
     enum BombColor  bomb_color;
@@ -81,46 +73,13 @@ typedef struct Bomb {
                     aura_phase;
                     // количество оставшихся ходов, до 0
     int             moves_cnt;
-} Bonus;
+} Bomb;
 
+/*
 Возможные сочетания компонентов
 Position + Cell + Transition
 Position + Transition + Bomb
-
 */
-
-typedef enum BonusType {
-    BT_BOMB = 0, 
-} BonusType;
-
-enum BombColor {
-    BC_BLACK,
-    BC_RED,
-};
-
-typedef struct Bonus {
-    enum BonusType  type;
-    enum BombColor  bomb_color;
-                    // угол поворота огонька фитиля
-    float           aura_rot,
-                    // фаза для поворота огонька фитиля
-                    aura_phase;
-                    // количество оставшихся ходов, до 0
-    int             moves_cnt;
-} Bonus;
-
-// TODO: Переименовать в Transition
-typedef struct Effect {
-    enum AlphaMode  anim_alpha;
-    bool            anim_movement,  // ячейка в движении
-                    anim_size;      // ячейка меняет размер
-
-          // Для пульсации шрифта 
-          // коэффициент масштаба
-    float coef, 
-          // начальная фаза колебания
-          phase;
-} Effect;
 
 enum ModelViewState {
     // Есть активные анимации
@@ -241,7 +200,7 @@ void modelview_save_state2file(ModelView *mv);
 bool modelview_draw(ModelView *mv);
 void modelview_draw_gui(ModelView *mv);
 void modelview_input(ModelView *mv, enum Direction dir);
-Cell *modelview_get_cell(ModelView *mv, int x, int y, e_id *en);
+/*Cell *modelview_get_cell(ModelView *mv, int x, int y, e_id *en);*/
 char *modelview_state2str(enum ModelViewState state);
 
-extern e_cp_type cmp_cell, cmp_bonus, cmp_effect, cmp_bomb_exp;
+extern e_cp_type cmp_cell, cmp_bomb, cmp_position, cmp_transition;

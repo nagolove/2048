@@ -83,6 +83,7 @@ static const struct DrawOpts dflt_draw_opts = {
     /*.color               = BLACK,*/
 };
 
+/*
 static StrBuf str_repr_buf_cell(void *payload, e_id e) {
     StrBuf buf = strbuf_init(NULL);
 
@@ -96,33 +97,34 @@ static StrBuf str_repr_buf_cell(void *payload, e_id e) {
 
     return buf;
 }
+*/
+
+// {{{ components
+e_cp_type cmp_position = {
+    .cp_sizeof = sizeof(struct Position),
+    .name = "position",
+    .initial_cap = 1000,
+};
 
 e_cp_type cmp_cell = {
     .cp_sizeof = sizeof(struct Cell),
     .name = "cell",
     .initial_cap = 1000,
-    .str_repr_buf = str_repr_buf_cell,
+    /*.str_repr_buf = str_repr_buf_cell,*/
 };
 
-e_cp_type cmp_bonus = {
-    .cp_sizeof = sizeof(struct Bonus),
-    .name = "bonus",
-    .initial_cap = 1000,
-};
-// */
-
-e_cp_type cmp_effect = {
-    .cp_sizeof = sizeof(struct Effect),
-    .name = "effect",
+e_cp_type cmp_bomb = {
+    .cp_sizeof = sizeof(struct Bomb),
+    .name = "bomb",
     .initial_cap = 1000,
 };
 
-// Тег бомбы
-e_cp_type cmp_bomb_exp = {
-    .cp_sizeof = sizeof(char),
-    .name = "bomb explosion tag",
+e_cp_type cmp_transition = {
+    .cp_sizeof = sizeof(struct Transition),
+    .name = "transition",
     .initial_cap = 1000,
 };
+// }}}
 
 static Color colors[] = {
     RED,
@@ -175,28 +177,20 @@ static bool is_over(struct ModelView *mv) {
     return mv->field_size * mv->field_size == num;
 }
 
-// Получить ячейку и сущность на данной позиции
-Cell *modelview_get_cell(ModelView *mv, int x, int y, e_id *en) {
+// Получить ячейку и сущность на данной позиции или вернуть e_null
+e_id get_entity(ModelView *mv, int x, int y) {
     assert(mv);
     assert(mv->r);
 
-    if (en) *en = e_null;
-
     // TODO: Избавится от полного перебора
-    for (e_view v = e_view_create_single(mv->r, cmp_cell);
+    for (e_view v = e_view_create_single(mv->r, cmp_position);
         e_view_valid(&v); e_view_next(&v)) {
-        struct Cell *c = e_view_get(&v, cmp_cell);
-        assert(c);
-        if (c && c->x == x && c->y == y) {
-            if (en) {
-                assert(e_valid(mv->r, e_view_entity(&v)));
-                *en = e_view_entity(&v);
-            }
-            return c;
+        Position *p = e_view_get(&v, cmp_position);
+        if (p->x == x && p->y == y) {
+            return e_view_entity(&v);
         }
     }
-    return NULL;
-    // */
+    return e_null;
 
     /*
     // XXX: Не работает field_update() и такое кэширование
@@ -228,7 +222,8 @@ static int get_cell_count(ModelView *mv) {
     return num;
 }
 
-static Cell *create_cell(ModelView *mv, int x, int y, e_id *_en) {
+// Создает сущность с позицией и клеткой
+static e_id create_cell(ModelView *mv, int x, int y) {
     assert(mv);
     assert(mv->r);
 
@@ -236,25 +231,24 @@ static Cell *create_cell(ModelView *mv, int x, int y, e_id *_en) {
         trace("create_cell: cells were reached limit of %d\n",
               mv->field_size * mv->field_size);
         abort();
-        return NULL;
+        return e_null;
     }
 
-    e_id en = e_create(mv->r);
-    struct Cell *cell = e_emplace(mv->r, en, cmp_cell);
-    memset(cell, 0, sizeof(*cell));
-    assert(cell);
-    cell->x = x;
-    cell->y = y;
-    cell->value = 0;
+    ecs_t *r = mv->r;
+    e_id en = e_create(r);
 
-    struct Effect *ef = e_emplace(mv->r, en, cmp_effect);
-    memset(ef, 0, sizeof(*ef));
-    ef->anim_movement = false;
-    ef->phase = rand() % 1024;
+    Position *position = e_emplace(r, en, cmp_position);
+    position->x = x;
+    position->y = y;
 
-    if (_en)
-        *_en = en;
-    return cell;
+    Transition *tr = e_emplace(r, en, cmp_transition);
+    tr->anim_movement = false;
+
+    Cell *c = e_emplace(r, en, cmp_cell);
+    c->value = 0;
+    c->phase = rand() % 1024;
+
+    return en;
 }
 
 static void tmr_cell_draw_stop(struct Timer *t) {
@@ -265,15 +259,15 @@ static void tmr_cell_draw_stop(struct Timer *t) {
         return;
     }
 
-    struct Cell *cell = e_get(mv->r, timer_data->e, cmp_cell);
-    assert(cell);
+    /*struct Cell *cell = e_get(mv->r, timer_data->e, cmp_cell);*/
+    /*assert(cell);*/
 
-    struct Effect *ef = e_get(mv->r, timer_data->e, cmp_effect);
-    assert(ef);
+    struct Transition *tr = e_get(mv->r, timer_data->e, cmp_transition);
+    assert(tr);
 
-    ef->anim_movement = false;
-    ef->anim_alpha = AM_NONE;
-    ef->anim_size = false;
+    tr->anim_movement = false;
+    tr->anim_alpha = AM_NONE;
+    tr->anim_size = false;
 }
 
 // какой эффект рисует функция и для какой плитки?
@@ -295,15 +289,21 @@ static bool tmr_cell_draw(struct Timer *t) {
 }
 
 void modelview_put_manual(struct ModelView *mv, int x, int y, int value) {
-    struct Cell *cell = modelview_get_cell(mv, x, y, NULL);
-    if (!cell) {
-        cell = create_cell(mv, x, y, NULL);
+    /*struct Cell *cell = modelview_get_cell(mv, x, y, NULL);*/
+    e_id e = get_entity(mv, x, y);
+    if (e.id == e_null.id) {
+        e = create_cell(mv, x, y);
     }
-    cell->x = x;
-    cell->y = y;
-    cell->value = value;
+
+    Position *pos = e_get(mv->r, e, cmp_position);
+    pos->x = x;
+    pos->y = y;
+
+    Cell *c = e_get(mv->r, e, cmp_cell);
+    c->value = value;
 }
 
+// XXX: Пульсация чего?
 static bool tmr_pulsation_update(struct Timer *t) {
     TimerData *td = t->data;
     ecs_t *r = td->mv->r;
@@ -313,7 +313,7 @@ static bool tmr_pulsation_update(struct Timer *t) {
     if (!e_valid(r, e))
         return true;
 
-    Effect *ef = e_get(r, e, cmp_effect);
+    Transition *ef = e_get(r, e, cmp_transition);
     if (!ef)
         return false;
 
@@ -331,18 +331,18 @@ static void tmr_pulsation_stop(Timer *t) {
     /*trace("tmr_pulsation_stop:\n");*/
 }
 
-// TODO: Добавить анимацию.
-// XXX: Анимацию чего?
+// TODO: Добавить анимацию при создании клетки. 
+// Как цифры появляются из центра ячейки.
 static void modelview_put_cell(struct ModelView *mv, int x, int y) {
     assert(mv);
     assert(x >= 0);
     assert(x < mv->field_size);
     assert(y >= 0);
     assert(y < mv->field_size);
-    e_id cell_en = e_null;
-    struct Cell *cell = create_cell(mv, x, y, &cell_en);
 
-    assert(cell);
+    e_id cell_en = create_cell(mv, x, y);
+
+    Cell *cell = e_get(mv->r, cell_en, cmp_cell);
 
     float v = (float)rand() / (float)RAND_MAX;
 
@@ -359,18 +359,19 @@ static void modelview_put_cell(struct ModelView *mv, int x, int y) {
             cell->value = 4;
         }
     }
-
-    assert(cell->value >= 0);
-    cell->x = x;
-    cell->y = y;
-    //cell->anima = true;
     cell->dropped = false;
 
-    struct Effect *ef = e_get(mv->r, cell_en, cmp_effect);
+    assert(cell->value >= 0);
+
+    Position *pos = e_get(mv->r, cell_en, cmp_position);
+    pos->x = x;
+    pos->y = y;
+
+    struct Transition *ef = e_get(mv->r, cell_en, cmp_transition);
     assert(ef);
     ef->anim_alpha = AM_FORWARD;
 
-    modeltest_put(&model_checker, cell->x, cell->y, cell->value);
+    /*modeltest_put(&model_checker, cell->x, cell->y, cell->value);*/
 
     struct TimerData td = {
         .mv = mv,
@@ -408,7 +409,7 @@ static int bomb_find_num(ModelView *mv) {
 }
 */
 
-static void modelview_put_bonus(ModelView *mv, int x, int y, BonusType type) {
+static void bomb_put(ModelView *mv, int x, int y) {
     assert(mv);
     assert(x >= 0);
     assert(x < mv->field_size);
@@ -417,10 +418,6 @@ static void modelview_put_bonus(ModelView *mv, int x, int y, BonusType type) {
 
     //if (bomb_find_num(mv) >= 2) 
         //return;
-
-    e_id cell_en = e_null;
-
-    Cell *cell = NULL;
 
     /*
     // XXX: Удаляет в текущей ячейке содержимое
@@ -432,44 +429,33 @@ static void modelview_put_bonus(ModelView *mv, int x, int y, BonusType type) {
     }
     */
 
-    cell = create_cell(mv, x, y, &cell_en);
+    ecs_t *r = mv->r;
+    e_id en = e_create(r);
 
-    assert(cell);
+    Position *position = e_emplace(r, en, cmp_position);
+    position->x = x;
+    position->y = y;
+
+    struct Bomb *bomb = e_emplace(mv->r, en, cmp_bomb);
+    assert(bomb);
 
     /*
-    float v = (float)rand() / (float)RAND_MAX;
-    if (v >= 0. && v < 0.9) {
-        cell->value = 2;
-    } else {
-        cell->value = 4;
-    }
+    // XXX: Как будет работать анимация альфа канала на бомбе при ее движении?
+    Transition *tr = e_emplace(r, en, cmp_transition);
+    tr->anim_alpha = AM_FORWARD;
     */
 
-    assert(cell->value >= 0);
-    cell->x = x;
-    cell->y = y;
-    cell->dropped = false;
-
-    struct Effect *ef = e_get(mv->r, cell_en, cmp_effect);
-    assert(ef);
-    memset(ef, 0, sizeof(*ef));
-    ef->anim_alpha = AM_FORWARD;
-
-    struct Bonus *bonus = e_emplace(mv->r, cell_en, cmp_bonus);
-    assert(bonus);
-    memset(bonus, 0, sizeof(*bonus));
-    bonus->moves_cnt = bomb_moves_limit;
-    bonus->type = type;
-    bonus->bomb_color = koh_maybe();
-
-    bonus->aura_rot = rand() % 360;
-    bonus->aura_phase = rand() % 1024;
+    assert(bomb);
+    bomb->moves_cnt = bomb_moves_limit;
+    bomb->bomb_color = koh_maybe();
+    bomb->aura_rot = rand() % 360;
+    bomb->aura_phase = rand() % 1024;
 
     /*modeltest_put(&model_checker, cell->x, cell->y, cell->value);*/
 
     TimerData td = {
         .mv = mv,
-        .e = cell_en,
+        .e = en,
     };
     timerman_add(mv->timers_slides, (TimerDef) {
         .duration = mv->tmr_put_time,
@@ -516,45 +502,59 @@ void modelview_put(struct ModelView *mv) {
 
         if (mv->use_bonus) {
             if (mv->next_bomb) {
-                modelview_put_bonus(mv, x, y, BT_BOMB);
+                bomb_put(mv, x, y);
                 mv->next_bomb = false;
             } else {
                 if ((double)rand() / (double)RAND_MAX > chance_bomb)
                     modelview_put_cell(mv, x, y);
                 else
-                    modelview_put_bonus(mv, x, y, BT_BOMB);
+                    bomb_put(mv, x, y);
             }
         } else
             modelview_put_cell(mv, x, y);
     }
 }
 
-static bool cell_in_bounds(struct ModelView *mv, struct Cell *cell) {
+static bool entity_in_bounds(ModelView *mv, e_id e) {
     assert(mv);
-    assert(cell);
-    if (cell->x + mv->dx >= mv->field_size)
+    assert(e.id != e_null.id);
+
+    Position *pos = e_get(mv->r, e, cmp_position);
+    assert(pos);
+
+    if (pos->x + mv->dx >= mv->field_size)
         return false;
-    if (cell->x + mv->dx < 0)
+    if (pos->x + mv->dx < 0)
+        return false;
+    if (pos->y + mv->dy >= mv->field_size)
+        return false;
+    if (pos->y + mv->dy < 0)
         return false;
 
-    if (cell->y + mv->dy >= mv->field_size)
-        return false;
-    if (cell->y + mv->dy < 0)
-        return false;
+    /*
+    return !(pos->x + mv->dx >= mv->field_size ||
+             pos->x + mv->dx < 0 ||
+             pos->y + mv->dy >= mv->field_size ||
+             pos->y + mv->dy < 0);
+     */
+
     return true;
 }
 
-static bool move(
-    struct ModelView *mv, e_id cell_en, int x, int y, bool *touched
-) {
+// Двигает клетку cell_en на позицию x, y
+// XXX: Зачем нужен touched флаг?
+static bool move(ModelView *mv, e_id cell_en, int x, int y, bool *touched) {
+    ecs_t *r = mv->r;
     bool has_move = false;
 
     struct Cell *cell = e_get(mv->r, cell_en, cmp_cell);
     if (!cell)
         return false;
-    //assert(cell);
 
-    struct Effect *ef = e_get(mv->r, cell_en, cmp_effect);
+    Position *pos = e_get(mv->r, cell_en, cmp_position);
+    assert(pos);
+
+    struct Transition *ef = e_get(mv->r, cell_en, cmp_transition);
     if (!ef)
         return false;
     /*assert(ef);*/
@@ -568,30 +568,31 @@ static bool move(
     if (cell->dropped)
         return has_move;
 
-    struct Cell *neighbour = modelview_get_cell(
-        mv, x + mv->dx, y + mv->dy, NULL
-    );
-    if (neighbour) 
+    e_id neighbour_e = get_entity(mv, x + mv->dx, y + mv->dy);
+
+    Cell *neighbour_cell = e_get(r, neighbour_e, cmp_cell);
+
+    if (neighbour_cell) 
         return has_move;
 
-    if (!cell_in_bounds(mv, cell))
+    if (!entity_in_bounds(mv, cell_en))
         return has_move;
 
     has_move = true;
 
     assert(cell_en.id != e_null.id);
 
-    cell->x += mv->dx;
-    cell->y += mv->dy;
+    pos->x += mv->dx;
+    pos->y += mv->dy;
     ef->anim_movement = true;
 
     // Обновление счетчика движения
     // TODO: Показывать счетчик движений. 
     // Когда достигается 0, то происходит взрыв.
     // TODO: Сделать слияние бомб одного типа
-    Bonus *bonus = e_get(mv->r, cell_en, cmp_bonus);
-    if (bonus) {
-        bonus->moves_cnt--;
+    Bomb *bomb = e_get(mv->r, cell_en, cmp_bomb);
+    if (bomb) {
+        bomb->moves_cnt--;
     }
 
     *touched = true;
@@ -622,9 +623,12 @@ static bool sum(
     bool has_sum = false;
 
     struct Cell *cell = e_get(mv->r, cell_en, cmp_cell);
-    Bonus *b = e_get(mv->r, cell_en, cmp_bonus);
+    /*assert(cell);*/
 
-    if (b && b->type == BT_BOMB) {
+    Position *pos = e_get(mv->r, cell_en, cmp_position);
+    Bomb *b = e_get(mv->r, cell_en, cmp_bomb);
+
+    if (b) {
         return false;
     }
 
@@ -632,7 +636,7 @@ static bool sum(
     if (!cell)
         return false;
 
-    struct Effect *ef = e_get(mv->r, cell_en, cmp_effect);
+    struct Transition *ef = e_get(mv->r, cell_en, cmp_transition);
     if (!ef)
         return false;
     /*assert(ef);*/
@@ -640,11 +644,9 @@ static bool sum(
     if (cell->dropped) 
         return has_sum;
 
-    e_id neighbour_en = e_null;
+    e_id neighbour_en = get_entity(mv, x + mv->dx, y + mv->dy);
 
-    struct Cell *neighbour = modelview_get_cell(
-        mv, x + mv->dx, y + mv->dy, &neighbour_en
-    );
+    struct Cell *neighbour_cell = e_get(mv->r, neighbour_en, cmp_cell);
 
     if (!neighbour) 
         return has_sum;
