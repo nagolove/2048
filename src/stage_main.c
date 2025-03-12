@@ -33,7 +33,7 @@ static struct Setup main_view_setup = {
 };
 static bool is_paused = false;
 
-
+// {{{ l_***
 int l_field_size_get(lua_State *l) {
     lua_pushnumber(l, main_view.field_size);
     return 1;
@@ -59,10 +59,7 @@ int l_state_get(lua_State *l) {
     lua_pushstring(l, modelview_state2str(main_view.state));
     return 1;
 }
-
-float maxf(float a, float b) {
-    return a > b ? a : b;
-}
+// }}}
 
 void mouse_swipe_cell(enum Direction *dir) {
     assert(dir);
@@ -121,22 +118,27 @@ void hotreload(const char *fname, void *ud) {
 }
 
 static void keyboard_swipe_cell(enum Direction *dir) {
+#define N 2
     struct {
         enum Direction  dir;
-        int             key;
+        int             key[N];
     } keys_dirs[] = {
-        {DIR_LEFT, KEY_LEFT},
-        {DIR_RIGHT, KEY_RIGHT},
-        {DIR_UP, KEY_UP},
-        {DIR_DOWN, KEY_DOWN},
+        {DIR_LEFT, { KEY_LEFT, KEY_H} },
+        {DIR_RIGHT, { KEY_RIGHT, KEY_L} },
+        {DIR_UP, { KEY_UP, KEY_J} },
+        {DIR_DOWN, { KEY_DOWN, KEY_K} },
     };
 
-    for (int j = 0; j < sizeof(keys_dirs) / sizeof(keys_dirs[0]); ++j) {
-        if (IsKeyPressed(keys_dirs[j].key)) {
-            *dir = keys_dirs[j].dir;
-            break;
+    size_t dirs_num = sizeof(keys_dirs) / sizeof(keys_dirs[0]);
+    for (int j = 0; j < dirs_num; ++j) {
+        for (int k = 0; k < N; k++) {
+            if (IsKeyPressed(keys_dirs[j].key[k])) {
+                *dir = keys_dirs[j].dir;
+                break;
+            }
         }
     } 
+#undef N
 }
 
 static void input() {
@@ -252,12 +254,14 @@ static void stage_main_update(Stage_Main *st) {
         is_paused = !is_paused;
     }
 
+    /*
     if (IsKeyPressed(KEY_R)) {
         modelview_shutdown(&main_view);
         modelview_init(&main_view, main_view_setup);
         main_view.on_init_lua = load_init_lua;
         modelview_put(&main_view);
     }
+    */
 
     camera_process();
     timerman_pause(main_view.timers_slides, is_paused);
