@@ -70,6 +70,7 @@ typedef struct DrawOpts {
 static void field_update(ModelView *mv);
 static void tile_draw(ModelView *mv, e_id cell_en, DrawOpts opts);
 
+static const int alpha_min = 10, alpha_max = 255;
 static float chance_bomb = 0.1;
 static float tmr_bomb_duration = 2.f;
 static int bomb_moves_limit = 9;
@@ -895,10 +896,10 @@ static Color calc_alpha(
     assert(ef);
     switch (ef->anim_alpha) {
         case AM_FORWARD:
-            color.a = Lerp(10., 255., opts.amount);
+            color.a = Lerp(alpha_min, alpha_max, opts.amount);
             break;
         case AM_BACKWARD:
-            color.a = Lerp(255., 10., opts.amount);
+            color.a = Lerp(alpha_max, alpha_min, opts.amount);
             break;
         default:
             break;
