@@ -97,6 +97,7 @@ void print_field5(const int values[5][5]) {
     }
 }
 
+/*
 static bool check_cell(
     struct ModelView *mv, int x, int y, const int reference[5][5],
     const struct TestCtx *ctx
@@ -128,7 +129,6 @@ static bool check_cell(
 
         //modelview_field_print(mv);
         print_field5(reference);
-        /*abort();*/
         return false;
     }
 
@@ -137,14 +137,16 @@ static bool check_cell(
             "\033[1;31mcheck_field: cell->value %d != reference[%d][%d] %d\n\033[0m",
             cell->value, y, x, reference[y][x]
         );
-        /*modelview_field_print(mv);*/
+        //modelview_field_print(mv);
         print_field5(reference);
         return false;
     }
 
     return true;
 }
+*/
 
+/*
 bool check_field(
     struct ModelView *mv, const int reference[5][5], const struct TestCtx *ctx
 ) {
@@ -154,8 +156,8 @@ bool check_field(
                 return false;
         }
     }
-    /*modelview_field_print(mv);*/
+    //modelview_field_print(mv);
     return true;
 }
-
+*/
 
