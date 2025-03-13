@@ -187,7 +187,7 @@ static bool is_over(struct ModelView *mv) {
 }
 
 // Получить ячейку и сущность на данной позиции или вернуть e_null
-e_id get_entity(ModelView *mv, int x, int y) {
+e_id search_entity(ModelView *mv, int x, int y) {
     assert(mv);
     assert(mv->r);
 
@@ -216,6 +216,14 @@ e_id get_entity(ModelView *mv, int x, int y) {
         return NULL;
      //   */
 }
+
+Cell *search_cell(ModelView *mv, int x, int y) {
+    e_id e = search_entity(mv, x, y);
+    if (e.id == e_null.id) 
+        return NULL;
+    return e_get(mv->r, e, cmp_cell);
+}
+
 
 static int get_cell_count(ModelView *mv) {
     assert(mv);
@@ -300,7 +308,7 @@ static bool tmr_cell_draw(struct Timer *t) {
 
 void modelview_put_manual(struct ModelView *mv, int x, int y, int value) {
     /*struct Cell *cell = modelview_get_cell(mv, x, y, NULL);*/
-    e_id e = get_entity(mv, x, y);
+    e_id e = search_entity(mv, x, y);
     if (e.id == e_null.id) {
         e = create_cell(mv, x, y);
     }
@@ -497,16 +505,12 @@ void modelview_put(ModelView *mv) {
         // Максимальное количество проб клетки на возможность заполнения
         int j = mv->field_size * mv->field_size * 10; 
 
-        e_id e = get_entity(mv, x, y);
-
-        /*Cell *cell = modelview_get_cell(mv, x, y, NULL);*/
+        e_id e = search_entity(mv, x, y);
 
         while (e.id != e_null.id) {
             x = rand() % mv->field_size;
             y = rand() % mv->field_size;
-
-            /*cell = modelview_get_cell(mv, x, y, NULL);*/
-            e = get_entity(mv, x, y);
+            e = search_entity(mv, x, y);
 
             j--;
             if (j <= 0) {
@@ -569,21 +573,26 @@ static bool move(ModelView *mv, e_id cell_en, int x, int y, bool *touched) {
     Position *pos = e_get(mv->r, cell_en, cmp_position);
     assert(pos);
 
-    struct Transition *ef = e_get(mv->r, cell_en, cmp_transition);
-    if (!ef)
+    struct Transition *tr = e_get(mv->r, cell_en, cmp_transition);
+    if (!tr)
         return false;
     /*assert(ef);*/
 
     //if (cell->touched)
         //return has_move;
 
-    if (ef->anim_movement)
+    if (tr->anim_movement)
         return has_move;
 
     if (cell->dropped)
         return has_move;
 
-    e_id neighbour_e = get_entity(mv, x + mv->dx, y + mv->dy);
+    e_id neighbour_e = search_entity(mv, x + mv->dx, y + mv->dy);
+
+    /*
+    if (neighbour_e.id == e_null.id)
+        return has_move;
+        */
 
     Cell *neighbour_cell = e_get(r, neighbour_e, cmp_cell);
 
@@ -599,7 +608,7 @@ static bool move(ModelView *mv, e_id cell_en, int x, int y, bool *touched) {
 
     pos->x += mv->dx;
     pos->y += mv->dy;
-    ef->anim_movement = true;
+    tr->anim_movement = true;
 
     // Обновление счетчика движения
     // TODO: Показывать счетчик движений. 
@@ -659,7 +668,7 @@ static bool sum(
     if (cell->dropped) 
         return has_sum;
 
-    e_id neighbour_en = get_entity(mv, x + mv->dx, y + mv->dy);
+    e_id neighbour_en = search_entity(mv, x + mv->dx, y + mv->dy);
 
     if (neighbour_en.id == e_null.id) 
         return has_sum;
@@ -733,25 +742,11 @@ static bool do_action(struct ModelView *mv, Action action) {
     bool has_action = false;
     bool touched = false;
 
-    /*
     do {
         touched = false;
         for (int y = 0; y < mv->field_size; ++y) 
             for (int x = 0; x < mv->field_size; ++x) {
-                e_id cell_en = e_null;
-                Cell *cell = modelview_get_cell(mv, x, y, &cell_en);
-                if (!cell) continue;
-                if (action(mv, cell_en, x, y, &touched))
-                    has_action = true;
-        }
-    } while (touched);
-    */
-
-    do {
-        touched = false;
-        for (int y = 0; y < mv->field_size; ++y) 
-            for (int x = 0; x < mv->field_size; ++x) {
-                e_id cell_en = get_entity(mv, x, y);
+                e_id cell_en = search_entity(mv, x, y);
 
                 if (cell_en.id == e_null.id)
                     continue;
@@ -792,7 +787,7 @@ static void sort_numbers(struct ModelView *mv) {
     int idx = 0; // Количество клеток
     for (int y = 0; y < mv->field_size; y++)
         for (int x = 0; x < mv->field_size; x++) {
-            e_id e = get_entity(mv, x, y);
+            e_id e = search_entity(mv, x, y);
             Cell *cell = e_get(mv->r, e, cmp_cell);
             if (cell)
                 tmp[idx++].value = cell->value;
@@ -1170,7 +1165,7 @@ static void draw_numbers(ModelView *mv) {
 
     for (int y = 0; y < mv->field_size; y++) {
         for (int x = 0; x < mv->field_size; x++) {
-            e_id en = get_entity(mv, x, y);
+            e_id en = search_entity(mv, x, y);
             Cell *cell = e_get(mv->r, en, cmp_cell);
 
             if (!cell) continue;
@@ -1560,7 +1555,7 @@ static bool tmr_bomb_update(Timer *t) {
 static void make_ex(ModelView *mv, int x, int y) {
     e_id *e_2destroy = mv->e_2destroy;
 
-    e_id e = get_entity(mv, x, y);
+    e_id e = search_entity(mv, x, y);
     Cell *c = e_get(mv->r, e, cmp_cell);
 
     if (e.id == e_null.id)
@@ -1976,4 +1971,3 @@ void modelview_draw_gui(struct ModelView *mv) {
 #endif
 
 }
-
