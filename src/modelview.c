@@ -1665,13 +1665,13 @@ static void field_update(ModelView *mv) {
         mv->field[i] = e_null;
     }
 
-    int i = 0;
+    /*int i = 0;*/
     for (e_view v = e_view_create_single(mv->r, cmp_cell);
         e_view_valid(&v); e_view_next(&v)) {
         /*Cell *c = e_view_get(&v, cmp_cell);*/
         Position *c = e_get(mv->r, e_view_entity(&v), cmp_position);
         assert(c);
-        i++;
+        /*i++;*/
         mv->field[c->y * mv->field_size + c->x] = e_view_entity(&v);
     }
 

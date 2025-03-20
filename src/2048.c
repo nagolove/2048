@@ -75,6 +75,8 @@ int main(void) {
             .font_size_pixels = 40,
     });
 
+    //rlImGuiSetup();
+
     logger_init();
     inotifier_init();
 

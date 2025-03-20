@@ -278,6 +278,8 @@ static void stage_main_gui(Stage_Main *st) {
     igEnd();
     */
 
+    bool open = true;
+    igShowAboutWindow(&open);
     modelview_draw_gui(&main_view);
 }
 
