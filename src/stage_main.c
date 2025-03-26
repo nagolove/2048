@@ -6,7 +6,10 @@
 #include "koh_inotifier.h"
 #include "modelview.h"
 #include "koh_stages.h"
+
+#ifdef KOH_RLWR
 #include "rlwr.h"
+#endif
 
 typedef struct Stage_Main {
     Stage               parent;
@@ -16,7 +19,9 @@ typedef struct Stage_Main {
 static struct ModelView main_view;
 static Camera2D camera = { 0 };
 static lua_State *l = NULL;
+#ifdef RLWR
 static rlwr_t *rlwr = NULL;
+#endif
 static const char *init_lua = "assets/init.lua";
 static char error[256] = {};
 static void load_init_lua();
@@ -82,15 +87,23 @@ void mouse_swipe_cell(enum Direction *dir) {
 
 // Загрузка Луа машины
 static void load_init_lua() {
+#ifdef KOH_RLWR
     if (rlwr) {
         rlwr_free(rlwr);
         rlwr = NULL;
         l = NULL;
     }
+#endif
 
     trace("load_init:\n");
+
+#ifdef RLWR
     rlwr = rlwr_new();
     l = rlwr_state(rlwr);
+#else
+    l = luaL_newstate();
+#endif
+
     luaL_openlibs(l);
 
     lua_register(l, "pos_get", l_pos_get);
@@ -317,7 +330,12 @@ static void stage_main_draw(Stage_Main *st) {
 static void stage_main_shutdown(Stage_Main *st) {
     trace("stage_main_shutdown:\n");
 
+#ifdef KOH_RLWR
     rlwr_free(rlwr);
+#else
+    lua_close(l);
+#endif
+
     modelview_shutdown(&main_view);
 }
 

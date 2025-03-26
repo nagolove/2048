@@ -108,12 +108,12 @@ local function print_scores()
         --DrawText("HER", 0, 0, 100, RED)
 
         print(
-type(msg),
-type(x),
-type(y),
-type(fnt_size),
-type(RED)
- )
+            type(msg),
+            type(x),
+            type(y),
+            type(fnt_size),
+            type(RED)
+        )
 
         DrawText(msg, x, y, fnt_size, GREEN)
         print(5)

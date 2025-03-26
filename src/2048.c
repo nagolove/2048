@@ -95,6 +95,7 @@ int main(void) {
 
     //view_test = printing_test();
 #if defined(PLATFORM_WEB)
+    trace("main: PLATFORM_WEB\n");
     emscripten_set_main_loop_arg(update, NULL, target_fps, 1);
 #else
     SetTargetFPS(target_fps); 
