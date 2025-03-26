@@ -1965,9 +1965,6 @@ void modelview_shutdown(struct ModelView *mv) {
 void modelview_draw_gui(struct ModelView *mv) {
     assert(mv);
 
-#if !defined(PLATFORM_WEB)
     if (mv->use_gui) 
         gui(mv);
-#endif
-
 }
