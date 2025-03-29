@@ -18,6 +18,7 @@
 #include "koh_stage_sprite_loader.h"
 #include "koh_stage_sprite_loader2.h"
 #include "stage_main.h"
+#include "koh_common.h"
 
 #if defined(PLATFORM_WEB)
 #include <emscripten.h>
@@ -75,6 +76,11 @@ int main(void) {
             .font_size_pixels = 40,
     });
 
+#ifdef __wasm__
+    const char *imgui_state = local_storage_load("imgui");
+    igLoadIniSettingsFromMemory(imgui_state, strlen(imgui_state));
+#endif
+
     //rlImGuiSetup();
 
     logger_init();
@@ -102,6 +108,11 @@ int main(void) {
     while (!WindowShouldClose()) {
         update();
     }
+#endif
+
+#ifdef __wasm__
+    imgui_state = igSaveIniSettingsToMemory(NULL);
+    local_storage_save("imgui", imgui_state);
 #endif
 
     stage_free(ss);

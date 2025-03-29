@@ -6,10 +6,13 @@
 #include "koh_inotifier.h"
 #include "modelview.h"
 #include "koh_stages.h"
+#include "raylib_wrap.h"
 
 #ifdef KOH_RLWR
 #include "rlwr.h"
 #endif
+
+#define NO_LUA 
 
 typedef struct Stage_Main {
     Stage               parent;
@@ -18,10 +21,11 @@ typedef struct Stage_Main {
 
 static struct ModelView main_view;
 static Camera2D camera = { 0 };
+
+#ifdef NO_LUA
 static lua_State *l = NULL;
-#ifdef RLWR
-static rlwr_t *rlwr = NULL;
 #endif
+
 static const char *init_lua = "assets/init.lua";
 static char error[256] = {};
 static void load_init_lua();
@@ -105,6 +109,9 @@ static void load_init_lua() {
 #endif
 
     luaL_openlibs(l);
+
+    int res = luaopen_raylib(l);
+    printf("load_init_lua: luaopen_raylib = %d\n", res);
 
     lua_register(l, "pos_get", l_pos_get);
     lua_register(l, "state_get", l_state_get);

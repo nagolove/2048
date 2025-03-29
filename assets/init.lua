@@ -30,6 +30,17 @@ end
 -- Один раунд - с делением от 2048 до 2
 --]]
 
+print("HELLO FROM LUA")
+
+package.path = package.path .. ";assets/?.lua"
+local inspect = require "inspect"
+
+local rl = raylib
+
+--print("rl", inspect(rl))
+
+--rl.CloseWindow()
+
 is_draw_grid = true
 
 local format = string.format
@@ -48,12 +59,14 @@ local function print_win()
     local x, y = 0, 0
     local colord = 1
     local msg = "WIN"
-    local msg_w = MeasureText(msg, fnt_size)
-    local max_y, max_x = GetScreenWidth() - msg_w, GetScreenWidth() - msg_w
+    local msg_w = rl.MeasureText(msg, fnt_size)
+    -- XXX: Почему y рассчитывается от ширины, а не высоты
+    local max_y, max_x = 
+            rl.GetScreenWidth() - msg_w, rl.GetScreenWidth() - msg_w
     local c = RED
 
     while true do
-        DrawText(msg, x, j, fnt_size, c)
+        rl.DrawText(msg, x, j, fnt_size, c)
         
         color[1] = color[1] + colord
         color[2] = color[2] + colord
@@ -96,10 +109,10 @@ local function print_scores()
         local msg = format("SCORES %d", scores)
         print('msg', msg)
         print(2)
-        local msg_w = MeasureText(msg, fnt_size)
+        local msg_w = rl.MeasureText(msg, fnt_size)
         print(3)
 
-        local x = (GetScreenWidth() - msg_w) / 2.
+        local x = (rl.GetScreenWidth() - msg_w) / 2.
         local y = 0.
         --local x, y = 0, 0
         print('x, y', x, y)
@@ -115,7 +128,7 @@ local function print_scores()
             type(RED)
         )
 
-        DrawText(msg, x, y, fnt_size, GREEN)
+        rl.DrawText(msg, x, y, fnt_size, GREEN)
         print(5)
         print('print_scores yield')
         scores = coroutine.yield()
@@ -167,7 +180,7 @@ local function draw_grid()
                     qw - space * 2
                 )
 
-                DrawRectangleRounded(rect, roundness, segments, color)
+                rl.DrawRectangleRounded(rect, roundness, segments, color)
             end
         end
 
@@ -188,9 +201,9 @@ local function print_gameover()
     local colord = 1
 
     while true do
-        local c = Color(ceil(color[1]), ceil(color[2]), ceil(color[3]))
+        local c = rl.Color(ceil(color[1]), ceil(color[2]), ceil(color[3]))
 
-        DrawText("GAVEOVER", x, j, fnt_size, c)
+        rl.DrawText("GAVEOVER", x, j, fnt_size, c)
 
         color[1] = color[1] + colord
         color[2] = color[2] + colord
@@ -203,12 +216,12 @@ local function print_gameover()
         end
 
         j = j + 10
-        if j > GetScreenHeight() then
+        if j > rl.GetScreenHeight() then
             j = -fnt_size
         end
 
         x = x + random(10)
-        if x > GetScreenWidth() then
+        if x > rl.GetScreenWidth() then
             x = 0
         end
 
@@ -221,7 +234,7 @@ end
 local function cross_remove()
     while true do
         print('cross_remove')
-        DrawText("BANG", 100, RED)
+        rl.DrawText("BANG", 100, RED)
         coroutine.yield()
     end
 end
@@ -281,7 +294,6 @@ function cross_remove()
 end
 
 print("init.lua loaded")
-
 
 print("state_get", state_get())
 print("scores_get", scores_get())
