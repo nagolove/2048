@@ -198,6 +198,7 @@ typedef struct Setup {
 
 void modelview_init(ModelView *mv, Setup setup);
 void modelview_put_manual(ModelView *mv, int x, int y, int value);
+void modelview_put_cell(struct ModelView *mv, int x, int y, int value);
 void modelview_put(ModelView *mv);
 void modelview_shutdown(ModelView *mv);
 void modelview_save_state2file(ModelView *mv);

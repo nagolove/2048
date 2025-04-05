@@ -51,6 +51,7 @@ static void io_restore() {
 }
 */
 
+/*
 void setup_field(struct ModelView *mv, const int values[5][5]) {
     assert(mv);
     for (int y = 0; y < 5; ++y)
@@ -58,6 +59,7 @@ void setup_field(struct ModelView *mv, const int values[5][5]) {
             if (values[y][x])
                 modelview_put_manual(mv, x, y, values[y][x]);
 }
+*/
 
 /*
 void print_field(struct ModelView *mv) {

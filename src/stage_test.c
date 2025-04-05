@@ -23,7 +23,13 @@ static void stage_test_init(Stage_Test *st) {
     //main_view_setup.on_init_lua = load_init_lua;
 
     modelview_init(&test_view, modelview_setup);
-    modelview_put(&test_view);
+
+    // Начальный ход
+    /*modelview_put(&test_view);*/
+
+    ModelView *mv = &test_view;
+    modelview_put_cell(mv, 0, 0, 2);
+    modelview_put_cell(mv, 1, 0, 2);
 }
 
 static void stage_test_update(Stage_Test *st) {

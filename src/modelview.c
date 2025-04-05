@@ -308,8 +308,8 @@ static bool tmr_cell_draw(struct Timer *t) {
     return false;
 }
 
+/*
 void modelview_put_manual(struct ModelView *mv, int x, int y, int value) {
-    /*struct Cell *cell = modelview_get_cell(mv, x, y, NULL);*/
     e_id e = search_entity(mv, x, y);
     if (e.id == e_null.id) {
         e = create_cell(mv, x, y);
@@ -322,6 +322,7 @@ void modelview_put_manual(struct ModelView *mv, int x, int y, int value) {
     Cell *c = e_get(mv->r, e, cmp_cell);
     c->value = value;
 }
+*/
 
 // XXX: Пульсация чего?
 static bool tmr_pulsation_update(struct Timer *t) {
@@ -353,7 +354,7 @@ static void tmr_pulsation_stop(Timer *t) {
 
 // TODO: Добавить анимацию при создании клетки. 
 // Как цифры появляются из центра ячейки.
-static void modelview_put_cell(struct ModelView *mv, int x, int y, int value) {
+void modelview_put_cell(struct ModelView *mv, int x, int y, int value) {
     assert(mv);
     assert(x >= 0);
     assert(x < mv->field_size);
@@ -361,11 +362,9 @@ static void modelview_put_cell(struct ModelView *mv, int x, int y, int value) {
     assert(y < mv->field_size);
 
     e_id cell_en = create_cell(mv, x, y);
-
     Cell *cell = e_get(mv->r, cell_en, cmp_cell);
 
     cell->value = value;
-
     cell->dropped = false;
 
     assert(cell->value >= 0);
@@ -482,24 +481,23 @@ static void bomb_put(ModelView *mv, int x, int y) {
 // TODO: Чем более крупная фишка есть на поле, тем более крупная может выпадать
 // ячейка, но до определенного предела.
 
-static void gen_value(ModelView *mv) {
+static int gen_value(ModelView *mv) {
     int value = -1;
-    if ((double)rand() / (double)RAND_MAX > chance_bomb) {
-        float v = (float)rand() / (float)RAND_MAX;
-        if (mv->strong) {
-            if (v >= 0. && v < 0.9) {
-                value = 1;
-            } else {
-                value = 3;
-            }
+    float v = (float)rand() / (float)RAND_MAX;
+    if (mv->strong) {
+        if (v >= 0. && v < 0.9) {
+            value = 1;
         } else {
-            if (v >= 0. && v < 0.9) {
-                value = 2;
-            } else {
-                value = 4;
-            }
+            value = 3;
         }
-        return value;
+    } else {
+        if (v >= 0. && v < 0.9) {
+            value = 2;
+        } else {
+            value = 4;
+        }
+    }
+    return value;
 }
 
 // Разместить новую клетку или бомбу
@@ -529,21 +527,23 @@ void modelview_put(ModelView *mv) {
             }
         }
 
+        int value = gen_value(mv);
         if (mv->use_bonus) {
             if (mv->next_bomb) {
                 bomb_put(mv, x, y);
                 mv->next_bomb = false;
             } else {
-
-
+                if ((double)rand() / (double)RAND_MAX > chance_bomb)
                     modelview_put_cell(mv, x, y, value);
-                } else {
+                else
                     bomb_put(mv, x, y);
-                }
             }
-        } else
-            modelview_put_cell(mv, x, y);
+        } else {
+            modelview_put_cell(mv, x, y, value);
+        }
+
     }
+
 }
 
 static bool entity_in_bounds(ModelView *mv, e_id e) {
