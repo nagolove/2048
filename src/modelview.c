@@ -50,6 +50,7 @@ typedef struct TimerData {
     e_id        e;
 } TimerData;
 
+/*
 const struct ColorTheme color_theme_dark = {
                             .background = BLACK,
                             .foreground = RAYWHITE,
@@ -58,6 +59,7 @@ const struct ColorTheme color_theme_dark = {
                             .background = RAYWHITE,
                             .foreground = BLACK,
                         };
+*/
 
 typedef struct DrawOpts {
     int                 fontsize;
@@ -351,7 +353,7 @@ static void tmr_pulsation_stop(Timer *t) {
 
 // TODO: Добавить анимацию при создании клетки. 
 // Как цифры появляются из центра ячейки.
-static void modelview_put_cell(struct ModelView *mv, int x, int y) {
+static void modelview_put_cell(struct ModelView *mv, int x, int y, int value) {
     assert(mv);
     assert(x >= 0);
     assert(x < mv->field_size);
@@ -362,21 +364,8 @@ static void modelview_put_cell(struct ModelView *mv, int x, int y) {
 
     Cell *cell = e_get(mv->r, cell_en, cmp_cell);
 
-    float v = (float)rand() / (float)RAND_MAX;
+    cell->value = value;
 
-    if (mv->strong) {
-        if (v >= 0. && v < 0.9) {
-            cell->value = 1;
-        } else {
-            cell->value = 3;
-        }
-    } else {
-        if (v >= 0. && v < 0.9) {
-            cell->value = 2;
-        } else {
-            cell->value = 4;
-        }
-    }
     cell->dropped = false;
 
     assert(cell->value >= 0);
@@ -493,6 +482,26 @@ static void bomb_put(ModelView *mv, int x, int y) {
 // TODO: Чем более крупная фишка есть на поле, тем более крупная может выпадать
 // ячейка, но до определенного предела.
 
+static void gen_value(ModelView *mv) {
+    int value = -1;
+    if ((double)rand() / (double)RAND_MAX > chance_bomb) {
+        float v = (float)rand() / (float)RAND_MAX;
+        if (mv->strong) {
+            if (v >= 0. && v < 0.9) {
+                value = 1;
+            } else {
+                value = 3;
+            }
+        } else {
+            if (v >= 0. && v < 0.9) {
+                value = 2;
+            } else {
+                value = 4;
+            }
+        }
+        return value;
+}
+
 // Разместить новую клетку или бомбу
 void modelview_put(ModelView *mv) {
    
@@ -514,6 +523,7 @@ void modelview_put(ModelView *mv) {
 
             j--;
             if (j <= 0) {
+                trace("modeltest_put: too much iterations\n");
                 // спасение бегством от бесконечного цикла
                 return;
             }
@@ -524,10 +534,12 @@ void modelview_put(ModelView *mv) {
                 bomb_put(mv, x, y);
                 mv->next_bomb = false;
             } else {
-                if ((double)rand() / (double)RAND_MAX > chance_bomb)
-                    modelview_put_cell(mv, x, y);
-                else
+
+
+                    modelview_put_cell(mv, x, y, value);
+                } else {
                     bomb_put(mv, x, y);
+                }
             }
         } else
             modelview_put_cell(mv, x, y);
@@ -841,7 +853,7 @@ static void draw_grid(struct ModelView *mv) {
     for (int u = 0; u <= mv->field_size; u++) {
         Vector2 end = tmp;
         end.y += field_width;
-        DrawLineEx(tmp, end, thick, mv->color_theme.foreground);
+        DrawLineEx(tmp, end, thick, BLACK);
         tmp.x += mv->quad_width;
     }
 
@@ -849,7 +861,7 @@ static void draw_grid(struct ModelView *mv) {
     for (int u = 0; u <= mv->field_size; u++) {
         Vector2 end = tmp;
         end.x += field_width;
-        DrawLineEx(tmp, end, thick, mv->color_theme.foreground);
+        DrawLineEx(tmp, end, thick, BLACK);
         tmp.y += mv->quad_width;
     }
 }
@@ -1406,7 +1418,7 @@ static void options_window(struct ModelView *mv) {
             .use_gui = mv->use_gui,
             .use_bonus = use_bonus,
             .use_fnt_vector = use_fnt_vector,
-            .color_theme = theme_light ? color_theme_light : color_theme_dark,
+            /*.color_theme = theme_light ? color_theme_light : color_theme_dark,*/
             .on_init_lua = mv->on_init_lua,
         };
         modelview_init(mv, setup);
@@ -1678,6 +1690,22 @@ static void field_update(ModelView *mv) {
     /*trace("field_update: cmp_cell num %d\n", i);*/
 }
 
+Vector2 place_center(const char *text, int fontsize) {
+    float width = MeasureText(text, fontsize);
+    return (Vector2) {
+        .x = (GetScreenWidth() - width) / 2.,
+        .y = (GetScreenWidth() - fontsize) / 2.,
+    };
+}
+
+static void draw_scores(ModelView *mv) {
+    char msg[64] = {0};
+    const int fontsize = 70;
+    sprintf(msg, "scores: %d", mv->scores);
+    Vector2 pos = place_center(msg, fontsize);
+    DrawText(msg, pos.x, pos.y, fontsize, BLUE);
+}
+
 bool modelview_draw(ModelView *mv) {
     /*trace("modelview_draw:\n");*/
     assert(mv);
@@ -1758,10 +1786,12 @@ bool modelview_draw(ModelView *mv) {
 
 
     sort_numbers(mv);
-    ClearBackground(mv->color_theme.background);
+    ClearBackground(RAYWHITE);
     if (mv->draw_field)
         draw_grid(mv);
     draw_numbers(mv);
+
+    draw_scores(mv);
 
     return dir_none;
 }
@@ -1857,7 +1887,7 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->auto_put = setup.auto_put;
     mv->use_bonus = setup.use_bonus;
     mv->font_spacing = 2.;
-    mv->color_theme = setup.color_theme;
+    //mv->color_theme = setup.color_theme;
 
     // XXX: Утечка из-за глобальной переменной?
     //ecs_circ_buf_init(&ecs_buf, 2048);
@@ -1968,3 +1998,10 @@ void modelview_draw_gui(struct ModelView *mv) {
     if (mv->use_gui) 
         gui(mv);
 }
+
+void modelview_pause_set(ModelView *mv, bool is_paused) {
+    assert(mv);
+    timerman_pause(mv->timers_slides, is_paused);
+    timerman_pause(mv->timers_effects, is_paused);
+}
+

@@ -3,6 +3,7 @@
 
 #include "stage_main.h"
 
+#include "common.h"
 #include "koh_inotifier.h"
 #include "modelview.h"
 #include "koh_stages.h"
@@ -15,12 +16,12 @@
 #define NO_LUA 
 
 typedef struct Stage_Main {
-    Stage               parent;
-    bool                is_paused;
+    Stage    parent;
+    bool     is_paused;
+    Camera2D camera;
 } Stage_Main;
 
 static struct ModelView main_view;
-static Camera2D camera = { 0 };
 
 #ifdef NO_LUA
 static lua_State *l = NULL;
@@ -29,18 +30,8 @@ static lua_State *l = NULL;
 static const char *init_lua = "assets/init.lua";
 static char error[256] = {};
 static void load_init_lua();
-static struct Setup main_view_setup = {
-    .use_bonus = false,
-    .cam = &camera,
-    .field_size = 6,
-    .tmr_block_time = 0.05,
-    .tmr_put_time = 0.05,
-    .use_gui = true,
-    .auto_put = true,
-    .win_value = 2048,
-    .on_init_lua = load_init_lua,
-};
-static bool is_paused = false;
+
+/*static bool is_paused = false;*/
 
 // {{{ l_***
 int l_field_size_get(lua_State *l) {
@@ -137,131 +128,14 @@ void hotreload(const char *fname, void *ud) {
     inotifier_watch(init_lua, hotreload, NULL);
 }
 
-static void keyboard_swipe_cell(enum Direction *dir) {
-#define N 2
-    struct {
-        enum Direction  dir;
-        int             key[N];
-    } keys_dirs[] = {
-        {DIR_LEFT, { KEY_LEFT, KEY_H} },
-        {DIR_RIGHT, { KEY_RIGHT, KEY_L} },
-        {DIR_UP, { KEY_UP, KEY_J} },
-        {DIR_DOWN, { KEY_DOWN, KEY_K} },
-    };
-
-    size_t dirs_num = sizeof(keys_dirs) / sizeof(keys_dirs[0]);
-    for (int j = 0; j < dirs_num; ++j) {
-        for (int k = 0; k < N; k++) {
-            if (IsKeyPressed(keys_dirs[j].key[k])) {
-                *dir = keys_dirs[j].dir;
-                break;
-            }
-        }
-    } 
-#undef N
-}
-
-static void input() {
-    // Закончилась-ли анимация?
-    if (main_view.state != MVS_READY)
-        return;
-
-    enum Direction dir = {0};
-
-    //mouse_swipe_cell(&dir);
-    keyboard_swipe_cell(&dir);
-
-    // TODO: куда лучше переместить проверку так, что-бы была возможность
-    // запускать автоматические тесты, без создания новой плитки каждый ход
-    //if (main_view.dir == DIR_NONE)
-        //modelview_put(&main_view);
-
-    modelview_input(&main_view, dir);
-    //modelview_save_state2file(&main_view);
-}
-
-Vector2 place_center(const char *text, int fontsize) {
-    float width = MeasureText(text, fontsize);
-    return (Vector2) {
-        .x = (GetScreenWidth() - width) / 2.,
-        .y = (GetScreenWidth() - fontsize) / 2.,
-    };
-}
-
-void draw_win() {
-    const char *msg = "WIN";
-    const int fontsize = 220;
-    Vector2 pos = place_center(msg, fontsize);
-    DrawText(msg, pos.x, pos.y, fontsize, MAROON);
-}
-
-void draw_over() {
-    const char *msg = "GAMEOVER";
-    const int fontsize = 190;
-    Vector2 pos = place_center(msg, fontsize);
-    DrawText(msg, pos.x, pos.y, fontsize, GREEN);
-}
-
-void draw_scores() {
-    char msg[64] = {0};
-    const int fontsize = 70;
-    sprintf(msg, "scores: %d", main_view.scores);
-    Vector2 pos = place_center(msg, fontsize);
-
-#if defined(PLATFORM_WEB)
-    pos.y = 1.0 * fontsize;
-#else
-    pos.y = 1.0 * fontsize;
-#endif
-
-    DrawText(msg, pos.x, pos.y, fontsize, BLUE);
-}
-
-void camera_process() {
-    if (IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE)) {
-        camera.zoom = 1.;
-        camera.offset = (Vector2) { 0., 0. };
-    }
-
-    if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT))
-    {
-        Vector2 delta = GetMouseDelta();
-        delta = Vector2Scale(delta, -1.0f/camera.zoom);
-
-        camera.target = Vector2Add(camera.target, delta);
-    }
-
-    // Zoom based on mouse wheel
-    float wheel = GetMouseWheelMove();
-    if (wheel != 0)
-    {
-        // Get the world point that is under the mouse
-        Vector2 mouseWorldPos = GetScreenToWorld2D(GetMousePosition(), camera);
-
-        // Set the offset to where the mouse is
-        camera.offset = GetMousePosition();
-
-        // Set the target to match, so that the camera maps the world space point 
-        // under the cursor to the screen space point under the cursor at any zoom
-        camera.target = mouseWorldPos;
-
-        // Zoom increment
-        const float zoomIncrement = 0.125f;
-
-        camera.zoom += (wheel*zoomIncrement);
-        if (camera.zoom < zoomIncrement) camera.zoom = zoomIncrement;
-    }
-}
-
-//////////////////////////////////////////////
-
 static void stage_main_init(Stage_Main *st) {
     trace("stage_main_new:\n");
-    //st->cam.zoom = 1.f;
-    camera.zoom = 1.f;
+    st->camera.zoom = 1.f;
 
-    main_view_setup.color_theme = color_theme_light,
-    modelview_init(&main_view, main_view_setup);
+    modelview_setup.cam = &st->camera;
+    modelview_setup.on_init_lua = load_init_lua;
+
+    modelview_init(&main_view, modelview_setup);
     inotifier_watch(init_lua, hotreload, NULL);
     modelview_put(&main_view);
 
@@ -271,21 +145,22 @@ static void stage_main_update(Stage_Main *st) {
     /*trace("stage_main_update:\n");*/
 
     if (IsKeyPressed(KEY_P)) {
-        is_paused = !is_paused;
+        st->is_paused = !st->is_paused;
     }
 
     /*
     if (IsKeyPressed(KEY_R)) {
         modelview_shutdown(&main_view);
-        modelview_init(&main_view, main_view_setup);
+        modelview_init(&main_view, modelview_setup);
         main_view.on_init_lua = load_init_lua;
         modelview_put(&main_view);
     }
     */
 
-    camera_process();
-    timerman_pause(main_view.timers_slides, is_paused);
-    timerman_pause(main_view.timers_effects, is_paused);
+    camera_process(&st->camera);
+
+    // Если нужно, то установить паузу
+    modelview_pause_set(&main_view, st->is_paused);
 }
 
 static void stage_main_gui(Stage_Main *st) {
@@ -305,7 +180,7 @@ static void stage_main_gui(Stage_Main *st) {
 
 static void stage_main_draw(Stage_Main *st) {
     BeginDrawing();
-    BeginMode2D(camera);
+    BeginMode2D(st->camera);
     ClearBackground(RAYWHITE);
 
     static bool is_ok = false;
@@ -318,10 +193,9 @@ static void stage_main_draw(Stage_Main *st) {
     L_pcall(l, "draw_bottom", &is_ok);
 
     if (main_view.state != MVS_GAMEOVER)
-        input();
-    modelview_draw(&main_view);
+        input(&main_view);
 
-    draw_scores();
+    modelview_draw(&main_view);
 
     if (strlen(error))
         DrawText(error, 0, 0, 70, BLACK);
@@ -331,7 +205,6 @@ static void stage_main_draw(Stage_Main *st) {
         strncpy(error, pcall_err, sizeof(error));
 
     EndMode2D();
-
 }
 
 static void stage_main_shutdown(Stage_Main *st) {

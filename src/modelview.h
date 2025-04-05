@@ -93,9 +93,11 @@ enum ModelViewState {
     MVS_GAMEOVER,
 };
 
+/*
 struct ColorTheme {
     Color   background, foreground;
 };
+*/
 
 // }}}
 
@@ -167,7 +169,7 @@ typedef struct ModelView {
     float               font_spacing,
                         // XXX: Толщина чего?
                         thick;
-    struct ColorTheme   color_theme;
+    /*struct ColorTheme   color_theme;*/
     void                *test_payload;
                         // значение на клетке для победы
     int                 win_value,
@@ -190,13 +192,12 @@ typedef struct Setup {
     float               tmr_put_time, tmr_block_time;
     bool                use_gui, auto_put;
     bool                use_bonus, use_fnt_vector;
-    struct ColorTheme   color_theme;
+    //struct ColorTheme   color_theme;
     void                (*on_init_lua)();
 } Setup;
 
 void modelview_init(ModelView *mv, Setup setup);
 void modelview_put_manual(ModelView *mv, int x, int y, int value);
-//void modelview_put_cell(ModelView *mv, Cell cell);
 void modelview_put(ModelView *mv);
 void modelview_shutdown(ModelView *mv);
 void modelview_save_state2file(ModelView *mv);
@@ -206,5 +207,6 @@ void modelview_draw_gui(ModelView *mv);
 void modelview_input(ModelView *mv, enum Direction dir);
 /*Cell *modelview_get_cell(ModelView *mv, int x, int y, e_id *en);*/
 char *modelview_state2str(enum ModelViewState state);
+void modelview_pause_set(ModelView *mv, bool is_paused);
 
 extern e_cp_type cmp_cell, cmp_bomb, cmp_position, cmp_transition;

@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include "stage_test.h"
 #include "koh_stages.h"
 #include "koh_stage_sprite_loader.h"
 #include "koh_stage_sprite_loader2.h"
@@ -94,6 +95,7 @@ int main(void) {
 
     ss = stage_new(NULL);
     stage_add(ss, stage_main_new(NULL), "main");
+    stage_add(ss, stage_test_new(NULL), "test");
     stage_add(ss, stage_sprite_loader_new(NULL), "sprite_loader");
     stage_add(ss, stage_sprite_loader_new2(NULL), "sprite_loader2");
     stage_init(ss);
