@@ -28,19 +28,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <ctype.h>
 
 // {{{ debug shit zone
 #define GLOBAL_CELLS_CAP    100000
-
-//static struct Cell global_cells[GLOBAL_CELLS_CAP] = {0};
-/*static int global_cells_num = 0;*/
-/*static struct Cell cell_zero = {0};*/
 
 // XXX: зачем нужна переменная last_state?
 static int *last_state = NULL;
 static bool is_draw_grid = true;
 
-//static struct ecs_circ_buf  ecs_buf = {0};
 static struct ModelTest     model_checker = {0};
 
 // }}} end of debug shit zone
@@ -49,17 +45,6 @@ typedef struct TimerData {
     ModelView   *mv;
     e_id        e;
 } TimerData;
-
-/*
-const struct ColorTheme color_theme_dark = {
-                            .background = BLACK,
-                            .foreground = RAYWHITE,
-                        },
-                        color_theme_light = {
-                            .background = RAYWHITE,
-                            .foreground = BLACK,
-                        };
-*/
 
 typedef struct DrawOpts {
     int                 fontsize;
@@ -219,13 +204,12 @@ e_id search_entity(ModelView *mv, int x, int y) {
      //   */
 }
 
-Cell *search_cell(ModelView *mv, int x, int y) {
+Cell *modelview_cell_search(ModelView *mv, int x, int y) {
     e_id e = search_entity(mv, x, y);
     if (e.id == e_null.id) 
         return NULL;
     return e_get(mv->r, e, cmp_cell);
 }
-
 
 static int get_cell_count(ModelView *mv) {
     assert(mv);
@@ -308,22 +292,6 @@ static bool tmr_cell_draw(struct Timer *t) {
     return false;
 }
 
-/*
-void modelview_put_manual(struct ModelView *mv, int x, int y, int value) {
-    e_id e = search_entity(mv, x, y);
-    if (e.id == e_null.id) {
-        e = create_cell(mv, x, y);
-    }
-
-    Position *pos = e_get(mv->r, e, cmp_position);
-    pos->x = x;
-    pos->y = y;
-
-    Cell *c = e_get(mv->r, e, cmp_cell);
-    c->value = value;
-}
-*/
-
 // XXX: Пульсация чего?
 static bool tmr_pulsation_update(struct Timer *t) {
     TimerData *td = t->data;
@@ -355,6 +323,7 @@ static void tmr_pulsation_stop(Timer *t) {
 // TODO: Добавить анимацию при создании клетки. 
 // Как цифры появляются из центра ячейки.
 void modelview_put_cell(struct ModelView *mv, int x, int y, int value) {
+    assert(value > 0);
     assert(mv);
     assert(x >= 0);
     assert(x < mv->field_size);
@@ -561,13 +530,6 @@ static bool entity_in_bounds(ModelView *mv, e_id e) {
         return false;
     if (pos->y + mv->dy < 0)
         return false;
-
-    /*
-    return !(pos->x + mv->dx >= mv->field_size ||
-             pos->x + mv->dx < 0 ||
-             pos->y + mv->dy >= mv->field_size ||
-             pos->y + mv->dy < 0);
-     */
 
     return true;
 }
@@ -877,21 +839,6 @@ static Color get_color(ModelView *mv, int cell_value) {
     return colors[colors_num - 1];
 }
 
-/*
-static Vector2 decrease_font_size_colored(
-    struct ModelView *mv, const struct ColoredText *texts, int texts_num,
-    int *fontsize, Vector2 text_bound
-) {
-    Vector2 textsize = {};
-    do {
-        textsize = MeasureTextEx(
-            mv->font, msg, (*fontsize)--, mv->font_spacing
-        );
-    } while (textsize.x > text_bound.x || textsize.y > text_bound.y);
-    return textsize;
-}
-*/
-
 // Уменьшает размер шрифта до тех пор, пока данный текст msg не влезет по 
 // ширине в text_bound
 static Vector2 decrease_font_size(
@@ -953,8 +900,6 @@ static Vector2 calc_base_pos(ModelView *mv, e_id en, DrawOpts opts) {
 
     if (ef->anim_movement) {
         base_pos = (Vector2) {
-            //Lerp(pos->x, pos->x + mv->dx, opts.amount),
-            //Lerp(pos->y, pos->y + mv->dy, opts.amount),
             Lerp(pos->x - mv->dx, pos->x, opts.amount),
             Lerp(pos->y - mv->dy, pos->y, opts.amount),
         };
@@ -1707,6 +1652,7 @@ static void draw_scores(ModelView *mv) {
 }
 
 bool modelview_draw(ModelView *mv) {
+    // {{{
     /*trace("modelview_draw:\n");*/
     assert(mv);
 
@@ -1794,6 +1740,7 @@ bool modelview_draw(ModelView *mv) {
     draw_scores(mv);
 
     return dir_none;
+    // }}}
 }
 
 void modelview_lua_after_load(struct ModelView *mv, lua_State *l) {
@@ -1805,8 +1752,8 @@ void modelview_lua_after_load(struct ModelView *mv, lua_State *l) {
 }
 
 void modelview_init(ModelView *mv, Setup setup) {
+    // {{{
     assert(mv);
-    /*memset(mv, 0, sizeof(*mv));*/
 
     assert(setup.field_size > 1);
     last_state = NULL;
@@ -1855,13 +1802,10 @@ void modelview_init(ModelView *mv, Setup setup) {
     assert(mv->quad_width > 0);
 
     const int field_width = mv->field_size * mv->quad_width;
-    //if (!setup.pos) {
         mv->pos = (Vector2){
             .x = (GetScreenWidth() - field_width) / 2.,
             .y = (GetScreenHeight() - field_width) / 2.,
         };
-    /*} else */
-        /*mv->pos = *setup.pos;*/
 
     mv->timers_slides = timerman_new(
         mv->field_size * mv->field_size * 2, "slides"
@@ -1887,10 +1831,6 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->auto_put = setup.auto_put;
     mv->use_bonus = setup.use_bonus;
     mv->font_spacing = 2.;
-    //mv->color_theme = setup.color_theme;
-
-    // XXX: Утечка из-за глобальной переменной?
-    //ecs_circ_buf_init(&ecs_buf, 2048);
 
     assert(setup.tmr_block_time > 0.);
     assert(setup.tmr_put_time > 0.);
@@ -1898,19 +1838,15 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->tmr_put_time = setup.tmr_put_time;
 
     modeltest_init(&model_checker, mv->field_size);
-    /*
-    FILE *file = fopen("state.txt", "w");
-    if (file)
-        fclose(file);
-    */
+
     mv->font = load_font_unicode(
         "assets/jetbrains_mono.ttf", dflt_draw_opts.fontsize
     );
     mv->sorted = calloc(cells_num, sizeof(mv->sorted[0]));
 
-    /*global_cells_num = 0;*/
-    mv->font_vector = fnt_vector_new("assets/djv.ttf", &(FntVectorOpts) { .line_thick = 10.f,
-    });
+    mv->font_vector = fnt_vector_new(
+        "assets/djv.ttf", &(FntVectorOpts) { .line_thick = 10.f, }
+    );
 
     mv->text_opts = (ColoredTextOpts) {
         .font_bitmap = &mv->font,
@@ -1929,9 +1865,11 @@ void modelview_init(ModelView *mv, Setup setup) {
         trace("modeltest_init:\n");
         mv->on_init_lua();
     }
+    // }}}
 }
 
 void modelview_shutdown(struct ModelView *mv) {
+    // {{{
     assert(mv);
 
     res_unload_all(&mv->reslist, true);
@@ -1990,6 +1928,7 @@ void modelview_shutdown(struct ModelView *mv) {
     }
     modeltest_shutdown(&model_checker);
     mv->dropped = true;
+    // }}}
 }
 
 void modelview_draw_gui(struct ModelView *mv) {
@@ -2005,3 +1944,22 @@ void modelview_pause_set(ModelView *mv, bool is_paused) {
     timerman_pause(mv->timers_effects, is_paused);
 }
 
+Direction str2direction(const char *str) {
+    char buf[64] = {};
+    strncpy(buf, str, sizeof(buf));
+
+    for (int i = 0; i < strlen(buf); i++) {
+        buf[i] = tolower(buf[i]);
+    }
+
+    if (strcmp(buf, "left") == 0)
+        return DIR_LEFT;
+    else if (strcmp(buf, "right") == 0)
+        return DIR_RIGHT;
+    else if (strcmp(buf, "up") == 0)
+        return DIR_UP;
+    else if (strcmp(buf, "down") == 0)
+        return DIR_DOWN;
+
+    return DIR_NONE;
+}
