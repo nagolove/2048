@@ -3,6 +3,7 @@
 
 #include "stage_test.h"
 
+#include "koh_common.h"
 #include "common.h"
 #include "modelview.h"
 #include "koh_stages.h"
@@ -26,10 +27,11 @@ typedef struct TestSet {
     // Входные данные
     char *x[T_X_SIZE];
     // Был ли произведен ввод?
-    bool input_done;
+    bool input_done, assert_done;
     // Индекс в массиве x, где находится курсор считывающий команды в данный
     // момент
     int idx;
+    const char *description;
 } TestSet;
 
 // XXX: Можно-ли сделать так, что все одинаковые подряд цифры сложатся?
@@ -58,8 +60,7 @@ static TestSet sets[] = {
             NULL,
 
         },
-        .input_done = false,
-        .idx = 0,
+        .description = "проба",
     },
 };
 static int set_current = 0;
@@ -68,6 +69,13 @@ static void t_set(ModelView *mv, TestSet *ts) {
     assert(mv);
     assert(mv->field_size == T_FIELD_SIZE);
     assert(ts);
+
+    int i = 0;
+    while (ts->x[i++]);
+    assert(i == T_X_SIZE);
+
+    ts->input_done = false;
+    ts->idx = 0;
 
     int *idx = &ts->idx;
     assert(*idx >= 0);
@@ -90,14 +98,55 @@ static void t_assert(ModelView *mv, TestSet *ts) {
     if (mv->state != MVS_READY)
         return;
 
-    int *idx = &ts->idx;
-    if (ts->input_done) {
-        char *elem = NULL;
-        do {
-            elem = ts->x[(*idx)++];
-            trace("t_assert: '%s'\n", elem);
-        } while (elem);
+    // Проверка производится только после ввода
+    if (!ts->input_done) {
+        return;
     }
+
+    // Проверка производится только один раз
+    if (ts->assert_done)
+        return;
+
+    trace("t_assert: '%s'\n", ts->description);
+    trace("t_assert: idx %d\n", ts->idx);
+    //trace("t_assert: x '%s'\n", ts->x[ts->idx]);
+
+    int *idx = &ts->idx;
+
+    for (int y = 0; y < T_FIELD_SIZE; y++) {
+        for (int x = 0; x < T_FIELD_SIZE; x++) {
+            int val = -1;
+            sscanf(ts->x[*idx], "%d", &val);
+            trace("t_assert: val %d\n", val);
+
+            if (val != -1) {
+                //modelview_put_cell(mv, x, y, val);
+                Cell *cell = modelview_search_cell(mv, x, y);
+                if (!cell) {
+                    koh_term_color_set(KOH_TERM_RED);
+                    trace("t_assert: no cell at [%d, %d]\n", x, y);
+                    koh_term_color_reset();
+
+                    exit(EXIT_FAILURE);
+                }
+
+                if (cell->value != val) {
+                    trace(
+                        "t_assert: cell->value == %d, "
+                        "but should be equal %d\n",
+                        cell->value,
+                        val
+                    );
+
+                    exit(EXIT_FAILURE);
+                }
+            }
+
+            (*idx)++;
+        }
+    }
+
+    ts->assert_done = true;
 }
 
 static void t_input(ModelView *mv, TestSet *ts) {
@@ -106,7 +155,9 @@ static void t_input(ModelView *mv, TestSet *ts) {
         return;
 
     if (!ts->input_done) {
-        enum Direction dir = str2direction(ts->x[ts->idx++]);
+        const char *dirstr = ts->x[ts->idx++];
+        trace("t_input: applying direction '%s'\n", dirstr);
+        enum Direction dir = str2direction(dirstr);
         modelview_input(mv, dir);
         ts->input_done = true;
     }
@@ -121,16 +172,15 @@ typedef struct Stage_Test {
 static struct ModelView test_view;
 
 static void stage_test_init(Stage_Test *st) {
-    trace("stage_test_new:\n");
+    trace("stage_test_init: T_X_SIZE %d \n", (int)T_X_SIZE);
     st->camera.zoom = 1.f;
 
     modelview_setup.cam = &st->camera;
     //main_view_setup.on_init_lua = load_init_lua;
 
     modelview_init(&test_view, modelview_setup);
-
-    // Начальный ход
-    /*modelview_put(&test_view);*/
+    // Отключение автоматического создания фишек на следующем ходе
+    test_view.auto_put = false;
 
     ModelView *mv = &test_view;
     t_set(mv, &sets[set_current]);
@@ -140,6 +190,7 @@ static void stage_test_update(Stage_Test *st) {
     /*trace("stage_test_update:\n");*/
     modelview_pause_set(&test_view, st->is_paused);
     t_input(&test_view, &sets[set_current]);
+    t_assert(&test_view, &sets[set_current]);
 }
 
 static void stage_test_gui(Stage_Test *st) {

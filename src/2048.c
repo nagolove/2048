@@ -99,7 +99,9 @@ int main(void) {
     stage_add(ss, stage_sprite_loader_new(NULL), "sprite_loader");
     stage_add(ss, stage_sprite_loader_new2(NULL), "sprite_loader2");
     stage_init(ss);
+
     stage_active_set(ss, "main");
+    stage_active_set(ss, "test");
 
     //view_test = printing_test();
 #if defined(PLATFORM_WEB)

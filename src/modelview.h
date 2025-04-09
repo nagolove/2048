@@ -196,7 +196,7 @@ typedef struct Setup {
 } Setup;
 
 void modelview_init(ModelView *mv, Setup setup);
-// Для внутренней схемы и для тестирования
+// Для внутреннего использования и для тестирования
 void modelview_put_cell(struct ModelView *mv, int x, int y, int value);
 // Ход игры, создает фишки по внутренним условиям
 void modelview_put(ModelView *mv);
@@ -214,6 +214,7 @@ extern e_cp_type cmp_cell, cmp_bomb, cmp_position, cmp_transition;
 
 // "right" -> DIR_RIGHT etc.
 Direction str2direction(const char *str);
-Cell *modelview_cell_search(ModelView *mv, int x, int y);
+Cell *modelview_search_cell(ModelView *mv, int x, int y);
+e_id modelview_search_entity(ModelView *mv, int x, int y);
 
 extern e_cp_type cmp_position, cmp_cell, cmp_bomb, cmp_transition, cmp_exp;
