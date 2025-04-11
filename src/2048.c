@@ -75,6 +75,14 @@ int main(void) {
             .dark = false,
             .font_path = "assets/djv.ttf",
             .font_size_pixels = 40,
+            .ranges = (ImWchar[]){
+                0x0020, 0x00FF, // Basic Latin + Latin Supplement
+                0x0400, 0x044F, // Cyrillic
+                // XXX: symbols not displayed
+                // media buttons like record/play etc. Used in dotool_gui()
+                0x23CF, 0x23F5, 
+                0,
+            },
     });
 
 #ifdef __wasm__

@@ -85,13 +85,14 @@ Position + Cell + Transition
 Position + Transition + Bomb
 */
 
-enum ModelViewState {
+typedef enum ModelViewState {
     // Есть активные анимации
     MVS_ANIMATION,
+    // Готовность к вводу
     MVS_READY,
     MVS_WIN,
     MVS_GAMEOVER,
-};
+} ModelViewState;
 
 /*
 struct ColorTheme {
@@ -137,7 +138,7 @@ typedef struct ModelView {
     int                 dx, dy, field_size;
     float               tmr_put_time,   // появление плитки в секундах
                         tmr_block_time; // движение плитки в секундах
-    enum Direction      dir, prev_dir;
+    Direction           dir;
     bool                has_sum, has_move;
     bool                use_gui,        // рисовать imgui
                         auto_put,       // класть новую плитку на след. ход
@@ -149,15 +150,15 @@ typedef struct ModelView {
     Font                font;
     FntVector           *font_vector;
 
-    struct TimerMan     *timers_slides,     // Таймеры анимации плиток
-                        *timers_effects;    // Таймеры эффектов
+                        // Таймеры анимации
+    TimerMan            *timers;     
 
     Cell                *sorted;
     int                 sorted_num;
 
                         // XXX: Позиция чего?
     Vector2             pos;
-    enum ModelViewState state;
+    ModelViewState      state;
     bool                dropped;    //Флаг деинициализации структуры
                         // использовать какие-нибудь бонусы или только цифрв
     bool                use_bonus,
@@ -202,8 +203,7 @@ void modelview_put_cell(struct ModelView *mv, int x, int y, int value);
 void modelview_put(ModelView *mv);
 void modelview_shutdown(ModelView *mv);
 void modelview_save_state2file(ModelView *mv);
-// XXX: Зачем возвращать bool?
-bool modelview_draw(ModelView *mv);
+int modelview_draw(ModelView *mv);
 void modelview_draw_gui(ModelView *mv);
 void modelview_input(ModelView *mv, enum Direction dir);
 /*Cell *modelview_get_cell(ModelView *mv, int x, int y, e_id *en);*/

@@ -353,14 +353,14 @@ void modelview_put_cell(struct ModelView *mv, int x, int y, int value) {
         .e = cell_en,
     };
 
-    timerman_add(mv->timers_slides, (struct TimerDef) {
+    timerman_add(mv->timers, (struct TimerDef) {
         .duration = mv->tmr_put_time,
         .sz = sizeof(td),
         .on_update = tmr_cell_draw,
         .on_stop = tmr_cell_draw_stop,
         .data = &td,
     });
-    timerman_add(mv->timers_effects, (TimerDef) {
+    timerman_add(mv->timers, (TimerDef) {
         .data = &td,
         .duration = 1.,
         .on_stop = tmr_pulsation_stop,
@@ -432,7 +432,7 @@ static void bomb_put(ModelView *mv, int x, int y) {
         .mv = mv,
         .e = en,
     };
-    timerman_add(mv->timers_slides, (TimerDef) {
+    timerman_add(mv->timers, (TimerDef) {
         .duration = mv->tmr_put_time,
         .sz = sizeof(td),
         .on_update = tmr_cell_draw,
@@ -597,7 +597,7 @@ static bool move(ModelView *mv, e_id cell_en, int x, int y, bool *touched) {
 
     /*trace("try_move: move_call_counter %d\n", move_call_counter);*/
 
-    timerman_add(mv->timers_slides, (struct TimerDef) {
+    timerman_add(mv->timers, (struct TimerDef) {
         .duration = mv->tmr_block_time,
         .sz = sizeof(struct TimerData),
         .on_update = tmr_cell_draw,
@@ -678,7 +678,7 @@ static bool sum(
     // cell_en уничтожается
     cell->dropped = true;
     ef->anim_alpha = AM_BACKWARD;
-    timerman_add(mv->timers_slides, (struct TimerDef) {
+    timerman_add(mv->timers, (struct TimerDef) {
         .duration = mv->tmr_block_time,
         .on_stop = tmr_cell_draw_stop,
         .on_update = tmr_cell_draw,
@@ -691,7 +691,7 @@ static bool sum(
 
     // neighbour_en увеличивается 
     neighbour_ef->anim_size = true;
-    timerman_add(mv->timers_slides, (struct TimerDef) {
+    timerman_add(mv->timers, (struct TimerDef) {
         .duration = mv->tmr_block_time,
         .on_stop = tmr_cell_draw_stop,
         .on_update = tmr_cell_draw,
@@ -1405,8 +1405,7 @@ static void gui(struct ModelView *mv) {
     }, 2);
     */
 
-    timerman_window_gui(mv->timers_slides);
-    timerman_window_gui(mv->timers_effects);
+    timerman_window_gui(mv->timers);
 
     options_window(mv);
     //ecs_window(mv);
@@ -1539,7 +1538,7 @@ static void make_ex(ModelView *mv, int x, int y) {
         exp->i = 1;
 
         TimerData td = { .mv = mv, .e = e, };
-        timerman_add(mv->timers_effects, (TimerDef) {
+        timerman_add(mv->timers, (TimerDef) {
             .data = &td,
             .duration = tmr_bomb_duration,
             .on_stop = tmr_bomb_stop,
@@ -1651,23 +1650,22 @@ static void draw_scores(ModelView *mv) {
     DrawText(msg, pos.x, pos.y, fontsize, BLUE);
 }
 
-bool modelview_draw(ModelView *mv) {
+int modelview_draw(ModelView *mv) {
     // {{{
     /*trace("modelview_draw:\n");*/
     assert(mv);
 
-    bool dir_none = false;
-
     modeltest_update(&model_checker, mv->dir);
 
-    timerman_update(mv->timers_effects);
-    int timersnum = timerman_update(mv->timers_slides);
+    int timersnum = timerman_update(mv->timers);
     mv->state = timersnum ? MVS_ANIMATION : MVS_READY;
 
+    /*
     static enum ModelViewState prev_state = 0;
     if (mv->state != prev_state) {
         prev_state = mv->state;
     }
+    */
 
     field_update(mv);
 
@@ -1711,9 +1709,7 @@ bool modelview_draw(ModelView *mv) {
         if (!mv->has_sum && !mv->has_move && (mv->dx || mv->dy)) {
             mv->dx = 0;
             mv->dy = 0;
-            mv->prev_dir = mv->dir;
             mv->dir = DIR_NONE;
-            dir_none = true;
             if (mv->auto_put)
                 modelview_put(mv);
         }
@@ -1739,7 +1735,7 @@ bool modelview_draw(ModelView *mv) {
 
     draw_scores(mv);
 
-    return dir_none;
+    return timerman_num(mv->timers, NULL);
     // }}}
 }
 
@@ -1807,12 +1803,7 @@ void modelview_init(ModelView *mv, Setup setup) {
             .y = (GetScreenHeight() - field_width) / 2.,
         };
 
-    mv->timers_slides = timerman_new(
-        mv->field_size * mv->field_size * 2, "slides"
-    );
-    mv->timers_effects = timerman_new(
-        mv->field_size * mv->field_size * 2, "effects"
-    );
+    mv->timers = timerman_new(mv->field_size * mv->field_size * 3, "effects");
 
     mv->state = MVS_READY;
     mv->dropped = false;
@@ -1903,14 +1894,9 @@ void modelview_shutdown(struct ModelView *mv) {
     if (mv->dropped)
         return;
 
-    if (mv->timers_effects) {
-        timerman_free(mv->timers_effects);
-        mv->timers_effects = NULL;
-    }
-
-    if (mv->timers_slides) {
-        timerman_free(mv->timers_slides);
-        mv->timers_slides = NULL;
+    if (mv->timers) {
+        timerman_free(mv->timers);
+        mv->timers = NULL;
     }
 
     UnloadFont(mv->font);
@@ -1940,8 +1926,7 @@ void modelview_draw_gui(struct ModelView *mv) {
 
 void modelview_pause_set(ModelView *mv, bool is_paused) {
     assert(mv);
-    timerman_pause(mv->timers_slides, is_paused);
-    timerman_pause(mv->timers_effects, is_paused);
+    timerman_pause(mv->timers, is_paused);
 }
 
 Direction str2direction(const char *str) {
