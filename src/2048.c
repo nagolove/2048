@@ -111,6 +111,8 @@ int main(void) {
     stage_active_set(ss, "main");
     stage_active_set(ss, "test");
 
+    SetExitKey(KEY_NULL);
+
     //view_test = printing_test();
 #if defined(PLATFORM_WEB)
     trace("main: PLATFORM_WEB\n");

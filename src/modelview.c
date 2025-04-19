@@ -29,17 +29,15 @@
 #include <string.h>
 #include <time.h>
 #include <ctype.h>
+#include "koh_strbuf.h"
+#include "koh_lua.h"
 
-// {{{ debug shit zone
+/*#define MODELVIEW_SAVE_HISTORY*/
+
 #define GLOBAL_CELLS_CAP    100000
 
-// XXX: зачем нужна переменная last_state?
-static int *last_state = NULL;
+// TODO: Перенести в структуру ModelView
 static bool is_draw_grid = true;
-
-static struct ModelTest     model_checker = {0};
-
-// }}} end of debug shit zone
 
 typedef struct TimerData {
     ModelView   *mv;
@@ -1423,6 +1421,284 @@ char *modelview_state2str(enum ModelViewState state) {
     return buf;
 }
 
+// History_** {{{
+
+typedef struct History {
+    lua_State *l;
+    StrBuf    lines;
+    int       *field;
+    FILE      *f;
+    ModelView *mv;
+    bool      first_run;
+} History;
+
+static History *history_new(ModelView *mv) {
+    assert(mv);
+    History *h = calloc(sizeof(*h), 1);
+    h->lines = strbuf_init(NULL);
+    h->mv = mv;
+    h->l = lua_newstate(koh_lua_default_alloc, NULL, 0);
+    luaL_openlibs(h->l);
+
+    int err = luaL_dostring(h->l, "package.path = './?.lua;' .. package.path");
+    if (err != LUA_OK) {
+        trace(
+            "history_new: could not change package.path with '%s'\n",
+            lua_tostring(h->l, -1)
+        );
+        lua_pop(h->l, -1);
+    }
+
+    trace("history_new: [%s]\n", L_stack_dump(h->l));
+
+    lua_newtable(h->l);  // создаём новую таблицу на стеке
+    lua_setglobal(h->l, "LINES");  
+
+    trace("history_new: [%s]\n", L_stack_dump(h->l));
+
+    const char *fname = koh_uniq_fname_str("modelview_history_", ".lua");
+    trace("history_new: fname %s\n", fname);
+
+    h->f = fopen(fname, "w");
+    h->first_run = true;
+    /*
+    if (h->f) {
+        fprintf(h->f, "return {\n");
+    }
+    */
+    fflush(h->f);
+    h->field = calloc(mv->field_size * mv->field_size, sizeof(h->field[0]));
+    return h;
+}
+
+static void history_free(History *h) {
+    trace("history_free:\n");
+
+    /*
+    if (h->f) {
+        fprintf(h->f, "\n}");
+        fflush(h->f);
+        fclose(h->f);
+        h->f = NULL;
+    }
+    */
+
+    strbuf_shutdown(&h->lines);
+
+    if (h->l) {
+        lua_close(h->l);
+        h->l = NULL;
+    }
+
+    if (h->field) {
+        free(h->field);
+        h->field = NULL;
+    }
+
+    free(h);
+}
+
+// XXX: Можно ли сделать писатель истории более универсальным?
+// Стоит ли делать его универсальным?
+static void history_write(History *h) {
+    FILE *f = h->f;
+    ModelView *mv = h->mv;
+
+    assert(f);
+
+    int field[h->mv->field_size * h->mv->field_size], i = 0;
+    memset(field, 0, sizeof(field));
+
+    // Записать текущее состояние в массив int*
+    for (int y = 0; y < mv->field_size; y++) {
+        for (int x = 0; x < mv->field_size; x++) {
+            Cell *c = modelview_search_cell(mv, x, y);
+            int val = -1;
+            if (c) {
+                val = c->value;
+            }
+            field[i++] = val;
+        }
+    }
+
+    /*
+    printf("field: ");
+    for (int j = 0; j < mv->field_size * mv->field_size; j++) {
+        printf("%d ", field[j]);
+    }
+    printf("\n");
+    */
+
+    memmove(h->field, field, sizeof(field));
+
+    char buf_line[2048] = {}, *buf_line_ptr = buf_line;
+
+    buf_line_ptr += sprintf(buf_line_ptr, "return { ");
+    for (int y = 0; y < mv->field_size; y++) {
+        buf_line_ptr += sprintf(buf_line_ptr, "{ ");
+        for (int x = 0; x < mv->field_size; x++) {
+            Cell *c = modelview_search_cell(mv, x, y);
+            int val = -1;
+            if (c) {
+                val = c->value;
+            }
+            buf_line_ptr += sprintf(buf_line_ptr, "%d, ", val);
+        }
+        buf_line_ptr += sprintf(buf_line_ptr, "}, ");
+    }
+    sprintf(buf_line_ptr, "}");
+
+    // Писать в файл построчно
+    fprintf(f, "%s\n", buf_line);
+    fflush(f);
+
+    strbuf_add(&h->lines, buf_line);
+    
+    lua_getglobal(h->l, "LINES");
+    int type = lua_type(h->l, -1);
+    if (type == LUA_TTABLE) {
+        lua_pushinteger(h->l, h->lines.num);
+        lua_pushstring(h->l, buf_line);
+        lua_settable(h->l, -3);  
+        lua_pop(h->l, 1);
+    } else {
+        trace(
+            "history_write: could not get 'LINES' with '%s'\n",
+            lua_tostring(h->l, -1)
+        );
+        lua_pop(h->l, 1);
+    }
+
+}
+
+void history_gui(History *h) {
+    assert(h);
+
+    // XXX: Как обозначить конечно положение поле, после запуска теста?
+    if (igButton("update", (ImVec2){})) {
+        lua_State *l = h->l;
+        // XXX: Вся таблица заполняется снова, каждый раз
+        for (int i = 0; i < h->lines.num; ++i) {
+            if (luaL_loadstring(l, h->lines.s[i]) || lua_pcall(l, 0, 1, 0)) {
+                fprintf(stderr, "Lua error: %s\n", lua_tostring(l, -1));
+                lua_pop(l, 1);
+                continue;
+            }
+
+            // Стек: [result_table]
+            // Достаём глобальную таблицу LINES
+            lua_getglobal(l, "LINES"); // стек: [result_table, LINES]
+
+            int type = lua_type(h->l, -1);
+            if (type != LUA_TTABLE) {
+                trace("history_gui: creating 'LINES' table\n");
+                lua_newtable(l);
+                lua_setglobal(l, "LINES");
+                lua_getglobal(l, "LINES");
+            }
+
+            // Переставим местами: нам надо, чтобы LINES был ниже значения
+            lua_insert(l, -2); // стек: [LINES, result_table]
+
+            // Добавляем result_table в LINES[i+1]
+            lua_rawseti(l, -2, i + 1); // LINES[i+1] = result_table, удаляет result_table
+
+            lua_pop(l, 1); // убираем LINES со стека
+        }
+
+
+        const char *transform_code = 
+            "TRANSFORMED = require 'dups'.transform(LINES)";
+        int err = luaL_dostring(h->l, transform_code);
+        if (err != LUA_OK) {
+            trace(
+                "history_gui: bad transform_code with '%s'\n",
+                lua_tostring(l, -1)
+            );
+            lua_pop(l, -1);
+        }
+        trace("history_gui: [%s]\n", L_stack_dump(h->l));
+    }
+
+    if (igBeginListBox("states", (ImVec2){})) {
+        // TODO: Починить
+        lua_State *l = h->l;
+
+        int err = luaL_dostring(l, 
+                "print(require 'inspect'(TRANSFORMED))\n"
+                "print()"
+        );
+        assert(err == LUA_OK);
+
+        lua_getglobal(l, "TRANSFORMED");
+        int type = lua_type(h->l, -1);
+        if (type == LUA_TTABLE) {
+            /*int len = luaL_len(l, -1);  // получаем длину массива*/
+            int len = lua_rawlen(l, -1);  // получаем длину массива
+            trace("history_gui: len %d\n", len);
+
+
+            /*for (int i = 1; i <= len; ++i) {*/
+                /*lua_rawgeti(l, -1, i);  // кладёт x[i] на стек*/
+            lua_pushnil(l);
+            while (lua_next(l, -2)) {
+
+                // На вершине стека - таблица.
+                // Не могу вызвать инспект так как у таблицы нет имени
+                //luaL_dostring(l, "require 'inspect'()");
+
+                // XXX: Непонятно что происходит и зачем я это делаю.
+                // Данный код с луа таблица - лишний.
+                // Возврат к изначальной задаче - записи состояний поля
+                // Сейчас запись состояний - 2д массивы чисел
+                // В них не может быть бонусов.
+                // Если записывать как луа массивы, то можно добавить среди
+                // чисел строки, которые кодируют бонусы и таблицы, которые
+                // могут кодировать целый набор состояний.
+                // Начальная задача - отфильтровать в массиве только 
+                // изменившиеся значения полей.
+
+                /*printf("%s", lua_tostring(l, -1));*/
+
+                /*
+                int sub_len = lua_rawlen(l, -1);
+                for (int  j = 1; j < sub_len; j++) {
+                    int type = lua_rawgeti(l, -1, i);
+                    //printf("type %s\n", lua_typename(l, lua_type(l, type)));
+                    float n = lua_tonumber(l, -1);
+                    printf("%d ", (int)n);
+                    lua_pop(l, 1);
+                }
+                printf("\n");
+                */
+
+                //trace("history_gui: %s\n", lua_typename(l, lua_type(l, -1)));
+
+                if (lua_isstring(l, -1)) {
+                    const char *str = lua_tostring(l, -1);
+                    //printf("x[%d] = %s\n", i, str);
+                    static bool selected = false;
+                    igSelectable_Bool(str, selected, 0, (ImVec2){});
+                }
+
+                lua_pop(l, 1);  // убираем значение x[i] со стека
+            }
+
+        } else {
+            ImVec4 red = {1., 0., 0., 1.};
+            igTextColored(red, "TRANSFORMED table not found\n");
+
+        }
+        // XXX: Здесь нужен сброс со стека?
+        lua_pop(l, 1);
+        // */
+
+        igEndListBox();
+    }
+}
+
+// }}}
+
 static void destroy_dropped(struct ModelView *mv) {
     e_id destroy_arr[mv->field_size * mv->field_size];
     int destroy_num = 0;
@@ -1449,7 +1725,6 @@ static void destroy_dropped(struct ModelView *mv) {
         e_id e = destroy_arr[j];
         e_destroy(mv->r, e);
     }
-
 }
 
 // Происходит при остановке таймера бомбы
@@ -1655,19 +1930,14 @@ int modelview_draw(ModelView *mv) {
     /*trace("modelview_draw:\n");*/
     assert(mv);
 
-    modeltest_update(&model_checker, mv->dir);
+    /*modeltest_update(&model_checker, mv->dir);*/
 
     int timersnum = timerman_update(mv->timers);
     mv->state = timersnum ? MVS_ANIMATION : MVS_READY;
 
-    /*
-    static enum ModelViewState prev_state = 0;
-    if (mv->state != prev_state) {
-        prev_state = mv->state;
-    }
-    */
-
     field_update(mv);
+
+    history_write(mv->history);
 
     if (mv->state == MVS_READY) {
 
@@ -1735,7 +2005,9 @@ int modelview_draw(ModelView *mv) {
 
     draw_scores(mv);
 
-    return timerman_num(mv->timers, NULL);
+    timersnum = timerman_num(mv->timers, NULL);
+
+    return timersnum;
     // }}}
 }
 
@@ -1752,7 +2024,6 @@ void modelview_init(ModelView *mv, Setup setup) {
     assert(mv);
 
     assert(setup.field_size > 1);
-    last_state = NULL;
 
     mv->can_scan_bombs = true;
 
@@ -1828,7 +2099,7 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->tmr_block_time = setup.tmr_block_time;
     mv->tmr_put_time = setup.tmr_put_time;
 
-    modeltest_init(&model_checker, mv->field_size);
+    /*modeltest_init(&model_checker, mv->field_size);*/
 
     mv->font = load_font_unicode(
         "assets/jetbrains_mono.ttf", dflt_draw_opts.fontsize
@@ -1856,12 +2127,20 @@ void modelview_init(ModelView *mv, Setup setup) {
         trace("modeltest_init:\n");
         mv->on_init_lua();
     }
+
+    mv->history = history_new(mv);
+
     // }}}
 }
 
 void modelview_shutdown(struct ModelView *mv) {
     // {{{
     assert(mv);
+
+    if (mv->history) {
+        history_free(mv->history);
+        mv->history = NULL;
+    }
 
     res_unload_all(&mv->reslist, true);
 
@@ -1885,12 +2164,6 @@ void modelview_shutdown(struct ModelView *mv) {
         mv->font_vector = NULL;
     }
 
-    if (last_state) {
-        free(last_state);
-        last_state = NULL;
-    }
-
-    //memset(mv, 0, sizeof(*mv));
     if (mv->dropped)
         return;
 
@@ -1912,7 +2185,7 @@ void modelview_shutdown(struct ModelView *mv) {
         free(mv->sorted);
         mv->sorted = NULL;
     }
-    modeltest_shutdown(&model_checker);
+    /*modeltest_shutdown(&model_checker);*/
     mv->dropped = true;
     // }}}
 }
@@ -1920,8 +2193,10 @@ void modelview_shutdown(struct ModelView *mv) {
 void modelview_draw_gui(struct ModelView *mv) {
     assert(mv);
 
-    if (mv->use_gui) 
+    if (mv->use_gui) {
         gui(mv);
+        history_gui(mv->history);
+    }
 }
 
 void modelview_pause_set(ModelView *mv, bool is_paused) {

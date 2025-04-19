@@ -104,6 +104,8 @@ static TestSet sets[] = {
         .description = "второй",
     },
 
+    // TODO: Сделать возможной последовательность движений для одного 
+    // начального состояния.
     { 
         .x = {
             // state
@@ -125,6 +127,7 @@ static TestSet sets[] = {
             NULL,
         },
         .description = "третий",
+        .selected = true,
     },
 
 };

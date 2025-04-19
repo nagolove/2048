@@ -94,17 +94,11 @@ typedef enum ModelViewState {
     MVS_GAMEOVER,
 } ModelViewState;
 
-/*
-struct ColorTheme {
-    Color   background, foreground;
-};
-*/
-
 // }}}
 
-/*
-    Отображение поля. Все, что связано с анимацией.
- */
+typedef struct History History;
+
+// Отображение поля. Все, что связано с анимацией.
 typedef struct ModelView {
 
     // Массив field_size * field_size - временное хранения сущностей для
@@ -182,6 +176,7 @@ typedef struct ModelView {
 
     // [y * field_size + x] - сущности с прикрепленными ячейками
     e_id                *field;
+    History             *history;
 } ModelView;
 
 extern const struct ColorTheme color_theme_dark, color_theme_light;
