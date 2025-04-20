@@ -3,6 +3,7 @@
 
 #include "stage_test.h"
 
+#include "koh_lua.h"
 #include "koh_common.h"
 #include "common.h"
 #include "modelview.h"
@@ -10,13 +11,13 @@
 
 static struct ModelView test_view;
 
+// Размер поля
 #define T_FIELD_SIZE 6
+// Размер массива строк описывающих тест 
 #define T_X_SIZE \
     T_FIELD_SIZE * T_FIELD_SIZE * 2 + 1 + 1
 
 typedef struct TestSet {
-    // Входные данные
-    char *x[T_X_SIZE];
     // Был ли произведен ввод?
     bool input_done, assert_done;
     // Индекс в массиве x, где находится курсор считывающий команды в данный
@@ -25,10 +26,12 @@ typedef struct TestSet {
     const char *description;
     // для imgui
     bool selected;
+    // Входные данные
+    char *x[T_X_SIZE];
 } TestSet;
 
 // XXX: Можно-ли сделать так, что все одинаковые подряд цифры сложатся?
-
+// {{{
 static TestSet sets[] = {
 
     // {{{
@@ -104,8 +107,8 @@ static TestSet sets[] = {
         .description = "второй",
     },
 
-    // TODO: Сделать возможной последовательность движений для одного 
-    // начального состояния.
+    // TODO: Сделать возможной последовательность из нескольких движений 
+    // для одного начального состояния.
     { 
         .x = {
             // state
@@ -130,10 +133,274 @@ static TestSet sets[] = {
         .selected = true,
     },
 
+    { 
+        // {{{
+        .x = {
+            // XXX: Как можно было-бы сделать тест загружаемым из файла?
+
+            // XXX: Использовать Lua или нет?
+            // + Загрузка одним вызовом
+            // + Поддержка сложной структуры
+            // - Не так удобно редактировать
+
+            // XXX: Убрать все тесты из кода и перенести в файлы?
+            // Удобно редактировать длинные последовательности
+
+            /*
+           
+            --[[
+            хранить индекс массива i
+            перечисление текущего состояние
+            enum State {
+                STATE,
+                INPUT,
+                ASSERT
+            };
+
+            --]]
+
+return {
+    state = {
+        " ", "8", "4", "8", " ", " ",
+        " ", "8", "4", "8", " ", " ",
+        " ", "4", "2", "8", " ", " ",
+        " ", "4", "2", "8", " ", " ",
+        " ", "8", "4", "8", " ", " ",
+        " ", "8", "4", "8", " ", " ",
+    },
+    user_input = "down",
+    assert_state = {
+    " ", " ",  " ", " ",  " ", " ",
+    " ", " ",  " ", " ",  " ", " ",
+    " ", " ",  " ", " ",  " ", " ",
+    " ", " ",  " ", " ",  " ", " ",
+    " ", "32", "16","16", " ", " ",
+    " ", "8",  "4", "32", " ", " ",
+    },
+
+    --[[
+XXX: Проблема с начальным состоянием и последующими. Все последующие состояния
+являются проверочными
+    --]]
+
+    // state
+    " ", " ",  " ", " ",  " ", " ",
+    " ", " ",  " ", " ",  " ", " ",
+    " ", " ",  " ", " ",  " ", " ",
+    " ", " ",  " ", " ",  " ", " ",
+    " ", "32", "16","16", " ", " ",
+    " ", "8",  "4", "32", " ", " ",
+    // user input
+    "right", 
+    // assert state
+    " ", " ",  " ", " ",  " ", " ",
+    " ", " ",  " ", " ",  " ", " ",
+    " ", " ",  " ", " ",  " ", " ",
+    " ", " ",  " ", " ",  " ", " ",
+    " ", " ",  " ", " ",  " ", "64",
+    " ", " ",  " ", "8",  "4", "32",
+}
+
+             */
+
+            // state
+            " ", "8", "4", "8", " ", " ",
+            " ", "8", "4", "8", " ", " ",
+            " ", "4", "2", "8", " ", " ",
+            " ", "4", "2", "8", " ", " ",
+            " ", "8", "4", "8", " ", " ",
+            " ", "8", "4", "8", " ", " ",
+            // user input
+            "down", 
+            // assert state
+            " ", " ",  " ", " ",  " ", " ",
+            " ", " ",  " ", " ",  " ", " ",
+            " ", " ",  " ", " ",  " ", " ",
+            " ", " ",  " ", " ",  " ", " ",
+            " ", "32", "16","16", " ", " ",
+            " ", "8",  "4", "32", " ", " ",
+
+            /*
+            // state
+            " ", " ",  " ", " ",  " ", " ",
+            " ", " ",  " ", " ",  " ", " ",
+            " ", " ",  " ", " ",  " ", " ",
+            " ", " ",  " ", " ",  " ", " ",
+            " ", "32", "16","16", " ", " ",
+            " ", "8",  "4", "32", " ", " ",
+            // user input
+            "right", 
+            // assert state
+            " ", " ",  " ", " ",  " ", " ",
+            " ", " ",  " ", " ",  " ", " ",
+            " ", " ",  " ", " ",  " ", " ",
+            " ", " ",  " ", " ",  " ", " ",
+            " ", " ",  " ", " ",  " ", "64",
+            " ", " ",  " ", "8",  "4", "32",
+            */
+
+            NULL,
+        },
+        // }}}
+        .description = "длинный",
+        .selected = true,
+    },
+
 };
+// }}}
 
 const static int sets_num = sizeof(sets) / sizeof(sets[0]);
 static int set_current = 0;
+
+typedef enum TestState {
+    T_INITIAL,
+    T_INPUT,
+    T_ASSERT,
+    T_FINISHED,
+} TestState;
+
+typedef struct Test {
+    lua_State *l;
+              // индекс в таблице теста
+    int       index,
+              // количество элементов в таблице
+              len;
+    enum      TestState state;
+} Test;
+
+/* XXX: Что мне нужно для Луа реализации?
+    Общая структура struct Test
+    Индекс в таблице t_01.lua
+    Lua машина
+ */
+
+static void test_init(Test *t, const char *fname) {
+    assert(t);
+    trace("test_init:\n");
+    memset(t, 0, sizeof(*t));
+    t->l = luaL_newstate();
+    luaL_openlibs(t->l);
+
+    int err = luaL_dofile(t->l, fname);
+    if (err != LUA_OK) {
+        trace(
+            "test_init: could not load '%s' with '%s'\n",
+            fname, lua_tostring(t->l, -1)
+        );
+        lua_close(t->l);
+        t->l = NULL;
+    }
+
+    trace("test_init: [%s]\n", L_stack_dump(t->l));
+
+    lua_pushvalue(t->l, -1);
+
+    // debug stuff
+    lua_setglobal(t->l, "T");
+    l_inline(t->l,
+        "package.path = './?.lua;' .. package.path\n"
+        "inspect = require 'inspect'\n"
+        "print(inspect(T))\n"
+    );
+    // debuf stuff
+
+    if (lua_type(t->l, -1) != LUA_TTABLE) {
+        trace(
+            "test_init: stack top element is not a table [%s]\n",
+            L_stack_dump(t->l)
+        );
+        lua_settop(t->l, 0);
+    } else {
+        t->len = lua_rawlen(t->l, -1);
+        trace("test_init: len %d\n", t->len);
+
+        for (int i = 1; i <= t->len; i++) {
+            int type = lua_rawgeti(t->l, -1, i);
+            printf("type %s\n", lua_typename(t->l, type));
+            lua_pop(t->l, 1);
+        }
+    }
+
+    trace("test_init: [%s]\n", L_stack_dump(t->l));
+    t->index = 1;
+    trace("test_init: index %d, len %d\n", t->index, t->len);
+    t->state = T_INITIAL;
+}
+
+static void test_shutdown(Test *t) {
+    trace("test_shutdown:\n");
+    assert(t);
+    if (t->l) {
+        lua_close(t->l);
+        t->l = NULL;
+    }
+}
+
+static void test_input(Test *t) {
+    /*trace("test_input:\n");*/
+}
+
+static void test_next_state(Test *t) {
+    assert(t);
+    // trace("test_next_state: index %d, len %d\n", t->index, t->len);
+
+    if (t->state != T_FINISHED && t->index == t->len) {
+        printf("test_next_state: finished\n");
+        t->state = T_FINISHED;
+        return;
+    }
+
+    if (t->state == T_INITIAL) {
+        trace("test_next_state: before printing\n");
+        // TODO: Заполнить поле 
+
+        printf("lua_rawgeti 1 [%s]\n", L_stack_dump(t->l));
+        lua_rawgeti(t->l, -1, t->index);
+
+        int type = LUA_TNONE;
+
+        // XXX: Считать 'size' и пропустить эту таблицу
+        type = lua_getfield(t->l, -1, "size");
+        if (type == LUA_TNUMBER) {
+            printf("test_next_state: [%s]\n", L_stack_dump(t->l));
+            printf("test_next_state: size %f\n", lua_tonumber(t->l, -1));
+            // скинуть число и таблицу
+            lua_pop(t->l, 2);
+            printf("test_next_state: [%s]\n", L_stack_dump(t->l));
+           
+            printf("test_next_state: index %d\n", t->index);
+            lua_rawgeti(t->l, -1, t->index);
+        }
+
+        printf("lua_rawgeti 2 [%s]\n", L_stack_dump(t->l));
+
+        type = lua_type(t->l, -1);
+
+        if (type == LUA_TSTRING) {
+            printf("test_next_state: string type\n");
+        } else if (type == LUA_TTABLE) {
+            printf("test_next_state: table type\n");
+
+            printf("[%s]\n", L_stack_dump(t->l));
+            lua_pushvalue(t->l, -1);
+            lua_setglobal(t->l, "TMP");
+            printf("[%s]\n", L_stack_dump(t->l));
+
+            l_inline(t->l, 
+                "print('inspect', inspect)\n"
+                "print('TMP', inspect(TMP))"
+            );
+
+        } else {
+            printf(
+                "test_next_state: unknown type '%s'\n",
+                lua_typename(t->l, type)
+            );
+        }
+
+        t->state = T_INPUT;
+    }
+}
 
 static void t_set(ModelView *mv, TestSet *ts) {
     // {{{
@@ -163,6 +430,7 @@ static void t_set(ModelView *mv, TestSet *ts) {
     // }}}
 }
 
+__attribute__((unused))
 static void t_assert(ModelView *mv, TestSet *ts) {
     // {{{
     assert(mv);
@@ -305,6 +573,7 @@ static void t_assert(ModelView *mv, TestSet *ts) {
 }
 
 static void t_input(ModelView *mv, TestSet *ts) {
+    // {{{
     // Закончилась-ли анимация?
     if (mv->state != MVS_READY)
         return;
@@ -316,14 +585,17 @@ static void t_input(ModelView *mv, TestSet *ts) {
         modelview_input(mv, dir);
         ts->input_done = true;
     }
+    // }}}
 }
 
 typedef struct Stage_Test {
     Stage               parent;
     Camera2D            camera;
     bool                is_paused;
+    Test                t;
 } Stage_Test;
 
+// Установить тест из массива sets по индексу set_index
 static void reinit(int set_index) {
 
     for (int j = 0; j < sets_num; j++) {
@@ -350,15 +622,18 @@ static void stage_test_init(Stage_Test *st) {
     //main_view_setup.on_init_lua = load_init_lua;
 
     reinit(1);
+    test_init(&st->t, "t_01.lua");
 }
 
 static void stage_test_update(Stage_Test *st) {
     /*trace("stage_test_update:\n");*/
     modelview_pause_set(&test_view, st->is_paused);
     t_input(&test_view, &sets[set_current]);
+    test_input(&st->t);
 }
 
 static void t_gui(Stage_Test *st) {
+    // {{{
     bool open = true;
     
     igBegin("t_gui", &open, 0);
@@ -387,6 +662,7 @@ static void t_gui(Stage_Test *st) {
     }
 
     igEnd();
+    // }}}
 }
 
 static void stage_test_gui(Stage_Test *st) {
@@ -417,8 +693,13 @@ static void stage_test_draw(Stage_Test *st) {
 
     // TODO: Стоит-ли делать окошко с imgui для выбора теста?
 
+    /*
     if (!timersnum)
         t_assert(&test_view, &sets[set_current]);
+        */
+
+    if (!timersnum)
+        test_next_state(&st->t);
 
     /*
     if (IsKeyPressed(KEY_T))
@@ -431,6 +712,7 @@ static void stage_test_draw(Stage_Test *st) {
 static void stage_test_shutdown(Stage_Test *st) {
     trace("stage_test_shutdown:\n");
     modelview_shutdown(&test_view);
+    test_shutdown(&st->t);
 }
 
 static void stage_test_enter(Stage_Test *st) {

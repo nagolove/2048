@@ -1552,8 +1552,20 @@ static void history_write(History *h) {
     fprintf(f, "%s\n", buf_line);
     fflush(f);
 
-    strbuf_add(&h->lines, buf_line);
-    
+    // Далее идет проверка на равенство строк описывающих состония. 
+    // Есть новое состояние или оно является повтором прошлого?
+    // Первую строку всегда добавляю
+    if (h->lines.num == 0) {
+        strbuf_add(&h->lines, buf_line);
+    } else {
+        char *last = strbuf_last(&h->lines);
+        assert(last);
+        // NOTE: Сравнение по строкам оказалось проще чем бинарное
+        if (strcmp(last, buf_line))
+            strbuf_add(&h->lines, buf_line);
+    }
+
+    // Добавить в таблицу LINES строку
     lua_getglobal(h->l, "LINES");
     int type = lua_type(h->l, -1);
     if (type == LUA_TTABLE) {
@@ -1579,6 +1591,11 @@ void history_gui(History *h) {
     }
 
     if (igBeginListBox("states", (ImVec2){})) {
+
+        for (int i = 0; i < h->lines.num; i++) {
+            igSelectable_Bool(h->lines.s[i], false, 0, (ImVec2){});
+        }
+
         igEndListBox();
     }
 }
