@@ -1830,8 +1830,11 @@ static void draw_scores(ModelView *mv) {
 
 int modelview_draw(ModelView *mv) {
     // {{{
+
     /*trace("modelview_draw:\n");*/
     assert(mv);
+    if (!mv->inited)
+        return 0;
 
     /*modeltest_update(&model_checker, mv->dir);*/
 
@@ -1925,7 +1928,6 @@ void modelview_lua_after_load(struct ModelView *mv, lua_State *l) {
 void modelview_init(ModelView *mv, Setup setup) {
     // {{{
     assert(mv);
-
     assert(setup.field_size > 1);
 
     mv->can_scan_bombs = true;
@@ -2032,6 +2034,7 @@ void modelview_init(ModelView *mv, Setup setup) {
     }
 
     mv->history = history_new(mv);
+    mv->inited = true;
 
     // }}}
 }
@@ -2090,6 +2093,9 @@ void modelview_shutdown(struct ModelView *mv) {
     }
     /*modeltest_shutdown(&model_checker);*/
     mv->dropped = true;
+
+    mv->inited = false;
+    memset(mv, 0, sizeof(*mv));
     // }}}
 }
 

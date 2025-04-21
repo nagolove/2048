@@ -100,6 +100,8 @@ typedef struct History History;
 
 // Отображение поля. Все, что связано с анимацией.
 typedef struct ModelView {
+    // Показывает, что сцена инициализирована
+    bool                inited;
 
     // Массив field_size * field_size - временное хранения сущностей для
     // удаления

@@ -6,6 +6,7 @@
 #include "koh_lua.h"
 #include "koh_common.h"
 #include "common.h"
+#include "lua.h"
 #include "modelview.h"
 #include "koh_stages.h"
 
@@ -266,6 +267,7 @@ typedef struct Test {
               // количество элементов в таблице
               len;
     enum      TestState state;
+    ModelView *mv;
 } Test;
 
 /* XXX: Что мне нужно для Луа реализации?
@@ -274,10 +276,14 @@ typedef struct Test {
     Lua машина
  */
 
-static void test_init(Test *t, const char *fname) {
+static void test_init(Test *t, const char *fname, ModelView *mv) {
     assert(t);
-    trace("test_init:\n");
+    assert(mv);
+    trace("test_init: fname '%s'\n", fname);
+
     memset(t, 0, sizeof(*t));
+
+    t->mv = mv;
     t->l = luaL_newstate();
     luaL_openlibs(t->l);
 
@@ -297,7 +303,7 @@ static void test_init(Test *t, const char *fname) {
 
     // debug stuff
     lua_setglobal(t->l, "T");
-    l_inline(t->l,
+    L_inline(t->l,
         "package.path = './?.lua;' .. package.path\n"
         "inspect = require 'inspect'\n"
         "print(inspect(T))\n"
@@ -337,11 +343,49 @@ static void test_shutdown(Test *t) {
 }
 
 static void test_input(Test *t) {
-    /*trace("test_input:\n");*/
+    assert(t);
+
+    if (!t->l)
+        return;
+
+    if (t->state != T_INPUT) {
+        return;
+    }
+
+    lua_State *l = t->l;
+
+    printf("test_input: index %d\n", t->index);
+    printf("test_input 1: [%s]\n", L_stack_dump(l));
+
+    int type = lua_type(l, -1);
+
+    L_inspect(l, -1);
+
+    if (type != LUA_TSTRING) {
+        trace("test_input: bad type for user input command\n");
+        abort();
+    }
+
+    printf("test_input: ready to process\n");
+    printf("test_input 2: [%s]\n", L_stack_dump(l));
+
+    const char *cmd = lua_tostring(l, -1);
+    Direction dir = str2direction(cmd);
+    modelview_input(t->mv, dir);
+
+    t->state = T_ASSERT;
+
+    printf("test_input: cmd '%s'\n", cmd);
+    printf("test_input 3: [%s]\n", L_stack_dump(l));
 }
 
 static void test_next_state(Test *t) {
     assert(t);
+
+    if (!t->l)
+        return;
+
+    const int field_size = t->mv->field_size;
     // trace("test_next_state: index %d, len %d\n", t->index, t->len);
 
     if (t->state != T_FINISHED && t->index == t->len) {
@@ -359,20 +403,24 @@ static void test_next_state(Test *t) {
 
         int type = LUA_TNONE;
 
-        // XXX: Считать 'size' и пропустить эту таблицу
+        // Считать таблицу с 'size' и пропустить её
         type = lua_getfield(t->l, -1, "size");
         if (type == LUA_TNUMBER) {
-            printf("test_next_state: [%s]\n", L_stack_dump(t->l));
-            printf("test_next_state: size %f\n", lua_tonumber(t->l, -1));
+
+            //printf("test_next_state: [%s]\n", L_stack_dump(t->l));
+            //printf("test_next_state: size %f\n", lua_tonumber(t->l, -1));
+            
             // скинуть число и таблицу
             lua_pop(t->l, 2);
-            printf("test_next_state: [%s]\n", L_stack_dump(t->l));
-           
-            printf("test_next_state: index %d\n", t->index);
-            lua_rawgeti(t->l, -1, t->index);
+
+            /*printf("test_next_state: [%s]\n", L_stack_dump(t->l));*/
+            /*printf("test_next_state: index %d\n", t->index);*/
+
+            // Перехожу к следующему элементу
+            lua_rawgeti(t->l, -1, ++t->index);
         }
 
-        printf("lua_rawgeti 2 [%s]\n", L_stack_dump(t->l));
+        /*printf("lua_rawgeti 2 [%s]\n", L_stack_dump(t->l));*/
 
         type = lua_type(t->l, -1);
 
@@ -381,15 +429,38 @@ static void test_next_state(Test *t) {
         } else if (type == LUA_TTABLE) {
             printf("test_next_state: table type\n");
 
-            printf("[%s]\n", L_stack_dump(t->l));
-            lua_pushvalue(t->l, -1);
-            lua_setglobal(t->l, "TMP");
-            printf("[%s]\n", L_stack_dump(t->l));
+            L_inspect(t->l, -1);
+            int len = luaL_len(t->l, -1);
+            assert(len == field_size * field_size);
 
-            l_inline(t->l, 
-                "print('inspect', inspect)\n"
-                "print('TMP', inspect(TMP))"
-            );
+            for (int i = 1; i <= len; i++) {
+                lua_rawgeti(t->l, -1, i);
+
+                assert(lua_type(t->l, -1) == LUA_TSTRING);
+                const char *cmd = lua_tostring(t->l, -1);
+                int val = -1;
+
+                sscanf(cmd, "%d", &val);
+                if (val != -1) {
+                    // Установить значения клетки
+                    int x = i % field_size - 1;
+                    int y = i / field_size;
+                    printf("%s %d %d\n", cmd, x, y);
+                    modelview_put_cell(t->mv, x, y, val);
+                }
+
+                // Скинуть элемент поля
+                lua_pop(t->l, 1);
+            }
+            printf("\n");
+
+            // Скинуть таблицу с элементами поля
+            lua_pop(t->l, 1);
+
+            L_inspect(t->l, -1);
+            // Перехожу к следующему элементу
+            lua_rawgeti(t->l, -1, ++t->index);
+            L_inspect(t->l, -1);
 
         } else {
             printf(
@@ -402,6 +473,7 @@ static void test_next_state(Test *t) {
     }
 }
 
+__attribute__((unused))
 static void t_set(ModelView *mv, TestSet *ts) {
     // {{{
     assert(mv);
@@ -572,6 +644,7 @@ static void t_assert(ModelView *mv, TestSet *ts) {
     // }}}
 }
 
+__attribute__((unused))
 static void t_input(ModelView *mv, TestSet *ts) {
     // {{{
     // Закончилась-ли анимация?
@@ -590,6 +663,7 @@ static void t_input(ModelView *mv, TestSet *ts) {
 
 typedef struct Stage_Test {
     Stage               parent;
+    int                 timersnum;
     Camera2D            camera;
     bool                is_paused;
     Test                t;
@@ -610,8 +684,8 @@ static void reinit(int set_index) {
     test_view.auto_put = false;
     set_current = set_index;
 
-    ModelView *mv = &test_view;
-    t_set(mv, &sets[set_current]);
+    /*ModelView *mv = &test_view;*/
+    /*t_set(mv, &sets[set_current]);*/
 }
 
 static void stage_test_init(Stage_Test *st) {
@@ -621,17 +695,85 @@ static void stage_test_init(Stage_Test *st) {
     modelview_setup.cam = &st->camera;
     //main_view_setup.on_init_lua = load_init_lua;
 
-    reinit(1);
-    test_init(&st->t, "t_01.lua");
+    /*reinit(1);*/
+    test_view.auto_put = false;
+
+    st->t = (Test){};
+    /*test_init(&st->t, "t_01.lua", &test_view);*/
 }
 
 static void stage_test_update(Stage_Test *st) {
     /*trace("stage_test_update:\n");*/
-    modelview_pause_set(&test_view, st->is_paused);
-    t_input(&test_view, &sets[set_current]);
-    test_input(&st->t);
+
+    if (test_view.inited)
+        modelview_pause_set(&test_view, st->is_paused);
+
+    /*t_input(&test_view, &sets[set_current]);*/
+
+    if (st->timersnum == 0)
+        test_input(&st->t);
 }
 
+static void test_gui(Stage_Test *st) {
+    bool wnd_open = true;
+    igBegin("test_gui", &wnd_open, 0);
+    const ImVec2 z = {};
+
+    FilesSearchSetup setup = {
+        .path = "./",
+        .deep = 0,
+        .regex_pattern = "t_\\d\\d\\.lua",
+        .udata = st,
+    };
+
+    FilesSearchResult res = koh_search_files(&setup);
+    static bool selected[1024] = {};
+
+    int selected_num = sizeof(selected) / sizeof(selected[0]);
+
+    /*
+    printf(
+        "test_gui: selected_num %d, res_num %d\n",
+        selected_num, res.num
+    );
+    */
+
+    assert(selected_num > res.num);
+
+    static int load_index = -1;
+    if (igBeginListBox("files", (ImVec2){0.f, 500.f})) {
+        for (int i = 0; i < res.num; ++i) {
+            if (igSelectable_BoolPtr(res.names[i], &selected[i], 0, z)) {
+                load_index = i;
+                for (int j = 0; j < res.num; j++) {
+                    if (i != j)
+                        selected[j] = false;
+                }
+                break;
+            }
+        }
+
+        igEndListBox();
+    }
+
+    if (igButton("run", z) && load_index != -1) {
+        const char *fname = res.names[load_index];
+        printf("test_gui: fname '%s'\n", fname);
+
+        modelview_shutdown(&test_view);
+        modelview_init(&test_view, modelview_setup);
+        test_view.auto_put = false;
+
+        test_shutdown(&st->t);
+        test_init(&st->t, fname, &test_view);
+    }
+
+    koh_search_files_shutdown(&res);
+
+    igEnd();
+}
+
+__attribute__((unused))
 static void t_gui(Stage_Test *st) {
     // {{{
     bool open = true;
@@ -676,7 +818,8 @@ static void stage_test_gui(Stage_Test *st) {
     */
 
     modelview_draw_gui(&test_view);
-    t_gui(st);
+    /*t_gui(st);*/
+    test_gui(st);
 }
 
 static void stage_test_draw(Stage_Test *st) {
@@ -688,17 +831,14 @@ static void stage_test_draw(Stage_Test *st) {
         input(&test_view);
     }
 
-    int timersnum = modelview_draw(&test_view);
-    //trace("stage_test_draw: timersnum %d\n", timersnum);
-
-    // TODO: Стоит-ли делать окошко с imgui для выбора теста?
+    st->timersnum = modelview_draw(&test_view);
 
     /*
     if (!timersnum)
         t_assert(&test_view, &sets[set_current]);
         */
 
-    if (!timersnum)
+    if (!st->timersnum)
         test_next_state(&st->t);
 
     /*
