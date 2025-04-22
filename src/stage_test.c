@@ -260,14 +260,32 @@ typedef enum TestState {
     T_FINISHED,
 } TestState;
 
+typedef enum TestStatus {
+    TS_UNKNOWN,
+    TS_PASSED,
+    TS_PARTIALLY,
+    TS_FAILED,
+} TestStatus;
+
+static const char *status2str[] = {
+    [TS_UNKNOWN] = "UNKNOWN",
+    [TS_PASSED] = "PASSED",
+    [TS_PARTIALLY] = "PARTIALLY",
+    [TS_FAILED] = "FAILED",
+};
+
 typedef struct Test {
-    lua_State *l;
+    lua_State  *l;
               // индекс в таблице теста
-    int       index,
+    int        index,
               // количество элементов в таблице
               len;
-    enum      TestState state;
-    ModelView *mv;
+    enum       TestState state;
+    ModelView  *mv;
+    TestStatus status;
+
+    void       (*on_finish)(struct Test *t);
+    void       *udata;
 } Test;
 
 /* XXX: Что мне нужно для Луа реализации?
@@ -345,18 +363,24 @@ static void test_shutdown(Test *t) {
 static bool test_check_finished(Test *t) {
     assert(t);
 
-    /*printf("test_check_finished: index %d len %d\n", t->index, t->len);*/
-
     if (t->state != T_FINISHED && t->index >= t->len) {
-        printf("test_next_state: finished\n");
+
+        printf("test_check_finished: finished\n");
         t->state = T_FINISHED;
+
+        if (t->status != TS_PARTIALLY)
+            t->status = TS_PASSED;
 
         koh_term_color_set(KOH_TERM_BLUE);
         printf("TESTCASE FINISHED\n");
         koh_term_color_reset();
 
+        if (t->on_finish)
+            t->on_finish(t);
+
         return true;
     }
+
     return false;
 }
 
@@ -410,10 +434,11 @@ static void test_input(Test *t) {
 static void test_check_initial(Test *t) {
     const int field_size = t->mv->field_size;
 
-    trace("test_next_state: before printing\n");
+    trace("test_check_initial: before printing\n");
     // TODO: Заполнить поле 
 
-    printf("lua_rawgeti 1 [%s]\n", L_stack_dump(t->l));
+    //printf("lua_rawgeti 1 [%s]\n", L_stack_dump(t->l));
+    
     lua_rawgeti(t->l, -1, t->index);
 
     int type = LUA_TNONE;
@@ -479,7 +504,7 @@ static void test_check_initial(Test *t) {
 
     } else {
         printf(
-            "test_next_state: unknown type '%s'\n",
+            "test_check_initial: unknown type '%s'\n",
             lua_typename(t->l, type)
         );
     }
@@ -487,50 +512,8 @@ static void test_check_initial(Test *t) {
     t->state = T_INPUT;
 }
 
-static void test_check_assert(Test *t) {
-    printf("test_next_state: T_ASSERT\n");
-
-    lua_State *l = t->l;
-
-    int type = lua_type(t->l, -1);
-    assert(type == LUA_TSTRING);
-
-    // скинуть строку с пользовательским вводом
-    lua_pop(l, 1);
-
-    type = lua_rawgeti(t->l, -1, ++t->index);
-    assert(type == LUA_TTABLE);
-
-    // TODO: Обработка поля
-    L_inspect(l, -1);
-    int len = luaL_len(t->l, -1);
-
+static void term_print_field(Test *t, int *field) {
     const int field_size = t->mv->field_size;
-    int fail_num = 0;
-
-    int field[(int)pow(field_size, 2)];
-    memset(field, 0, sizeof(field));
-
-    for (int i = 1; i <= len; i++) {
-        lua_rawgeti(l, -1, i);
-
-        type = lua_type(l, -1);
-        assert(type == LUA_TSTRING);
-
-        const char *cmd = lua_tostring(l, -1);
-
-        int val = -1;
-        sscanf(cmd, "%d", &val);
-        field[i - 1] = val;
-
-        lua_pop(l, 1);
-    }
-
-    for (int i = 0; i < len; i++) {
-        printf("%d ", field[i]);
-    }
-    printf("\n");
-
     koh_term_color_set(KOH_TERM_BLUE);
     // Печатать необходимое поле
     int index = 0;
@@ -547,7 +530,10 @@ static void test_check_assert(Test *t) {
     }
     printf("\n");
     koh_term_color_reset();
+}
 
+static void term_print_field_ecs(Test *t) {
+    const int field_size = t->mv->field_size;
     koh_term_color_set(KOH_TERM_YELLOW);
     // печатать имеющееся поле
     for (int y = 0; y < field_size; y++) {
@@ -563,18 +549,80 @@ static void test_check_assert(Test *t) {
     }
     printf("\n");
     koh_term_color_reset();
+}
 
-    index = 0;
+static void test_check_assert(Test *t) {
+    printf("test_check_assert: T_ASSERT\n");
+
+    lua_State *l = t->l;
+    const int field_size = t->mv->field_size;
+    int fail_num = 0;
+
+    int type = lua_type(t->l, -1);
+    assert(type == LUA_TSTRING);
+
+    // скинуть строку с пользовательским вводом
+    lua_pop(l, 1);
+
+    type = lua_rawgeti(t->l, -1, ++t->index);
+    assert(type == LUA_TTABLE);
+
+    L_inspect(l, -1);
+
+    int len = luaL_len(t->l, -1);
+    int field[(int)pow(field_size, 2)];
+    memset(field, 0, sizeof(field));
+
+    // Заполнить поле
+    for (int i = 1; i <= len; i++) {
+        lua_rawgeti(l, -1, i);
+
+        // Проверка типа
+        type = lua_type(l, -1);
+        assert(type == LUA_TSTRING);
+
+        const char *cmd = lua_tostring(l, -1);
+
+        int val = -1;
+        sscanf(cmd, "%d", &val);
+        field[i - 1] = val;
+
+        lua_pop(l, 1);
+    }
+
+    /*
+    for (int i = 0; i < len; i++) {
+        printf("%d ", field[i]);
+    }
+    printf("\n");
+    */
+
+    term_print_field(t, field);
+    term_print_field_ecs(t);
+
+    int index = 0;
     for (int y = 0; y < field_size; y++) {
         for (int x = 0; x < field_size; x++) {
             int v = field[index];
 
             Cell *cell = modelview_search_cell(t->mv, x, y);
             if (v != -1) {
-                assert(cell);
-                assert(cell->value == v);
+                if (!cell) {
+                    t->state = T_FINISHED;
+                    t->status = TS_FAILED;
+                    lua_settop(l, 0);
+                    return;
+                }
+                if (cell->value != v) {
+                    t->state = T_FINISHED;
+                    t->status = TS_FAILED;
+                    lua_settop(l, 0);
+                    return;
+                }
             } else {
-                assert(cell == NULL);
+                /*assert(cell == NULL);*/
+                printf("test_check_assert: strange cell on [%d, %d]\n", x, y);
+                t->status = TS_PARTIALLY;
             }
 
             index++;
@@ -806,12 +854,21 @@ static void t_input(ModelView *mv, TestSet *ts) {
     // }}}
 }
 
+typedef struct TestGui {
+    // Флажки выбранного теста
+    bool       selected[1024];
+    TestStatus stats[1024];
+} TestGui;
+
 typedef struct Stage_Test {
     Stage               parent;
     int                 timersnum;
     Camera2D            camera;
     bool                is_paused;
+    // Хранит один тест
     Test                t;
+    // Окошко с выбором вариантов
+    TestGui             tg;
 } Stage_Test;
 
 // Установить тест из массива sets по индексу set_index
@@ -837,6 +894,8 @@ static void stage_test_init(Stage_Test *st) {
     trace("stage_test_init: T_X_SIZE %d \n", (int)T_X_SIZE);
     st->camera.zoom = 1.f;
 
+    /*tracec("hello %{green} world %{reset}\n");*/
+
     modelview_setup.cam = &st->camera;
     //main_view_setup.on_init_lua = load_init_lua;
 
@@ -859,7 +918,20 @@ static void stage_test_update(Stage_Test *st) {
         test_input(&st->t);
 }
 
-static void test_gui(Stage_Test *st) {
+static void on_finish_next(Test *t) {
+    printf("on_finish: %s\n", status2str[t->status]);
+    *(TestStatus*)t->udata = t->status;
+}
+
+static void on_finish(Test *t) {
+    printf("on_finish: %s\n", status2str[t->status]);
+    *(TestStatus*)t->udata = t->status;
+}
+
+static void test_gui(Test *t, TestGui *tg) {
+    assert(t);
+    assert(tg);
+
     bool wnd_open = true;
     igBegin("test_gui", &wnd_open, 0);
     const ImVec2 z = {};
@@ -868,26 +940,42 @@ static void test_gui(Stage_Test *st) {
         .path = "./",
         .deep = 0,
         .regex_pattern = "t_\\d\\d\\.lua",
-        .udata = st,
     };
 
     FilesSearchResult res = koh_search_files(&setup);
-    static bool selected[1024] = {};
 
-    int selected_num = sizeof(selected) / sizeof(selected[0]);
-
-    /*
-    printf(
-        "test_gui: selected_num %d, res_num %d\n",
-        selected_num, res.num
-    );
-    */
+    int selected_num = sizeof(tg->selected) / sizeof(tg->selected[0]);
+    bool *selected = tg->selected;
+    TestStatus *stats = tg->stats;
 
     assert(selected_num > res.num);
+
+    const ImVec4 colors[] = {
+        [TS_UNKNOWN] = {0.5f, .5f, 0.5f, 1.0f},
+        [TS_PASSED] = {0.0f, 1.0f, 0.0f, 1.0f},
+        [TS_FAILED] = {1.0f, 0.0f, 0.0f, 1.0f},
+    };
 
     static int load_index = -1;
     if (igBeginListBox("files", (ImVec2){0.f, 500.f})) {
         for (int i = 0; i < res.num; ++i) {
+
+            if (stats[i] != TS_PARTIALLY) {
+                igPushStyleColor_Vec4(ImGuiCol_Text, colors[stats[i]]);
+                igBullet();
+                igPopStyleColor(1);
+            } else {
+                igPushStyleColor_Vec4(ImGuiCol_Text, colors[TS_FAILED]);
+                igBullet();
+                igPopStyleColor(1);
+                igSameLine(0.f, 0.f);
+                igPushStyleColor_Vec4(ImGuiCol_Text, colors[TS_PASSED]);
+                igBullet();
+                igPopStyleColor(1);
+            }
+
+            igSameLine(0., 0.);
+
             if (igSelectable_BoolPtr(res.names[i], &selected[i], 0, z)) {
                 load_index = i;
                 for (int j = 0; j < res.num; j++) {
@@ -909,8 +997,35 @@ static void test_gui(Stage_Test *st) {
         modelview_init(&test_view, modelview_setup);
         test_view.auto_put = false;
 
-        test_shutdown(&st->t);
-        test_init(&st->t, fname, &test_view);
+        test_shutdown(t);
+        test_init(t, fname, &test_view);
+
+        // Поместить информацию о статусе теста в статическую переменную при
+        // завершении выполнения
+        t->udata = &stats[load_index];
+        t->on_finish = on_finish;
+    }
+
+    // Запуск нескольких примеров
+    if (igButton("run all", z)) {
+        // Начать c load_index = 1 в on_finish увеличивать
+        const char *fname = res.names[0];
+        modelview_shutdown(&test_view);
+        modelview_init(&test_view, modelview_setup);
+        test_view.auto_put = false;
+
+        test_shutdown(t);
+        test_init(t, fname, &test_view);
+
+        // Поместить информацию о статусе теста в статическую переменную при
+        // завершении выполнения
+        t->udata = &stats[load_index];
+        t->on_finish = on_finish_next;
+    }
+
+    if (igButton("reset bullets", z)) {
+        memset(selected, 0, sizeof(tg->selected));
+        memset(stats, 0, sizeof(tg->stats));
     }
 
     koh_search_files_shutdown(&res);
@@ -964,7 +1079,7 @@ static void stage_test_gui(Stage_Test *st) {
 
     modelview_draw_gui(&test_view);
     /*t_gui(st);*/
-    test_gui(st);
+    test_gui(&st->t, &st->tg);
 }
 
 static void stage_test_draw(Stage_Test *st) {
