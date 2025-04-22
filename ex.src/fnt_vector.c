@@ -87,7 +87,7 @@ void fnt_vector_init() {
 void fnt_vector_free(FntVector *fv) {
     assert(fv);
 
-    trace("fnt_vector_free:\n");
+    //trace("fnt_vector_free:\n");
 
     if (fv->char2vector) {
         htable_free(fv->char2vector);

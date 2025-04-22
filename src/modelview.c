@@ -488,7 +488,7 @@ void modelview_put(ModelView *mv) {
 
             j--;
             if (j <= 0) {
-                trace("modeltest_put: too much iterations\n");
+                trace("modelview_put: too much iterations\n");
                 // спасение бегством от бесконечного цикла
                 return;
             }
@@ -2029,7 +2029,7 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->lua_after_load = modelview_lua_after_load;
 
     if (mv->on_init_lua) {
-        trace("modeltest_init:\n");
+        //trace("modeltest_init:\n");
         mv->on_init_lua();
     }
 
