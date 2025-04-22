@@ -734,7 +734,7 @@ static void stage_test_leave(Stage_Test *st) {
     trace("stage_test_leave:\n");
 }
 
-Stage *stage_test_new(HotkeyStorage *hk_store) {
+Stage *stage_test2_new(HotkeyStorage *hk_store) {
     //assert(hk_store);
     Stage_Test *st = calloc(1, sizeof(*st));
     st->parent.data = hk_store;
