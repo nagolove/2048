@@ -49,6 +49,7 @@ typedef struct Test {
 
     void       (*on_finish)(struct Test *t);
     void       *udata;
+    bool       ex;
 } Test;
 
 /* XXX: Что мне нужно для Луа реализации?
@@ -56,6 +57,57 @@ typedef struct Test {
     Индекс в таблице t_01.lua
     Lua машина
  */
+
+static void test_init_ex(Test *t, const char *fname, ModelView *mv) {
+    assert(t);
+    assert(mv);
+    trace("test_init: fname '%s'\n", fname);
+
+    memset(t, 0, sizeof(*t));
+
+    t->ex = true;
+    t->mv = mv;
+    t->l = luaL_newstate();
+    luaL_openlibs(t->l);
+
+    int err = luaL_dofile(t->l, fname);
+    if (err != LUA_OK) {
+        trace(
+            "test_init: could not load '%s' with '%s'\n",
+            fname, lua_tostring(t->l, -1)
+        );
+        lua_close(t->l);
+        t->l = NULL;
+    }
+
+    lua_State *l = t->l;
+    t->len = lua_rawlen(l, -1);
+
+    int type;
+
+    type = lua_type(l, -1);
+    assert(type == LUA_TTABLE);
+
+    type = lua_getfield(l, -1, "id");
+    assert(type == LUA_TSTRING);
+
+    const char *id = lua_tostring(l, -1);
+
+    if (strcmp(id, "options") == 0) {
+        // XXX: Что-то сделать
+    }
+
+    // скинуть 'id'
+    lua_pop(l, 1);
+
+    lua_pop(l, 1);
+    L_inspect(l, -1);
+
+    exit(1);
+
+    t->index = 1;
+    t->state = T_INITIAL;
+}
 
 static void test_init(Test *t, const char *fname, ModelView *mv) {
     assert(t);
@@ -154,8 +206,25 @@ static bool test_check_finished(Test *t) {
     return false;
 }
 
+static void test_input_ex(Test *t) {
+    printf("test_init_ex:\n");
+
+    if (!t->l)
+        return;
+
+    if (t->state != T_INPUT) {
+        return;
+    }
+
+}
+
 static void test_input(Test *t) {
     assert(t);
+
+    if (t->ex) {
+        test_input_ex(t);
+        return;
+    }
 
     if (!t->l)
         return;
@@ -425,11 +494,21 @@ static void test_check_assert(Test *t) {
     t->status = TS_PASSED;
 }
 
+static void test_next_state_ex(Test *t) {
+    printf("test_next_state_ex:\n");
+
+}
+
 static void test_next_state(Test *t) {
     assert(t);
 
     if (!t->l)
         return;
+
+    if (t->ex) {
+        test_next_state_ex(t);
+        return;
+    }
 
     // trace("test_next_state: index %d, len %d\n", t->index, t->len);
 
@@ -464,12 +543,23 @@ typedef struct Stage_Test {
 } Stage_Test;
 
 static void test_gui_init(TestGui *tg) {
-    FilesSearchSetup setup = {
+
+    FilesSearchSetup setup1 = {
         .path = "./",
         .deep = 0,
         .regex_pattern = "t_\\d\\d\\.lua",
+    }, setup2 = {
+        .path = "./",
+        .deep = 0,
+        .regex_pattern = "t_\\d\\dex.lua",
     };
-    tg->search = koh_search_files(&setup);
+
+    tg->search = koh_search_files(&setup2);
+
+    FilesSearchResult tmp = koh_search_files(&setup1);
+    koh_search_files_concat(&tg->search, tmp);
+
+    koh_search_files_shutdown(&tmp);
 
     for (int i = 0; i < tg->search.num; i++) {
         lua_State *l = luaL_newstate();
@@ -507,6 +597,27 @@ static void test_gui_shutdown(TestGui *tg) {
             tg->description[i] = NULL;
         }
     }
+}
+
+static void test_reinit(
+    Test *t, TestGui *tg, void (*on_finish_func)(Test *tg)
+) {
+    const char *fname = tg->search.names[(*tg->load_index)];
+    printf("on_finish_next: fname %s\n", fname);
+    modelview_shutdown(&test_view);
+
+    // TODO: Добавить сюда применение поля size
+    modelview_init(&test_view, modelview_setup);
+    test_view.auto_put = false;
+    test_shutdown(t);
+
+    if (koh_str_match(fname, NULL, ".*ex\\.lua"))
+        test_init_ex(t, fname, &test_view);
+    else
+        test_init(t, fname, &test_view);
+
+    t->udata = tg;
+    t->on_finish = on_finish_func;
 }
 
 static void stage_test_init(Stage_Test *st) {
@@ -547,16 +658,7 @@ static void on_finish_next(Test *t) {
     if (tg->load_index && *tg->load_index + 1 < tg->search.num) {
         (*tg->load_index)++;
 
-        const char *fname = tg->search.names[(*tg->load_index)];
-        printf("on_finish_next: fname %s\n", fname);
-        modelview_shutdown(&test_view);
-        modelview_init(&test_view, modelview_setup);
-        test_view.auto_put = false;
-        test_shutdown(t);
-        test_init(t, fname, &test_view);
-
-        t->udata = tg;
-        t->on_finish = on_finish_next;
+        test_reinit(t, tg, on_finish_next);
     }
 }
 
@@ -633,16 +735,7 @@ static void test_gui(Test *t, TestGui *tg) {
         const char *fname = tg->search.names[load_index];
         printf("test_gui: fname '%s'\n", fname);
 
-        modelview_shutdown(&test_view);
-        modelview_init(&test_view, modelview_setup);
-        test_view.auto_put = false;
-        test_shutdown(t);
-        test_init(t, fname, &test_view);
-
-        // Поместить информацию о статусе теста в статическую переменную при
-        // завершении выполнения
-        t->udata = tg;
-        t->on_finish = on_finish;
+        test_reinit(t, tg, on_finish);
     }
     igSameLine(0., 10.);
 
@@ -654,18 +747,7 @@ static void test_gui(Test *t, TestGui *tg) {
         *tg->load_index = 0;
 
         printf("test_gui: load_index %d\n", *tg->load_index);
-
-        const char *fname = tg->search.names[0];
-        modelview_shutdown(&test_view);
-        modelview_init(&test_view, modelview_setup);
-        test_view.auto_put = false;
-        test_shutdown(t);
-        test_init(t, fname, &test_view);
-
-        // Поместить информацию о статусе теста в статическую переменную при
-        // завершении выполнения
-        t->udata = tg;
-        t->on_finish = on_finish_next;
+        test_reinit(t, tg, on_finish_next);
     }
 
     igSameLine(0., 10.);
