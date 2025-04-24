@@ -32,6 +32,7 @@
 #include <ctype.h>
 #include "koh_strbuf.h"
 #include "koh_lua.h"
+#include "common.h"
 // }}}
 
 /*
@@ -361,21 +362,33 @@ void modelview_put_cell(struct ModelView *mv, int x, int y, int value) {
         .e = cell_en,
     };
 
-    timerman_add(mv->timers, (struct TimerDef) {
+    TimerDef timer_draw = {
         .duration = mv->tmr_put_time,
         .sz = sizeof(td),
         .on_update = tmr_cell_draw,
         .on_stop = tmr_cell_draw_stop,
         .data = &td,
-    });
-    timerman_add(mv->timers, (TimerDef) {
+    }, timer_pulsation = {
         .data = &td,
         .duration = 1.,
         .on_stop = tmr_pulsation_stop,
         .on_update = tmr_pulsation_update,
         .sz = sizeof(td),
-    });
+    };
 
+    /*
+    printf(
+        "modelview_put_cell: timer_draw %s\n",
+        timer2str(timer_draw)
+    );
+    printf(
+        "modelview_put_cell: timer_pulsation %s\n",
+        timer2str(timer_pulsation)
+    );
+    */
+
+    timerman_add(mv->timers, timer_draw);
+    timerman_add(mv->timers, timer_pulsation);
 }
 
 // Возвращает количество бомб на поле
@@ -1352,20 +1365,41 @@ static void options_window(struct ModelView *mv) {
 
     if (IsKeyPressed(KEY_R) || igButton("restart", (ImVec2) {0, 0})) {
         modelview_shutdown(mv);
-        struct Setup setup = {
-            .win_value = win_value,
-            .auto_put = true,
-            .cam = mv->camera,
-            .field_size = field_size,
-            .tmr_block_time = mv->tmr_block_time,
-            .tmr_put_time = mv->tmr_put_time,
-            /*.pos = &mv->pos,*/
-            .use_gui = mv->use_gui,
-            .use_bonus = use_bonus,
-            .use_fnt_vector = use_fnt_vector,
-            /*.color_theme = theme_light ? color_theme_light : color_theme_dark,*/
-            .on_init_lua = mv->on_init_lua,
-        };
+
+        struct Setup setup = {};
+
+        // XXX: Коряво, при нажатии 'restart' обнуляется время таймеров
+        // Возможная причина - ??
+        if (mv->inited) {
+            setup = (Setup) {
+                .win_value = win_value,
+                .auto_put = true,
+                .cam = mv->camera,
+                .field_size = field_size,
+                .tmr_block_time = mv->tmr_block_time,
+                .tmr_put_time = mv->tmr_put_time,
+                /*.pos = &mv->pos,*/
+                .use_gui = mv->use_gui,
+                .use_bonus = use_bonus,
+                .use_fnt_vector = use_fnt_vector,
+                /*.color_theme = theme_light ? color_theme_light : color_theme_dark,*/
+                .on_init_lua = mv->on_init_lua,
+            };
+        } else {
+            setup = (Setup) {
+                .win_value = win_value,
+                .auto_put = true,
+                .cam = NULL,
+                .field_size = field_size,
+                .tmr_block_time = modelview_setup.tmr_block_time,
+                .tmr_put_time = modelview_setup.tmr_put_time,
+                .use_gui = modelview_setup.use_gui,
+                .use_bonus = use_bonus,
+                .use_fnt_vector = use_fnt_vector,
+                .on_init_lua = NULL,
+            };
+        }
+
         modelview_init(mv, setup);
 
         // XXX: Опасный код так как параметры проходят мимо конструктора
@@ -1969,12 +2003,12 @@ void modelview_init(ModelView *mv, Setup setup) {
     assert(mv->quad_width > 0);
 
     const int field_width = mv->field_size * mv->quad_width;
-        mv->pos = (Vector2){
-            .x = (GetScreenWidth() - field_width) / 2.,
-            .y = (GetScreenHeight() - field_width) / 2.,
-        };
+    mv->pos = (Vector2){
+        .x = (GetScreenWidth() - field_width) / 2.,
+        .y = (GetScreenHeight() - field_width) / 2.,
+    };
 
-    mv->timers = timerman_new(mv->field_size * mv->field_size * 3, "effects");
+    mv->timers = timerman_new(mv->field_size * mv->field_size * 3, "timers");
 
     mv->state = MVS_READY;
     mv->dropped = false;
@@ -1994,8 +2028,24 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->use_bonus = setup.use_bonus;
     mv->font_spacing = 2.;
 
-    assert(setup.tmr_block_time > 0.);
-    assert(setup.tmr_put_time > 0.);
+    if (setup.tmr_block_time > 0.) {
+        const float dflt = 0.04;
+        setup.tmr_block_time = dflt;
+        printf(
+            "modelview_init: setp.tmr_block_time %f default value\n",
+            setup.tmr_block_time
+        );
+    }
+
+    if (setup.tmr_put_time > 0.) {
+        const float dflt = 0.04;
+        setup.tmr_put_time = dflt;
+        printf(
+            "modelview_init: setp.tmr_put_time %f default value\n",
+            setup.tmr_put_time
+        );
+    }
+
     mv->tmr_block_time = setup.tmr_block_time;
     mv->tmr_put_time = setup.tmr_put_time;
 

@@ -176,8 +176,9 @@ static void stage_main_draw(Stage_Main *st) {
 
     L_pcall(l, "draw_bottom", &is_ok);
 
-    if (main_view.state != MVS_GAMEOVER)
+    if (main_view.state != MVS_GAMEOVER) {
         input(&main_view);
+    }
 
     modelview_draw(&main_view);
 
