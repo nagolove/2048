@@ -215,3 +215,4 @@ Cell *modelview_search_cell(ModelView *mv, int x, int y);
 e_id modelview_search_entity(ModelView *mv, int x, int y);
 
 extern e_cp_type cmp_position, cmp_cell, cmp_bomb, cmp_transition, cmp_exp;
+extern const char *dir2str[];

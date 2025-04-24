@@ -13,13 +13,8 @@
 static struct ModelView test_view;
 
 typedef enum TestState {
-    // установка значений
-    T_INITIAL,
-    // ввод пользователя
-    T_INPUT,
-    // проверка
-    T_ASSERT,
-    // все сделано
+    T_PROCESS,
+    T_READY_FINISH,
     T_FINISHED,
 } TestState;
 
@@ -29,6 +24,12 @@ typedef enum TestStatus {
     TS_PARTIALLY,
     TS_FAILED,
 } TestStatus;
+
+static const char *state2str[] = {
+    [T_PROCESS] = "PROCESS",
+    [T_READY_FINISH] = "READY_FINISH",
+    [T_FINISHED] = "FINISHED",
+};
 
 static const char *status2str[] = {
     [TS_UNKNOWN] = "UNKNOWN",
@@ -49,14 +50,27 @@ typedef struct Test {
 
     void       (*on_finish)(struct Test *t);
     void       *udata;
-    bool       ex;
 } Test;
 
-/* XXX: Что мне нужно для Луа реализации?
-    Общая структура struct Test
-    Индекс в таблице t_01.lua
-    Lua машина
- */
+typedef struct TestGui {
+    // Флажки выбранного теста
+    bool              selected[1024];
+    TestStatus        stats[1024];
+    char              *description[1024];
+    int               *load_index;
+    FilesSearchResult search;
+} TestGui;
+
+typedef struct Stage_Test {
+    Stage               parent;
+    int                 timersnum;
+    Camera2D            camera;
+    bool                is_paused;
+    // Хранит один тест
+    Test                t;
+    // Окошко с выбором вариантов
+    TestGui             tg;
+} Stage_Test;
 
 static void test_init_ex(Test *t, const char *fname, ModelView *mv) {
     assert(t);
@@ -65,7 +79,6 @@ static void test_init_ex(Test *t, const char *fname, ModelView *mv) {
 
     memset(t, 0, sizeof(*t));
 
-    t->ex = true;
     t->mv = mv;
     t->l = luaL_newstate();
     luaL_openlibs(t->l);
@@ -83,94 +96,32 @@ static void test_init_ex(Test *t, const char *fname, ModelView *mv) {
     lua_State *l = t->l;
     t->len = lua_rawlen(l, -1);
 
+    printf("test_init_ex: len %d\n", t->len);
+
     int type;
 
     type = lua_type(l, -1);
     assert(type == LUA_TTABLE);
 
-    type = lua_getfield(l, -1, "id");
-    assert(type == LUA_TSTRING);
+    lua_rawgeti(l, -1, 1);
+    assert(type == LUA_TTABLE);
 
+    type = lua_getfield(l, -1, "id");
+
+    assert(type == LUA_TSTRING);
     const char *id = lua_tostring(l, -1);
 
     if (strcmp(id, "options") == 0) {
+        t->index++;
+        printf("test_init_ex: options found\n");
         // XXX: Что-то сделать
     }
 
-    // скинуть 'id'
-    lua_pop(l, 1);
+    // скинуть 'id' и таблицу с опциями
+    lua_pop(l, 2);
 
-    lua_pop(l, 1);
-    L_inspect(l, -1);
-
-    exit(1);
-
-    t->index = 1;
-    t->state = T_INITIAL;
-}
-
-static void test_init(Test *t, const char *fname, ModelView *mv) {
-    assert(t);
-    assert(mv);
-    trace("test_init: fname '%s'\n", fname);
-
-    memset(t, 0, sizeof(*t));
-
-    t->mv = mv;
-    t->l = luaL_newstate();
-    luaL_openlibs(t->l);
-
-    int err = luaL_dofile(t->l, fname);
-    if (err != LUA_OK) {
-        trace(
-            "test_init: could not load '%s' with '%s'\n",
-            fname, lua_tostring(t->l, -1)
-        );
-        lua_close(t->l);
-        t->l = NULL;
-    }
-
-    /*trace("test_init: [%s]\n", L_stack_dump(t->l));*/
-
-    lua_pushvalue(t->l, -1);
-
-    // debug stuff
-    lua_setglobal(t->l, "T");
-
-    /*
-    L_inline(t->l,
-        "package.path = './?.lua;' .. package.path\n"
-        "inspect = require 'inspect'\n"
-        "print(inspect(T))\n"
-    );
-    */
-
-    // debuf stuff
-
-    if (lua_type(t->l, -1) != LUA_TTABLE) {
-        trace(
-            "test_init: stack top element is not a table [%s]\n",
-            L_stack_dump(t->l)
-        );
-        lua_settop(t->l, 0);
-    } else {
-        t->len = lua_rawlen(t->l, -1);
-        /*trace("test_init: len %d\n", t->len);*/
-
-        /*
-        for (int i = 1; i <= t->len; i++) {
-            int type = lua_rawgeti(t->l, -1, i);
-            printf("type %s\n", lua_typename(t->l, type));
-            lua_pop(t->l, 1);
-        }
-        */
-
-    }
-
-    /*trace("test_init: [%s]\n", L_stack_dump(t->l));*/
-    t->index = 1;
-    /*trace("test_init: index %d, len %d\n", t->index, t->len);*/
-    t->state = T_INITIAL;
+    t->index++;
+    t->state = T_PROCESS;
 }
 
 static void test_shutdown(Test *t) {
@@ -180,175 +131,6 @@ static void test_shutdown(Test *t) {
         lua_close(t->l);
         t->l = NULL;
     }
-}
-
-static bool test_check_finished(Test *t) {
-    assert(t);
-
-    if (t->state != T_FINISHED && t->index >= t->len) {
-
-        printf("test_check_finished: finished\n");
-        t->state = T_FINISHED;
-
-        if (t->status != TS_PARTIALLY)
-            t->status = TS_PASSED;
-
-        koh_term_color_set(KOH_TERM_BLUE);
-        printf("TESTCASE FINISHED\n");
-        koh_term_color_reset();
-
-        if (t->on_finish)
-            t->on_finish(t);
-
-        return true;
-    }
-
-    return false;
-}
-
-static void test_input_ex(Test *t) {
-    printf("test_init_ex:\n");
-
-    if (!t->l)
-        return;
-
-    if (t->state != T_INPUT) {
-        return;
-    }
-
-}
-
-static void test_input(Test *t) {
-    assert(t);
-
-    if (t->ex) {
-        test_input_ex(t);
-        return;
-    }
-
-    if (!t->l)
-        return;
-
-    if (t->state != T_INPUT) {
-        return;
-    }
-
-    lua_State *l = t->l;
-
-    if (test_check_finished(t))
-        return;
-
-    /*
-    printf("test_input 1: [%s]\n", L_stack_dump(l));
-    */
-
-    printf("test_input: index %d\n", t->index);
-
-    int type = lua_type(l, -1);
-
-    /*L_inspect(l, -1);*/
-
-    if (type != LUA_TSTRING) {
-        trace("test_input: bad type for user input command\n");
-        abort();
-    }
-
-    /*
-    printf("test_input: ready to process\n");
-    printf("test_input 2: [%s]\n", L_stack_dump(l));
-    */
-
-    const char *cmd = lua_tostring(l, -1);
-    Direction dir = str2direction(cmd);
-    modelview_input(t->mv, dir);
-
-    t->state = T_ASSERT;
-
-    /*
-    printf("test_input: cmd '%s'\n", cmd);
-    printf("test_input 3: [%s]\n", L_stack_dump(l));
-    */
-}
-
-static void test_check_initial(Test *t) {
-    const int field_size = t->mv->field_size;
-
-    trace("test_check_initial: before printing\n");
-    // TODO: Заполнить поле 
-
-    //printf("lua_rawgeti 1 [%s]\n", L_stack_dump(t->l));
-    
-    lua_rawgeti(t->l, -1, t->index);
-
-    int type = LUA_TNONE;
-
-    // Считать таблицу с 'size' и пропустить её
-    type = lua_getfield(t->l, -1, "size");
-    if (type == LUA_TNUMBER) {
-
-        //printf("test_next_state: [%s]\n", L_stack_dump(t->l));
-        //printf("test_next_state: size %f\n", lua_tonumber(t->l, -1));
-        
-        // скинуть число и таблицу
-        lua_pop(t->l, 2);
-
-        /*printf("test_next_state: [%s]\n", L_stack_dump(t->l));*/
-        /*printf("test_next_state: index %d\n", t->index);*/
-
-        // Перехожу к следующему элементу
-        lua_rawgeti(t->l, -1, ++t->index);
-    }
-
-    /*printf("lua_rawgeti 2 [%s]\n", L_stack_dump(t->l));*/
-
-    type = lua_type(t->l, -1);
-
-    if (type == LUA_TSTRING) {
-        printf("test_next_state: string type\n");
-    } else if (type == LUA_TTABLE) {
-        /*printf("test_next_state: table type\n");*/
-
-        /*L_inspect(t->l, -1);*/
-        int len = luaL_len(t->l, -1);
-        assert(len == field_size * field_size);
-
-        for (int i = 1; i <= len; i++) {
-            lua_rawgeti(t->l, -1, i);
-
-            assert(lua_type(t->l, -1) == LUA_TSTRING);
-            const char *cmd = lua_tostring(t->l, -1);
-            int val = -1;
-
-            sscanf(cmd, "%d", &val);
-            if (val != -1) {
-                // Установить значения клетки
-                int x = i % field_size - 1;
-                int y = i / field_size;
-                /*printf("%s %d %d\n", cmd, x, y);*/
-                modelview_put_cell(t->mv, x, y, val);
-            }
-
-            // Скинуть элемент поля
-            lua_pop(t->l, 1);
-        }
-        /*printf("\n");*/
-
-        // Скинуть таблицу с элементами поля
-        lua_pop(t->l, 1);
-
-        /*L_inspect(t->l, -1);*/
-        // Перехожу к следующему элементу
-        lua_rawgeti(t->l, -1, ++t->index);
-        /*L_inspect(t->l, -1);*/
-
-    } else {
-        printf(
-            "test_check_initial: unknown type '%s'\n",
-            lua_typename(t->l, type)
-        );
-    }
-
-    t->state = T_INPUT;
 }
 
 static void term_print_field(Test *t, int *field) {
@@ -390,25 +172,87 @@ static void term_print_field_ecs(Test *t) {
     koh_term_color_reset();
 }
 
-static void test_check_assert(Test *t) {
-    printf("test_check_assert: T_ASSERT\n");
+static void test_id_initial(Test *t) {
+    assert(t);
+    assert(t->mv);
+
+    const int field_size = t->mv->field_size;
+    int field[(int)pow(field_size, 2)];
+    lua_State *l = t->l;
+    int len = luaL_len(t->l, -1);
+    assert(len == field_size * field_size);
+
+    printf("test_id_initial: len %d\n", len);
+
+    memset(field, 0, sizeof(field));
+
+    int x = 0, y = 0;
+    for (int i = 1; i <= len; i++) {
+        lua_rawgeti(l, -1, i);
+
+        assert(lua_type(l, -1) == LUA_TSTRING);
+        const char *cmd = lua_tostring(l, -1);
+        int val = -1;
+
+        sscanf(cmd, "%d", &val);
+        if (val > 0) {
+            // Установить значения клетки
+            modelview_put_cell(t->mv, x, y, val);
+        }
+        field[i - 1] = val;
+        
+        x += 1;
+        if (x == field_size) {
+            y++;
+            x = 0;
+        }
+
+        // Скинуть элемент поля
+        lua_pop(l, 1);
+    }
+
+    koh_term_color_set(KOH_TERM_CYAN);
+    term_print_field(t, field);
+    koh_term_color_reset();
+}
+
+static void test_id_input(Test *t) {
+    /*printf("test_id_input\n");*/
+
+    lua_State *l = t->l;
+
+    /*int len = luaL_len(l, -1);*/
+    // TODO: Ввод нескольких значений. Нужно ждать конца таймеров
+    int len = 1;
+
+    for (int i = 1; i <= len; ++i) {
+        lua_rawgeti(l, -1, i);
+        const char *cmd = lua_tostring(l, -1);
+        printf("test_id_input: '%s'\n", cmd);
+        Direction dir = str2direction(cmd);
+        modelview_input(t->mv, dir);
+        lua_pop(l, 1);
+    }
+
+}
+
+static void test_id_function(Test *t) {
+    printf("test_id_function\n");
+
+    lua_State *l = t->l;
+    int type = lua_rawgeti(l, -1, 1);
+    assert(type == LUA_TFUNCTION);
+
+    lua_call(l, 0, 0);
+}
+
+static void test_id_assert(Test *t) {
+    printf("test_id_assert\n");
 
     lua_State *l = t->l;
     const int field_size = t->mv->field_size;
-    int fail_num = 0;
-
-    int type = lua_type(t->l, -1);
-    assert(type == LUA_TSTRING);
-
-    // скинуть строку с пользовательским вводом
-    lua_pop(l, 1);
-
-    type = lua_rawgeti(t->l, -1, ++t->index);
-    assert(type == LUA_TTABLE);
-
-    /*L_inspect(l, -1);*/
-
     int len = luaL_len(t->l, -1);
+    assert(len == field_size * field_size);
     int field[(int)pow(field_size, 2)];
     memset(field, 0, sizeof(field));
 
@@ -417,16 +261,10 @@ static void test_check_assert(Test *t) {
         lua_rawgeti(l, -1, i);
 
         // Проверка типа
-        type = lua_type(l, -1);
+        int type = lua_type(l, -1);
         assert(type == LUA_TSTRING);
 
         const char *cmd = lua_tostring(l, -1);
-
-        // Игнор первого ассерта в таблице
-        if (i == 1 && strcmp(cmd, "assert") == 0) {
-            i--;
-            lua_pop(l, 1);
-        }
 
         int val = -1;
         sscanf(cmd, "%d", &val);
@@ -435,15 +273,12 @@ static void test_check_assert(Test *t) {
         lua_pop(l, 1);
     }
 
-    /*
-    for (int i = 0; i < len; i++) {
-        printf("%d ", field[i]);
-    }
-    printf("\n");
-    */
-
+    printf("field:\n");
     term_print_field(t, field);
+    printf("ecs:\n");
     term_print_field_ecs(t);
+
+    t->status = TS_PASSED;
 
     int index = 0;
     for (int y = 0; y < field_size; y++) {
@@ -453,15 +288,13 @@ static void test_check_assert(Test *t) {
             Cell *cell = modelview_search_cell(t->mv, x, y);
             if (v != -1) {
                 if (!cell) {
-                    t->state = T_FINISHED;
+                    t->state = T_READY_FINISH;
                     t->status = TS_FAILED;
-                    lua_settop(l, 0);
                     return;
                 }
                 if (cell->value != v) {
-                    t->state = T_FINISHED;
+                    t->state = T_READY_FINISH;
                     t->status = TS_FAILED;
-                    lua_settop(l, 0);
                     return;
                 }
             } else {
@@ -474,92 +307,125 @@ static void test_check_assert(Test *t) {
         }
     }
 
-    if (fail_num) {
-        printf("test_check_assert: fail_num %d\n", fail_num);
+    if (t->status == TS_FAILED) {
+        koh_term_color_set(KOH_TERM_RED);
+        printf("failed\n");
+        koh_term_color_reset();
+    } else {
+        koh_term_color_set(KOH_TERM_GREEN);
+        printf("passed\n");
+        koh_term_color_reset();
     }
 
-    koh_term_color_set(KOH_TERM_GREEN);
-    printf("passed\n");
-    koh_term_color_reset();
-
-    // скинуть таблицу с полем
-    lua_pop(l, 1);
-
-    // Перехожу к следующему элементу
-    lua_rawgeti(t->l, -1, ++t->index);
-
-    /*L_inspect(l, -1);*/
-
-    t->state = T_INPUT;
-    t->status = TS_PASSED;
 }
 
 static void test_next_state_ex(Test *t) {
-    printf("test_next_state_ex:\n");
-
-}
-
-static void test_next_state(Test *t) {
     assert(t);
 
-    if (!t->l)
+    if (!t->l) 
         return;
 
-    if (t->ex) {
-        test_next_state_ex(t);
+    if (t->state == T_FINISHED)
         return;
+
+    printf("test_next_state_ex: state %s\n", state2str[t->state]);
+
+    int type;
+    lua_State *l = t->l;
+
+    if (t->index == t->len) {
+        printf("test_next_state_ex: len %d, index %d\n", t->len, t->index);
+
+        koh_term_color_set(KOH_TERM_BLUE);
+        printf("TESTCASE FINISHED\n");
+        koh_term_color_reset();
+
+        t->state = T_READY_FINISH;
     }
 
-    // trace("test_next_state: index %d, len %d\n", t->index, t->len);
+    if (t->state == T_READY_FINISH) {
+        t->state = T_FINISHED;
+        if (t->on_finish)
+            t->on_finish(t);
+    }
 
-    if (test_check_finished(t))
-        return;
+    if (t->state == T_PROCESS) {
+        type = lua_rawgeti(l, -1, t->index++);
+        if (type != LUA_TTABLE) {
 
-    if (t->state == T_INITIAL) {
-        test_check_initial(t);
-    } else if (t->state == T_ASSERT) {
-        test_check_assert(t);
+            /*
+            printf("[%s]\n", L_stack_dump(l));
+            lua_getglobal(l, "_G");
+            L_inspect(l, -1);
+            */
+
+            printf(
+                "test_next_state_ex: type is '%s'\n",
+                lua_typename(l, type)
+            );
+            exit(EXIT_FAILURE);
+        }
+
+        type = lua_getfield(l, -1, "id");
+        assert(type == LUA_TSTRING);
+        const char *id = lua_tostring(l, -1);
+        lua_pop(l, 1);
+
+        printf("id '%s'\n", id);
+
+        const struct {
+            void (*foo)(Test *t);
+            const char *id;
+        } x[] = {
+            { test_id_initial, "initial" },
+            { test_id_input, "input" },
+            { test_id_assert, "assert" },
+            { test_id_function, "function" },
+            { NULL, NULL, },
+        };
+
+        bool done = false;
+
+        for(int i = 0; x[i].foo; i++) {
+            if (strcmp(id, x[i].id) == 0) {
+                // Нужная таблица лежит на вершине
+                // Скидывать таблицу в функции не нужно
+                int top1 = lua_gettop(l);
+                x[i].foo(t);
+                int top2 = lua_gettop(l);
+
+                if (top1 != top2) {
+                    printf(
+                        "test_next_state_ex: top1 %d != top2 %d\n",
+                        top1, top2
+                    );
+                    exit(EXIT_FAILURE);
+                }
+
+                done = true;
+                break;
+            }
+        }
+
+        if (!done) {
+            koh_term_color_set(KOH_TERM_RED);
+            printf("test_next_state_ex: bad id '%s'\n", id);
+            koh_term_color_reset();
+        }
+
+        lua_pop(l, 1);
     }
 }
-
-typedef struct TestGui {
-    // Флажки выбранного теста
-    bool              selected[1024];
-    TestStatus        stats[1024];
-    char              *description[1024];
-    int               *load_index;
-    FilesSearchResult search;
-} TestGui;
-
-typedef struct Stage_Test {
-    Stage               parent;
-    int                 timersnum;
-    Camera2D            camera;
-    bool                is_paused;
-    // Хранит один тест
-    Test                t;
-    // Окошко с выбором вариантов
-    TestGui             tg;
-} Stage_Test;
 
 static void test_gui_init(TestGui *tg) {
 
-    FilesSearchSetup setup1 = {
-        .path = "./",
-        .deep = 0,
-        .regex_pattern = "t_\\d\\d\\.lua",
-    }, setup2 = {
+    FilesSearchSetup setup = {
         .path = "./",
         .deep = 0,
         .regex_pattern = "t_\\d\\dex.lua",
     };
 
-    tg->search = koh_search_files(&setup2);
-
-    FilesSearchResult tmp = koh_search_files(&setup1);
-    koh_search_files_concat(&tg->search, tmp);
-
-    koh_search_files_shutdown(&tmp);
+    tg->search = koh_search_files(&setup);
 
     for (int i = 0; i < tg->search.num; i++) {
         lua_State *l = luaL_newstate();
@@ -572,9 +438,6 @@ static void test_gui_init(TestGui *tg) {
                 fname, lua_tostring(l, -1)
             );
         }
-
-        /*L_inspect(l, -1);*/
-        /*printf("\n\n");*/
 
         lua_rawgeti(l, -1, 1);
         int type = lua_getfield(l, -1, "description");
@@ -611,10 +474,7 @@ static void test_reinit(
     test_view.auto_put = false;
     test_shutdown(t);
 
-    if (koh_str_match(fname, NULL, ".*ex\\.lua"))
-        test_init_ex(t, fname, &test_view);
-    else
-        test_init(t, fname, &test_view);
+    test_init_ex(t, fname, &test_view);
 
     t->udata = tg;
     t->on_finish = on_finish_func;
@@ -623,29 +483,16 @@ static void test_reinit(
 static void stage_test_init(Stage_Test *st) {
     st->camera.zoom = 1.f;
 
-    /*tracec("hello %{green} world %{reset}\n");*/
-
     modelview_setup.cam = &st->camera;
-    //main_view_setup.on_init_lua = load_init_lua;
-
-    /*reinit(1);*/
     test_view.auto_put = false;
 
     st->t = (Test){};
-    /*test_init(&st->t, "t_01.lua", &test_view);*/
     test_gui_init(&st->tg);
 }
 
 static void stage_test_update(Stage_Test *st) {
-    /*trace("stage_test_update:\n");*/
-
     if (test_view.inited)
         modelview_pause_set(&test_view, st->is_paused);
-
-    /*t_input(&test_view, &sets[set_current]);*/
-
-    if (st->timersnum == 0)
-        test_input(&st->t);
 }
 
 static void on_finish_next(Test *t) {
@@ -760,17 +607,7 @@ static void test_gui(Test *t, TestGui *tg) {
 }
 
 static void stage_test_gui(Stage_Test *st) {
-    /*trace("stage_test_gui:\n");*/
-
-    /*
-    ImGuiWindowFlags wnd_flags = ImGuiWindowFlags_AlwaysAutoResize;
-    bool wnd_open = true;
-    igBegin("test", &wnd_open, wnd_flags);
-    igEnd();
-    */
-
     modelview_draw_gui(&test_view);
-    /*t_gui(st);*/
     test_gui(&st->t, &st->tg);
 }
 
@@ -785,18 +622,8 @@ static void stage_test_draw(Stage_Test *st) {
 
     st->timersnum = modelview_draw(&test_view);
 
-    /*
-    if (!timersnum)
-        t_assert(&test_view, &sets[set_current]);
-        */
-
     if (!st->timersnum)
-        test_next_state(&st->t);
-
-    /*
-    if (IsKeyPressed(KEY_T))
-        t_assert(&test_view, &sets[set_current]);
-    */
+        test_next_state_ex(&st->t);
 
     EndMode2D();
 }
@@ -817,7 +644,6 @@ static void stage_test_leave(Stage_Test *st) {
 }
 
 Stage *stage_test_new(HotkeyStorage *hk_store) {
-    //assert(hk_store);
     Stage_Test *st = calloc(1, sizeof(*st));
     st->parent.data = hk_store;
 

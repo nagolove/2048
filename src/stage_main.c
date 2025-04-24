@@ -148,15 +148,6 @@ static void stage_main_update(Stage_Main *st) {
         st->is_paused = !st->is_paused;
     }
 
-    /*
-    if (IsKeyPressed(KEY_R)) {
-        modelview_shutdown(&main_view);
-        modelview_init(&main_view, modelview_setup);
-        main_view.on_init_lua = load_init_lua;
-        modelview_put(&main_view);
-    }
-    */
-
     camera_process(&st->camera);
 
     // Если нужно, то установить паузу
@@ -165,13 +156,6 @@ static void stage_main_update(Stage_Main *st) {
 
 static void stage_main_gui(Stage_Main *st) {
     /*trace("stage_main_gui:\n");*/
-
-    /*
-    ImGuiWindowFlags wnd_flags = ImGuiWindowFlags_AlwaysAutoResize;
-    bool wnd_open = true;
-    igBegin("main", &wnd_open, wnd_flags);
-    igEnd();
-    */
 
     bool open = true;
     igShowAboutWindow(&open);

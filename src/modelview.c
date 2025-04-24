@@ -5,6 +5,7 @@
 #include "test_suite.h"
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 
+// {{{
 #include "koh_common.h"
 #include "koh_lua.h"
 #include "cimgui.h"
@@ -31,10 +32,29 @@
 #include <ctype.h>
 #include "koh_strbuf.h"
 #include "koh_lua.h"
+// }}}
 
-/*#define MODELVIEW_SAVE_HISTORY*/
-
-#define GLOBAL_CELLS_CAP    100000
+/*
+ INFO: Добавлять бомбу, которая может уничтожить самыый большой элемент
+ INFO: Добавлять второй элемент только тогда когда и только туда, где он
+ может быть уничтожен. Успех зависит от игрока - ошибется он или примет
+ верное решение
+ XXX:Количество цифр должно зависеть от совбодной площади
+ TODO: Чем более крупная фишка есть на поле, тем более крупная может выпадать
+ ячейка, но до определенного предела.
+ TODO: Взрыв бомбы от другой бомбы
+ TODO: Условие выпадения второй бомбы(для последовательной детонации)
+ Вторая бомба должна редко должна когда есть открытая первая бомба.
+ TODO: Ползунок сложности. Сложность возрастает нелинейно. 
+ Появляются преграды, добавлются бомбы.
+ На легком и среднем уровне есть подсказки
+ TODO: Отключаемость анимации подложки
+ TODO: Делать подсказку наиболее продуктивного хода
+ TODO: Непроходимые блоки
+ TODO: Создавать бомбы после пары движений без сложения
+ TODO: Опциональная подпись с количеством движений бомбы
+ Один раунд - с делением от 2048 до 2
+*/
 
 // TODO: Перенести в структуру ModelView
 static bool is_draw_grid = true;
@@ -69,21 +89,15 @@ static const struct DrawOpts dflt_draw_opts = {
     /*.color               = BLACK,*/
 };
 
-/*
-static StrBuf str_repr_buf_cell(void *payload, e_id e) {
+static StrBuf str_repr_buf_position(void *payload, e_id e) {
     StrBuf buf = strbuf_init(NULL);
-
-    struct Cell *cell = payload;
+    Position *pos = payload;
     strbuf_add(&buf, "{ ");
-    strbuf_addf(&buf, "x = %d,", cell->x);
-    strbuf_addf(&buf, "y = %d,", cell->x);
-    strbuf_addf(&buf, "value = %d,", cell->value);
-    strbuf_addf(&buf, "dropped = %s,", cell->dropped ? "true" : "false");
+    strbuf_addf(&buf, "x = %d, ", pos->x);
+    strbuf_addf(&buf, "y = %d, ", pos->x);
     strbuf_add(&buf, "}");
-
     return buf;
 }
-*/
 
 // {{{ components
 
@@ -91,13 +105,13 @@ e_cp_type cmp_position = {
     .cp_sizeof = sizeof(struct Position),
     .name = "position",
     .initial_cap = 1000,
+    .str_repr_buf = str_repr_buf_position,
 };
 
 e_cp_type cmp_cell = {
     .cp_sizeof = sizeof(struct Cell),
     .name = "cell",
     .initial_cap = 1000,
-    /*.str_repr_buf = str_repr_buf_cell,*/
 };
 
 e_cp_type cmp_bomb = {
@@ -132,16 +146,12 @@ static Color colors[] = {
     { 100, 150, 150, 255 }   // Gray
 };
 
-const char *dir2str(enum Direction dir) {
-    static char buf[32] = {0};
-    switch (dir) {
-        case DIR_LEFT: sprintf(buf, "%s", "LEFT"); break;
-        case DIR_RIGHT: sprintf(buf, "%s", "RIGHT"); break;
-        case DIR_DOWN: sprintf(buf, "%s", "DOWN"); break;
-        case DIR_UP: sprintf(buf, "%s", "UP"); break;
-        case DIR_NONE: sprintf(buf, "%s", "NONE"); break;
-    }
-    return buf;
+const char *dir2str[] = {
+    [DIR_NONE] = "NONE",
+    [DIR_LEFT] = "LEFT",
+    [DIR_RIGHT] = "RIGHT",
+    [DIR_DOWN] = "DOWN",
+    [DIR_UP] = "UP",
 };
 
 static int find_max(struct ModelView *mv) {
@@ -439,14 +449,6 @@ static void bomb_put(ModelView *mv, int x, int y) {
     });
 
 }
-
-// INFO: Добавлять бомбу, которая может уничтожить самыый большой элемент
-// INFO: Добавлять второй элемент только тогда когда и только туда, где он
-// может быть уничтожен. Успех зависит от игрока - ошибется он или примет
-// верное решение
-// XXX:Количество цифр должно зависеть от совбодной площади
-// TODO: Чем более крупная фишка есть на поле, тем более крупная может выпадать
-// ячейка, но до определенного предела.
 
 static int gen_value(ModelView *mv) {
     int value = -1;
@@ -1764,9 +1766,6 @@ static void modelview_call_cross_remove(ModelView *mv, int x, int y) {
 */
 
 // Найти бомбы превысившие лимит передвижений
-// TODO: Взрыв бомбы от другой бомбы
-// TODO: Условие выпадения второй бомбы(для последовательной детонации)
-// Вторая бомба должна редко должна когда есть открытая первая бомба.
 static void bomb_scan(ModelView *mv) {
     assert(mv);
 
@@ -1955,15 +1954,11 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->tex_ex_num = 3;
     mv->tex_ex = calloc(mv->tex_ex_num, sizeof(mv->tex_ex[0]));
 
-    /*mv->tex_ex[0] = res_tex_load(reslist, "assets/explosion_01.jpg");*/
     mv->tex_ex_index = 0;
     mv->tex_ex[0] = res_tex_load(reslist, "assets/explosion_02.png");
     mv->tex_ex[1] = res_tex_load(reslist, "assets/explosion_03.png");
     mv->tex_ex[2] = res_tex_load(reslist, "assets/explosion_04.png");
-
-    /*mv->tex_bomb_black = LoadTexture("assets/bomb_black.png");*/
-    /*mv->tex_bomb_red = LoadTexture("assets/bomb_red.png");*/
-    /*mv->tex_aura = LoadTexture("assets/aura.png");*/
+    mv->tex_ex[3] = res_tex_load(reslist, "assets/explosion_01.jpg");
 
     /*SetTraceLogLevel(LOG_ERROR);*/
 
@@ -2003,8 +1998,6 @@ void modelview_init(ModelView *mv, Setup setup) {
     assert(setup.tmr_put_time > 0.);
     mv->tmr_block_time = setup.tmr_block_time;
     mv->tmr_put_time = setup.tmr_put_time;
-
-    /*modeltest_init(&model_checker, mv->field_size);*/
 
     mv->font = load_font_unicode(
         "assets/jetbrains_mono.ttf", dflt_draw_opts.fontsize
