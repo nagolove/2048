@@ -155,6 +155,270 @@ const char *dir2str[] = {
     [DIR_UP] = "UP",
 };
 
+// History_** {{{
+
+typedef struct History {
+    lua_State *l;
+    StrBuf    lines;
+    int       *field;
+    FILE      *f;
+    ModelView *mv;
+    bool      first_run;
+} History;
+
+static History *history_new(ModelView *mv) {
+    assert(mv);
+    History *h = calloc(sizeof(*h), 1);
+    h->lines = strbuf_init(NULL);
+    h->mv = mv;
+    h->l = luaL_newstate();
+    luaL_openlibs(h->l);
+
+    int err = luaL_dostring(h->l, "package.path = './?.lua;' .. package.path");
+    if (err != LUA_OK) {
+        trace(
+            "history_new: could not change package.path with '%s'\n",
+            lua_tostring(h->l, -1)
+        );
+        lua_pop(h->l, -1);
+    }
+
+    trace("history_new: [%s]\n", L_stack_dump(h->l));
+
+    lua_newtable(h->l);  // создаём новую таблицу на стеке
+    lua_setglobal(h->l, "LINES");  
+
+    trace("history_new: [%s]\n", L_stack_dump(h->l));
+
+    const char *fname = koh_uniq_fname_str("modelview_history_", ".lua");
+    trace("history_new: fname %s\n", fname);
+
+    h->f = fopen(fname, "w");
+    h->first_run = true;
+    /*
+    if (h->f) {
+        fprintf(h->f, "return {\n");
+    }
+    */
+    fflush(h->f);
+    h->field = calloc(mv->field_size * mv->field_size, sizeof(h->field[0]));
+    return h;
+}
+
+static void history_free(History *h) {
+    trace("history_free:\n");
+
+    /*
+    if (h->f) {
+        fprintf(h->f, "\n}");
+        fflush(h->f);
+        fclose(h->f);
+        h->f = NULL;
+    }
+    */
+
+    strbuf_shutdown(&h->lines);
+
+    if (h->l) {
+        lua_close(h->l);
+        h->l = NULL;
+    }
+
+    if (h->field) {
+        free(h->field);
+        h->field = NULL;
+    }
+
+    free(h);
+}
+
+// XXX: Можно ли сделать писатель истории более универсальным?
+// Стоит ли делать его универсальным?
+static void history_write(History *h) {
+    FILE *f = h->f;
+    ModelView *mv = h->mv;
+
+    assert(f);
+
+    int field[h->mv->field_size * h->mv->field_size], i = 0;
+    memset(field, 0, sizeof(field));
+
+    // Записать текущее состояние в массив int*
+    for (int y = 0; y < mv->field_size; y++) {
+        for (int x = 0; x < mv->field_size; x++) {
+            Cell *c = modelview_search_cell(mv, x, y);
+            int val = -1;
+            if (c) {
+                val = c->value;
+            }
+            field[i++] = val;
+        }
+    }
+
+    /*
+    printf("field: ");
+    for (int j = 0; j < mv->field_size * mv->field_size; j++) {
+        printf("%d ", field[j]);
+    }
+    printf("\n");
+    */
+
+    memmove(h->field, field, sizeof(field));
+
+    char buf_line[2048] = {}, *buf_line_ptr = buf_line;
+
+    buf_line_ptr += sprintf(buf_line_ptr, "return { ");
+    for (int y = 0; y < mv->field_size; y++) {
+        buf_line_ptr += sprintf(buf_line_ptr, "{ ");
+        for (int x = 0; x < mv->field_size; x++) {
+            Cell *c = modelview_search_cell(mv, x, y);
+            int val = -1;
+            if (c) {
+                val = c->value;
+            }
+            buf_line_ptr += sprintf(buf_line_ptr, "%d, ", val);
+        }
+        buf_line_ptr += sprintf(buf_line_ptr, "}, ");
+    }
+    sprintf(buf_line_ptr, "}");
+
+    // Писать в файл построчно
+    fprintf(f, "%s\n", buf_line);
+    fflush(f);
+
+    // Далее идет проверка на равенство строк описывающих состония. 
+    // Есть новое состояние или оно является повтором прошлого?
+    // Первую строку всегда добавляю
+    if (h->lines.num == 0) {
+        strbuf_add(&h->lines, buf_line);
+    } else {
+        char *last = strbuf_last(&h->lines);
+        assert(last);
+        // NOTE: Сравнение по строкам оказалось проще чем бинарное
+        if (strcmp(last, buf_line))
+            strbuf_add(&h->lines, buf_line);
+    }
+
+    // Добавить в таблицу LINES строку
+    lua_getglobal(h->l, "LINES");
+    int type = lua_type(h->l, -1);
+    if (type == LUA_TTABLE) {
+        lua_pushinteger(h->l, h->lines.num);
+        lua_pushstring(h->l, buf_line);
+        lua_settable(h->l, -3);  
+        lua_pop(h->l, 1);
+    } else {
+        trace(
+            "history_write: could not get 'LINES' with '%s'\n",
+            lua_tostring(h->l, -1)
+        );
+        lua_pop(h->l, 1);
+    }
+
+}
+
+void history_gui(History *h) {
+    assert(h);
+
+    // XXX: Как обозначить конечно положение поле, после запуска теста?
+    if (igButton("update", (ImVec2){})) {
+    }
+
+    if (igBeginListBox("states", (ImVec2){})) {
+
+        for (int i = 0; i < h->lines.num; i++) {
+            igSelectable_Bool(h->lines.s[i], false, 0, (ImVec2){});
+        }
+
+        igEndListBox();
+    }
+}
+
+// }}}
+
+// GridAnim {{{
+
+typedef struct GridAnimQuad {
+          // коэффициент масштаба
+    float scale, 
+          // фаза колебания
+          phase;
+} GridAnimQuad;
+
+typedef struct GridAnim {
+    Color        color;
+    float        i;
+    GridAnimQuad *anim;
+} GridAnim;
+
+static GridAnim *gridanim_new(const ModelView *mv) {
+    GridAnim *ga = calloc(1, sizeof(*ga));
+
+    const int field_size = mv->field_size;
+    ga->anim = calloc(field_size * field_size, sizeof(ga->anim[0]));
+
+    for (int y = 0; y < field_size; y++) {
+        for (int x = 0; x < field_size; x++) {
+            ga->anim[y * field_size + x].phase = rand() / (float)RAND_MAX;
+            ga->anim[y * field_size + x].scale = 10 + rand() % 10;
+            /*printf("scale %f\n", ga->anim[y * field_size + x].scale);*/
+        }
+    }
+
+    ga->color = GRAY;
+    ga->color.a = 40;
+    ga->i = 0;
+
+    return ga;
+}
+
+static void gridanim_free(GridAnim *ga) {
+    if (ga->anim) {
+        free(ga->anim);
+        ga->anim = NULL;
+    }
+
+    free(ga);
+}
+
+static void gridanim_draw(GridAnim *ga, ModelView *mv) {
+    const int field_size = mv->field_size;
+    /*trace("gridanim_draw: field_size %d\n", field_size);*/
+
+    Vector2 pos = mv->pos;
+    GridAnimQuad *anim = ga->anim;
+
+    const float roundness = 0.3f,
+                segments = 20;
+
+    for (int x = 0; x < field_size; x++) {
+        for (int y = 0; y < field_size; y++) {
+            float phase = anim[y * field_size + x].phase;
+            float scale = anim[y * field_size + x].scale;
+            float space = scale * (0.8 * M_PI - sinf(ga->i + phase));
+
+            printf("phase %f\n", phase);
+
+            Rectangle r = {
+                .x = pos.x + x * mv->quad_width + space,
+                .y = pos.y + y * mv->quad_width + space,
+                .width = mv->quad_width - space * 2.,
+                .height = mv->quad_width - space * 2.,
+            };
+
+            /*printf("%s\n\n", rect2str(r));*/
+
+            DrawRectangleRounded(r, roundness, segments, ga->color);
+        }
+    }
+
+    /*printf("\n\n\n");*/
+
+    ga->i += 0.01; 
+}
+
+// }}}
+
 static int find_max(struct ModelView *mv) {
     int max = 0;
 
@@ -1457,187 +1721,6 @@ char *modelview_state2str(enum ModelViewState state) {
     return buf;
 }
 
-// History_** {{{
-
-typedef struct History {
-    lua_State *l;
-    StrBuf    lines;
-    int       *field;
-    FILE      *f;
-    ModelView *mv;
-    bool      first_run;
-} History;
-
-static History *history_new(ModelView *mv) {
-    assert(mv);
-    History *h = calloc(sizeof(*h), 1);
-    h->lines = strbuf_init(NULL);
-    h->mv = mv;
-    h->l = lua_newstate(koh_lua_default_alloc, NULL, 0);
-    luaL_openlibs(h->l);
-
-    int err = luaL_dostring(h->l, "package.path = './?.lua;' .. package.path");
-    if (err != LUA_OK) {
-        trace(
-            "history_new: could not change package.path with '%s'\n",
-            lua_tostring(h->l, -1)
-        );
-        lua_pop(h->l, -1);
-    }
-
-    trace("history_new: [%s]\n", L_stack_dump(h->l));
-
-    lua_newtable(h->l);  // создаём новую таблицу на стеке
-    lua_setglobal(h->l, "LINES");  
-
-    trace("history_new: [%s]\n", L_stack_dump(h->l));
-
-    const char *fname = koh_uniq_fname_str("modelview_history_", ".lua");
-    trace("history_new: fname %s\n", fname);
-
-    h->f = fopen(fname, "w");
-    h->first_run = true;
-    /*
-    if (h->f) {
-        fprintf(h->f, "return {\n");
-    }
-    */
-    fflush(h->f);
-    h->field = calloc(mv->field_size * mv->field_size, sizeof(h->field[0]));
-    return h;
-}
-
-static void history_free(History *h) {
-    trace("history_free:\n");
-
-    /*
-    if (h->f) {
-        fprintf(h->f, "\n}");
-        fflush(h->f);
-        fclose(h->f);
-        h->f = NULL;
-    }
-    */
-
-    strbuf_shutdown(&h->lines);
-
-    if (h->l) {
-        lua_close(h->l);
-        h->l = NULL;
-    }
-
-    if (h->field) {
-        free(h->field);
-        h->field = NULL;
-    }
-
-    free(h);
-}
-
-// XXX: Можно ли сделать писатель истории более универсальным?
-// Стоит ли делать его универсальным?
-static void history_write(History *h) {
-    FILE *f = h->f;
-    ModelView *mv = h->mv;
-
-    assert(f);
-
-    int field[h->mv->field_size * h->mv->field_size], i = 0;
-    memset(field, 0, sizeof(field));
-
-    // Записать текущее состояние в массив int*
-    for (int y = 0; y < mv->field_size; y++) {
-        for (int x = 0; x < mv->field_size; x++) {
-            Cell *c = modelview_search_cell(mv, x, y);
-            int val = -1;
-            if (c) {
-                val = c->value;
-            }
-            field[i++] = val;
-        }
-    }
-
-    /*
-    printf("field: ");
-    for (int j = 0; j < mv->field_size * mv->field_size; j++) {
-        printf("%d ", field[j]);
-    }
-    printf("\n");
-    */
-
-    memmove(h->field, field, sizeof(field));
-
-    char buf_line[2048] = {}, *buf_line_ptr = buf_line;
-
-    buf_line_ptr += sprintf(buf_line_ptr, "return { ");
-    for (int y = 0; y < mv->field_size; y++) {
-        buf_line_ptr += sprintf(buf_line_ptr, "{ ");
-        for (int x = 0; x < mv->field_size; x++) {
-            Cell *c = modelview_search_cell(mv, x, y);
-            int val = -1;
-            if (c) {
-                val = c->value;
-            }
-            buf_line_ptr += sprintf(buf_line_ptr, "%d, ", val);
-        }
-        buf_line_ptr += sprintf(buf_line_ptr, "}, ");
-    }
-    sprintf(buf_line_ptr, "}");
-
-    // Писать в файл построчно
-    fprintf(f, "%s\n", buf_line);
-    fflush(f);
-
-    // Далее идет проверка на равенство строк описывающих состония. 
-    // Есть новое состояние или оно является повтором прошлого?
-    // Первую строку всегда добавляю
-    if (h->lines.num == 0) {
-        strbuf_add(&h->lines, buf_line);
-    } else {
-        char *last = strbuf_last(&h->lines);
-        assert(last);
-        // NOTE: Сравнение по строкам оказалось проще чем бинарное
-        if (strcmp(last, buf_line))
-            strbuf_add(&h->lines, buf_line);
-    }
-
-    // Добавить в таблицу LINES строку
-    lua_getglobal(h->l, "LINES");
-    int type = lua_type(h->l, -1);
-    if (type == LUA_TTABLE) {
-        lua_pushinteger(h->l, h->lines.num);
-        lua_pushstring(h->l, buf_line);
-        lua_settable(h->l, -3);  
-        lua_pop(h->l, 1);
-    } else {
-        trace(
-            "history_write: could not get 'LINES' with '%s'\n",
-            lua_tostring(h->l, -1)
-        );
-        lua_pop(h->l, 1);
-    }
-
-}
-
-void history_gui(History *h) {
-    assert(h);
-
-    // XXX: Как обозначить конечно положение поле, после запуска теста?
-    if (igButton("update", (ImVec2){})) {
-    }
-
-    if (igBeginListBox("states", (ImVec2){})) {
-
-        for (int i = 0; i < h->lines.num; i++) {
-            igSelectable_Bool(h->lines.s[i], false, 0, (ImVec2){});
-        }
-
-        igEndListBox();
-    }
-}
-
-// }}}
-
 static void destroy_dropped(struct ModelView *mv) {
     e_id destroy_arr[mv->field_size * mv->field_size];
     int destroy_num = 0;
@@ -1869,7 +1952,14 @@ int modelview_draw(ModelView *mv) {
     if (!mv->inited)
         return 0;
 
+    // XXX: идет привязка в fps
+    if (mv->state == MVS_GAMEOVER) {
+        gameover_draw(mv->go);
+        return 0;
+    }
+
     /*modeltest_update(&model_checker, mv->dir);*/
+    gridanim_draw(mv->ga, mv);
 
     int timersnum = timerman_update(mv->timers);
     mv->state = timersnum ? MVS_ANIMATION : MVS_READY;
@@ -2077,6 +2167,7 @@ void modelview_init(ModelView *mv, Setup setup) {
     }
 
     mv->history = history_new(mv);
+    mv->ga = gridanim_new(mv);
     mv->inited = true;
 
     // }}}
@@ -2085,6 +2176,11 @@ void modelview_init(ModelView *mv, Setup setup) {
 void modelview_shutdown(struct ModelView *mv) {
     // {{{
     assert(mv);
+
+    if (mv->ga) {
+        gridanim_free(mv->ga);
+        mv->ga = NULL;
+    }
 
     if (mv->history) {
         history_free(mv->history);

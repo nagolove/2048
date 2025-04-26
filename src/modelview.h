@@ -97,6 +97,8 @@ typedef enum ModelViewState {
 // }}}
 
 typedef struct History History;
+typedef struct GridAnim GridAnim;
+typedef struct GameOverAnim GameOverAnim;
 
 // Отображение поля. Все, что связано с анимацией.
 typedef struct ModelView {
@@ -179,6 +181,8 @@ typedef struct ModelView {
     // [y * field_size + x] - сущности с прикрепленными ячейками
     e_id                *field;
     History             *history;
+    GridAnim            *ga;
+    GameOverAnim        *go;
 } ModelView;
 
 extern const struct ColorTheme color_theme_dark, color_theme_light;

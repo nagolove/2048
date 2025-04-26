@@ -111,7 +111,7 @@ int main(void) {
     stage_init(ss);
 
     stage_active_set(ss, "main");
-    stage_active_set(ss, "test");
+    //stage_active_set(ss, "test");
 
     SetExitKey(KEY_NULL);
 
