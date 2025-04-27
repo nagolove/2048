@@ -111,14 +111,37 @@ static void test_init_ex(Test *t, const char *fname, ModelView *mv) {
     assert(type == LUA_TSTRING);
     const char *id = lua_tostring(l, -1);
 
+    /*L_inspect(l, -1);*/
+
     if (strcmp(id, "options") == 0) {
-        t->index++;
         printf("test_init_ex: options found\n");
-        // XXX: Что-то сделать
+        lua_pop(l, 1);
+
+        //L_inspect(l, -1);
+
+        type = lua_getfield(l, -1, "tmr_put_time");
+        if (type == LUA_TNUMBER) {
+            float n = lua_tonumber(l, -1);
+            printf("test_init_ex: tmr_put_time %f\n", n);
+            mv->tmr_put_time = n;
+            lua_pop(l, 1);
+        }
+
+        /*L_inspect(l, -1);*/
+
+        type = lua_getfield(l, -1, "tmr_block_time");
+        if (type == LUA_TNUMBER) {
+            float n =  lua_tonumber(l, -1);
+            printf("test_init_ex: tmr_block_time %f\n", n);
+            mv->tmr_block_time = n;
+            lua_pop(l, 1);
+        }
+
+        t->index++;
     }
 
     // скинуть 'id' и таблицу с опциями
-    lua_pop(l, 2);
+    lua_pop(l, 1);
 
     t->index++;
     t->state = T_PROCESS;

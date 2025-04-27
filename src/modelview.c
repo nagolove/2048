@@ -397,7 +397,7 @@ static void gridanim_draw(GridAnim *ga, ModelView *mv) {
             float scale = anim[y * field_size + x].scale;
             float space = scale * (0.8 * M_PI - sinf(ga->i + phase));
 
-            printf("phase %f\n", phase);
+            //printf("phase %f\n", phase);
 
             Rectangle r = {
                 .x = pos.x + x * mv->quad_width + space,
@@ -1420,6 +1420,7 @@ static void draw_numbers(ModelView *mv) {
 }
 
 /*
+// {{{
 static void movements_window() {
     // {{{
     bool open = true;
@@ -1486,6 +1487,7 @@ static void movements_window() {
     igEnd();
     // }}}
 }
+// }}}
 */
 
 /*
@@ -1569,6 +1571,8 @@ _exit:
 
 static void options_window(struct ModelView *mv) {
     // {{{
+    const ImVec2 z = {0, 0};
+
     assert(mv);
     bool wnd_open = true;
     ImGuiWindowFlags wnd_flag = ImGuiWindowFlags_AlwaysAutoResize;
@@ -1627,7 +1631,27 @@ static void options_window(struct ModelView *mv) {
         mv->tex_ex_num - 1, "%d", 0
     );
 
-    if (IsKeyPressed(KEY_R) || igButton("restart", (ImVec2) {0, 0})) {
+    // {{{
+    // XXX: Как сделать установку состояния постоянной?
+    static ModelViewState state;
+
+    if (igButton("gameover", z)) {
+        state = MVS_GAMEOVER;
+    } else
+        state = mv->state;
+
+    igSameLine(0., 10.f);
+
+    if (igButton("win", z)) {
+        state = MVS_GAMEOVER;
+    } else
+        state = mv->state;
+
+    // }}}
+
+    mv->state = state;
+
+    if (IsKeyPressed(KEY_R) || igButton("restart", z)) {
         modelview_shutdown(mv);
 
         struct Setup setup = {};
@@ -1944,21 +1968,93 @@ static void draw_scores(ModelView *mv) {
     DrawText(msg, pos.x, pos.y, fontsize, BLUE);
 }
 
+// {{{ GameOverAnim
+
+#include "box2d/id.h"
+#include "box2d/types.h"
+#include "box2d/box2d.h"
+#include "box2d/math_functions.h"
+#include "koh_b2.h"
+
+struct GameOverAnim {
+    float       j, x;
+    Color       color;
+    b2WorldId   world;
+    b2BodyId    body;
+    b2DebugDraw ddraw;
+};
+
+static GameOverAnim *gameover_new() {
+    printf("gameover_new:\n");
+
+    GameOverAnim *ga = calloc(1, sizeof(*ga));
+    ga->j = ga->x = 0;
+    ga->color = BLACK;
+
+    b2WorldDef def = b2DefaultWorldDef();
+    ga->world = b2CreateWorld(&def);
+
+    b2BodyDef bdef = b2DefaultBodyDef();
+    ga->body = b2CreateBody(ga->world, &bdef);
+
+    ga->ddraw = b2_world_dbg_draw_create2();
+    /*ga->ddraw = b2DefaultDebugDraw();*/
+
+    return ga;
+}
+
+static void gameover_draw(GameOverAnim *ga) {
+    // XXX: Использоть GetFrameTime()?
+    const float timestep = 1. / GetFPS();
+    b2World_Step(ga->world, timestep, 6);
+
+    b2World_Draw(ga->world, &ga->ddraw);
+
+    /*printf("gameover_draw:\n");*/
+    /*int fnt_size = 600;*/
+    int fnt_size = 400;
+
+    Color c = ga->color;
+    static int colord = 1;
+
+    DrawText("GAMEOVER", ga->x, ga->j, fnt_size, c);
+    ga->color.r += colord;
+    ga->color.g += colord;
+    ga->color.b += colord;
+
+    if (ga->color.r >= 100)
+        colord = -colord;
+    if (ga->color.g >= 100)
+        colord = -colord;
+    if (ga->color.b >= 100)
+        colord = -colord;
+
+    ga->j += 10;
+    if (ga->j > GetScreenHeight()) {
+        ga->j = -fnt_size;
+    }
+
+    ga->x += rand() % 10;
+    if (ga->x > GetScreenWidth()) {
+        ga->x = 0;
+    }
+}
+
+static void gameover_free(GameOverAnim *ga) {
+    assert(ga);
+    b2DestroyWorld(ga->world);
+    free(ga);
+}
+
+// }}}
+
 int modelview_draw(ModelView *mv) {
     // {{{
-
-    /*trace("modelview_draw:\n");*/
     assert(mv);
+
     if (!mv->inited)
         return 0;
 
-    // XXX: идет привязка в fps
-    if (mv->state == MVS_GAMEOVER) {
-        gameover_draw(mv->go);
-        return 0;
-    }
-
-    /*modeltest_update(&model_checker, mv->dir);*/
     gridanim_draw(mv->ga, mv);
 
     int timersnum = timerman_update(mv->timers);
@@ -2021,10 +2117,9 @@ int modelview_draw(ModelView *mv) {
     }
 
     if (find_max(mv) >= mv->win_value) {
-        trace("modelview_draw: win state, win_value %d\n", mv->win_value);
+        /*trace("modelview_draw: win state, win_value %d\n", mv->win_value);*/
         mv->state = MVS_WIN;
     }
-
 
     sort_numbers(mv);
     ClearBackground(RAYWHITE);
@@ -2033,6 +2128,12 @@ int modelview_draw(ModelView *mv) {
     draw_numbers(mv);
 
     draw_scores(mv);
+
+    // XXX: идет привязка к fps
+    if (mv->state == MVS_GAMEOVER) {
+        gameover_draw(mv->go);
+        /*return 0;*/
+    }
 
     timersnum = timerman_num(mv->timers, NULL);
 
@@ -2168,6 +2269,7 @@ void modelview_init(ModelView *mv, Setup setup) {
 
     mv->history = history_new(mv);
     mv->ga = gridanim_new(mv);
+    mv->go = gameover_new();
     mv->inited = true;
 
     // }}}
@@ -2176,6 +2278,11 @@ void modelview_init(ModelView *mv, Setup setup) {
 void modelview_shutdown(struct ModelView *mv) {
     // {{{
     assert(mv);
+
+    if (mv->go) {
+        gameover_free(mv->go);
+        mv->go = NULL;
+    }
 
     if (mv->ga) {
         gridanim_free(mv->ga);

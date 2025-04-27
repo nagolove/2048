@@ -64,20 +64,24 @@ static void keyboard_swipe_cell(enum Direction *dir) {
     size_t dirs_num = sizeof(keys_dirs) / sizeof(keys_dirs[0]);
     for (int j = 0; j < dirs_num; ++j) {
         for (int k = 0; k < N; k++) {
-            /*if (IsKeyPressed(keys_dirs[j].key[k])) {*/
-            if (IsKeyDown(keys_dirs[j].key[k])) {
+            if (IsKeyPressed(keys_dirs[j].key[k])) {
+            /*if (IsKeyDown(keys_dirs[j].key[k])) {*/
                 *dir = keys_dirs[j].dir;
                 break;
             }
         }
     } 
+
 #undef N
 }
 
 void input(ModelView *mv) {
     // Закончилась-ли анимация?
+    
+    /*
     if (mv->state != MVS_READY)
         return;
+        */
 
     enum Direction dir = {0};
 
