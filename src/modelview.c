@@ -33,6 +33,7 @@
 #include "koh_strbuf.h"
 #include "koh_lua.h"
 #include "common.h"
+#include "koh_render.h"
 // }}}
 
 /*
@@ -1977,28 +1978,59 @@ static void draw_scores(ModelView *mv) {
 #include "koh_b2.h"
 
 struct GameOverAnim {
-    float       j, x;
+    RenderTexture2D rt;
+    float       y, x;
     Color       color;
     b2WorldId   world;
     b2BodyId    body;
     b2DebugDraw ddraw;
+    b2ShapeId   shape;
 };
 
+static const char *gameover_str = "GAMEOVER";
+static const int gameover_fnt_size = 400;
+
+// TODO: Добавить физическое тело и рисовать его. Прямоугольник с натянутой
+// текстурой "GAMEOVER".
+// Тело двигать приложением силы, а не импульса. Добавить легкое вращение.
+// Сделать границы экрана.
 static GameOverAnim *gameover_new() {
     printf("gameover_new:\n");
 
     GameOverAnim *ga = calloc(1, sizeof(*ga));
-    ga->j = ga->x = 0;
+    ga->y = ga->x = 0;
     ga->color = BLACK;
+
+    Vector2 m = MeasureTextEx(
+        GetFontDefault(), gameover_str, gameover_fnt_size, 0.0f
+    );
+    printf("gameover_new: m %s\n", Vector2_tostr(m));
+    ga->rt = LoadRenderTexture(m.x, m.y);
 
     b2WorldDef def = b2DefaultWorldDef();
     ga->world = b2CreateWorld(&def);
 
     b2BodyDef bdef = b2DefaultBodyDef();
+    bdef.type = b2_dynamicBody;
     ga->body = b2CreateBody(ga->world, &bdef);
+
+    b2ShapeDef shapedef = b2DefaultShapeDef();
+    const float half_w = m.x / 2., half_h = m.y / 2.;
+    b2Polygon box = b2MakeBox(half_w, half_h);
+    ga->shape = b2CreatePolygonShape(ga->body, &shapedef, &box);
 
     ga->ddraw = b2_world_dbg_draw_create2();
     /*ga->ddraw = b2DefaultDebugDraw();*/
+
+    b2Vec2 force = { -10000.f, -10000.f };
+    b2Body_ApplyForceToCenter(ga->body, force, true);
+
+    b2MassData massdata = b2ComputePolygonMass(&box, 1.f);
+    printf("gameover_new: massdata %s\n", b2MassData_tostr(massdata));
+    b2Body_SetMassData(ga->body, massdata);
+
+    float mass = b2Body_GetMass(ga->body);
+    printf("gameover_new: mass %f\n", mass);
 
     return ga;
 }
@@ -2012,12 +2044,42 @@ static void gameover_draw(GameOverAnim *ga) {
 
     /*printf("gameover_draw:\n");*/
     /*int fnt_size = 600;*/
-    int fnt_size = 400;
 
+    Texture2D t = ga->rt.texture;
     Color c = ga->color;
     static int colord = 1;
 
-    DrawText("GAMEOVER", ga->x, ga->j, fnt_size, c);
+    b2Polygon p = b2Shape_GetPolygon(ga->shape);
+    RenderTexOpts r_opts = {
+        .texture = ga->rt.texture,
+        .tint = WHITE,
+    };
+
+    for (int i = 0; i < p.count; i++) {
+        Vector2 v = b2Vec2_to_Vector2(p.vertices[i]);
+
+        /*trace("stage_chassis_draw: v %s\n", Vector2_tostr(v));*/
+        r_opts.verts[i] = v;
+    }
+
+    set_uv1(r_opts.uv);
+    /*printf("gameover_draw: r_opts.uv %s\n", Vector2_arr_tostr(r_opts.uv, 4));*/
+
+    render_v4_with_tex2(&r_opts);
+
+    BeginTextureMode(ga->rt);
+    DrawText(gameover_str, 0., 0., gameover_fnt_size, c);
+    /*DrawText(gameover_str, ga->x, ga->y, gameover_fnt_size, c);*/
+    EndTextureMode();
+
+    DrawTexturePro(
+        t, (Rectangle) { 0., 0., t.width, -t.height },
+        (Rectangle) { ga->x, ga->y, t.width, t.height },
+        Vector2Zero(),
+        0.f,
+        WHITE
+    );
+
     ga->color.r += colord;
     ga->color.g += colord;
     ga->color.b += colord;
@@ -2029,9 +2091,9 @@ static void gameover_draw(GameOverAnim *ga) {
     if (ga->color.b >= 100)
         colord = -colord;
 
-    ga->j += 10;
-    if (ga->j > GetScreenHeight()) {
-        ga->j = -fnt_size;
+    ga->y += 10;
+    if (ga->y > GetScreenHeight()) {
+        ga->y = -gameover_fnt_size;
     }
 
     ga->x += rand() % 10;
@@ -2042,6 +2104,7 @@ static void gameover_draw(GameOverAnim *ga) {
 
 static void gameover_free(GameOverAnim *ga) {
     assert(ga);
+    UnloadRenderTexture(ga->rt);
     b2DestroyWorld(ga->world);
     free(ga);
 }
