@@ -124,8 +124,8 @@ static void test_init_ex(Test *t, const char *fname, ModelView *mv) {
             float n = lua_tonumber(l, -1);
             printf("test_init_ex: tmr_put_time %f\n", n);
             mv->tmr_put_time = n;
-            lua_pop(l, 1);
         }
+        lua_pop(l, 1);
 
         /*L_inspect(l, -1);*/
 
@@ -134,8 +134,8 @@ static void test_init_ex(Test *t, const char *fname, ModelView *mv) {
             float n =  lua_tonumber(l, -1);
             printf("test_init_ex: tmr_block_time %f\n", n);
             mv->tmr_block_time = n;
-            lua_pop(l, 1);
         }
+        lua_pop(l, 1);
 
         t->index++;
     }
