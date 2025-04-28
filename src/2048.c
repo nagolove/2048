@@ -96,6 +96,15 @@ int main(void) {
     logger_init();
     inotifier_init();
 
+
+    /*
+    for (int j = 0; j < 100; j++) {
+        Font f = load_font_unicode("assets/jetbrains_mono.ttf", 72);
+    }
+    printf("exit(1);\n");
+    exit(1);
+    */
+
     // TODO: Тесты сломаны
     // TODO: Сделать несколько исполняемых файлов - для тестов и основной
     //test_modelviews_multiple();
@@ -131,6 +140,7 @@ int main(void) {
     local_storage_save("imgui", imgui_state);
 #endif
 
+    stage_shutdown(ss);
     stage_free(ss);
 
     inotifier_shutdown();
