@@ -24,14 +24,15 @@
 
 #if defined(PLATFORM_WEB)
 #include <emscripten.h>
+#include <emscripten/html5.h>
 #endif
 
 #if defined(PLATFORM_WEB)
-static const int screen_width = 1920;
-static const int screen_height = 1080;
+int screen_width = 1920;
+int screen_height = 1080;
 #else
-static const int screen_width = 1920 * 2;
-static const int screen_height = 1080 * 2;
+int screen_width = 1920 * 2;
+int screen_height = 1080 * 2;
 #endif
 
 static StagesStore *ss;
@@ -43,6 +44,8 @@ static void update() {
     if (IsKeyPressed(KEY_GRAVE)) {
         draw_gui = !draw_gui;
     }
+
+    BeginDrawing();
 
     stage_active_update(ss);
 
@@ -62,12 +65,37 @@ static void update() {
     EndDrawing();
 }
 
+static void em_setup_screen_size(int *_w, int *_h) {
+#ifdef __wasm__
+    assert(_w);
+    assert(_h);
+
+    double w = 0, h = 0;
+    // Получаем размер canvas в CSS-пикселях
+    emscripten_get_element_css_size("#canvas", &w, &h);
+
+    *_w = (int)w;
+    *_h = (int)h;
+#endif
+}
 
 int main(void) {
+    em_setup_screen_size(&screen_width, &screen_height);
 
     koh_hashers_init();
     srand(time(NULL));
+
+    printf(
+        "main: screen_width %d, screen_height %d\n",
+        screen_width, screen_height
+    );
+    printf(
+        "main: GetScreenWidth() %d, GetScreenHeight() %d\n",
+        GetScreenWidth(), GetScreenHeight()
+    );
+
     InitWindow(screen_width, screen_height, "2048");
+
     SetWindowMonitor(1);
 
     const int target_fps = 90;

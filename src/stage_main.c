@@ -56,7 +56,7 @@ int l_pos_get(lua_State *l) {
 }
 
 int l_state_get(lua_State *l) {
-    lua_pushstring(l, modelview_state2str(main_view.state));
+    lua_pushstring(l, modelview_state2str[main_view.state]);
     return 1;
 }
 // }}}
@@ -144,7 +144,8 @@ static void stage_main_init(Stage_Main *st) {
 static void stage_main_update(Stage_Main *st) {
     /*trace("stage_main_update:\n");*/
 
-    if (IsKeyPressed(KEY_P)) {
+    // XXX: KEY_S - звучит как STOP
+    if (IsKeyPressed(KEY_S)) {
         st->is_paused = !st->is_paused;
     }
 

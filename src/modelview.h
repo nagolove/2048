@@ -183,6 +183,12 @@ typedef struct ModelView {
     History             *history;
     GridAnim            *ga;
     GameOverAnim        *go;
+
+    AutomationEventList automation[9];
+    bool                automation_loaded[9];
+                        // текущая выбраная, 0 - ничего не выбрано, система
+                        // отключена
+    int                 automation_current;
 } ModelView;
 
 extern const struct ColorTheme color_theme_dark, color_theme_light;
@@ -208,7 +214,9 @@ int modelview_draw(ModelView *mv);
 void modelview_draw_gui(ModelView *mv);
 void modelview_input(ModelView *mv, enum Direction dir);
 /*Cell *modelview_get_cell(ModelView *mv, int x, int y, e_id *en);*/
-char *modelview_state2str(enum ModelViewState state);
+/*char *modelview_state2str(enum ModelViewState state);*/
+extern const char *modelview_state2str[];
+
 void modelview_pause_set(ModelView *mv, bool is_paused);
 
 extern e_cp_type cmp_cell, cmp_bomb, cmp_position, cmp_transition;

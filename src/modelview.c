@@ -6,6 +6,7 @@
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 
 // {{{
+#include "koh_hotkey.h"
 #include "koh_common.h"
 #include "koh_lua.h"
 #include "cimgui.h"
@@ -148,12 +149,13 @@ static Color colors[] = {
     { 100, 150, 150, 255 }   // Gray
 };
 
+// ассоциативный массив для получения строки по значению перечисления
 const char *dir2str[] = {
-    [DIR_NONE] = "NONE",
-    [DIR_LEFT] = "LEFT",
-    [DIR_RIGHT] = "RIGHT",
-    [DIR_DOWN] = "DOWN",
-    [DIR_UP] = "UP",
+    [DIR_NONE] = "none",
+    [DIR_LEFT] = "left",
+    [DIR_RIGHT] = "right",
+    [DIR_DOWN] = "down",
+    [DIR_UP] = "up",
 };
 
 // History_** {{{
@@ -420,6 +422,84 @@ static void gridanim_draw(GridAnim *ga, ModelView *mv) {
 
 // }}}
 
+// {{{ automation
+
+static void automation_select(ModelView *mv) {
+    if (!IsKeyDown(KEY_LEFT_CONTROL)) {
+        return;
+    }
+
+    if (IsKeyDown(KEY_LEFT_SHIFT)) {
+        if (IsKeyPressed(KEY_P)) {
+            printf("automation_select: play\n");
+        } else if (IsKeyPressed(KEY_R)) {
+            printf("automation_select: record\n");
+        }
+    } else {
+        printf("automation_select: KEY_LEFT_CONTROL\n");
+        for (int i = 0; i <= 9; i++) {
+            int key = KEY_ZERO + i;
+            if (IsKeyPressed(key)) {
+                printf("automation_select: key '%s'\n", koh_key2str[key]);
+                mv->automation_current = i;
+                break;
+            }
+        }
+    }
+}
+
+static void automation_load(ModelView *mv) {
+    int num = sizeof(mv->automation) / sizeof(mv->automation[0]);
+    for (int i = 0; i < num; ++i) {
+        char fname[128] = {};
+        sprintf(fname, "automation_0%d.txt", i);
+        FILE *f = fopen(fname, "r");
+        if (f) {
+            mv->automation[i] = LoadAutomationEventList(fname);
+            fclose(f);
+        }
+    }
+}
+
+
+static void automation_unload(ModelView *mv) {
+    int num = sizeof(mv->automation) / sizeof(mv->automation[0]);
+    for (int i = 0; i < num; ++i) {
+        if (mv->automation_loaded[i]) {
+            UnloadAutomationEventList(mv->automation[i]);
+            mv->automation_loaded[i] = false;
+        }
+    }
+}
+
+static void automation_draw(ModelView *mv) {
+    if (mv->automation_current == 0) {
+        return;
+    }
+
+    const int fnt_sz = 100;
+    char buf[128] = {};
+
+    int x = 0, y = 0;
+
+    sprintf(buf, "automation: selected [%d]", mv->automation_current);
+    DrawText(buf, x, y += fnt_sz, fnt_sz, RED);
+
+    sprintf(buf, "CTRL+SHIFT+p - play");
+    DrawText(buf, x, y += fnt_sz, fnt_sz, RED);
+
+    sprintf(buf, "CTRL+SHIFT+r - record start/stop");
+    DrawText(buf, x, y += fnt_sz, fnt_sz, RED);
+
+    /*
+    sprintf(buf, "loaded");
+    DrawText(buf, x, y, fnt_sz, RED);
+    */
+
+}
+
+// }}}
+
 static int find_max(struct ModelView *mv) {
     int max = 0;
 
@@ -627,7 +707,10 @@ void modelview_put_cell(struct ModelView *mv, int x, int y, int value) {
         .e = cell_en,
     };
 
+    static int timer_draw_cnt = 0,
+               timer_pulsation_cnt = 0;
     TimerDef timer_draw = {
+        // XXX: Почему не используется tmr_block_time ??
         .duration = mv->tmr_put_time,
         .sz = sizeof(td),
         .on_update = tmr_cell_draw,
@@ -635,11 +718,19 @@ void modelview_put_cell(struct ModelView *mv, int x, int y, int value) {
         .data = &td,
     }, timer_pulsation = {
         .data = &td,
-        .duration = 1.,
+        .duration = mv->tmr_put_time,
         .on_stop = tmr_pulsation_stop,
         .on_update = tmr_pulsation_update,
         .sz = sizeof(td),
     };
+
+    // Задать имена
+    sprintf(timer_draw.uniq_name, "timer_draw[%d]", timer_draw_cnt++);
+    sprintf(
+        timer_pulsation.uniq_name,
+        "timer_pulsation[%d]",
+        timer_pulsation_cnt++
+    );
 
     /*
     printf(
@@ -714,17 +805,21 @@ static void bomb_put(ModelView *mv, int x, int y) {
 
     /*modeltest_put(&model_checker, cell->x, cell->y, cell->value);*/
 
-    TimerData td = {
+    TimerData tdata = {
         .mv = mv,
         .e = en,
     };
-    timerman_add(mv->timers, (TimerDef) {
+    TimerDef tdef =  {
         .duration = mv->tmr_put_time,
-        .sz = sizeof(td),
+        .sz = sizeof(tdata),
         .on_update = tmr_cell_draw,
         .on_stop = tmr_cell_draw_stop,
-        .data = &td,
-    });
+        .data = &tdata,
+    };
+    static int tmr_cell_draw_cnt = 0;
+    sprintf(tdef.uniq_name, "tmr_cell_draw[%d]", tmr_cell_draw_cnt++);
+
+    timerman_add(mv->timers, tdef);
 
 }
 
@@ -757,7 +852,8 @@ void modelview_put(ModelView *mv) {
         int x = rand() % mv->field_size;
         int y = rand() % mv->field_size;
         // Максимальное количество проб клетки на возможность заполнения
-        int j = mv->field_size * mv->field_size * 10; 
+        // XXX: Не работает, не удается заполнить все поле клетками
+        int j = mv->field_size * mv->field_size * 30; 
 
         e_id e = modelview_search_entity(mv, x, y);
 
@@ -875,7 +971,9 @@ static bool move(ModelView *mv, e_id cell_en, int x, int y, bool *touched) {
 
     /*trace("try_move: move_call_counter %d\n", move_call_counter);*/
 
-    timerman_add(mv->timers, (struct TimerDef) {
+    static int tmr_cell_draw_cnt = 0;
+
+    timerman_add(mv->timers, timer_def((TimerDef) {
         .duration = mv->tmr_block_time,
         .sz = sizeof(struct TimerData),
         .on_update = tmr_cell_draw,
@@ -884,7 +982,7 @@ static bool move(ModelView *mv, e_id cell_en, int x, int y, bool *touched) {
             .mv = mv,
             .e = cell_en,
         },
-    });
+    }, "tmr_cell_draw[%d]", tmr_cell_draw_cnt++));
 
     return has_move;
 }
@@ -953,10 +1051,12 @@ static bool sum(
 
     assert(e_valid(mv->r, cell_en));
 
+    static int tmr_cell_draw_cnt = 0;
+
     // cell_en уничтожается
     cell->dropped = true;
     ef->anim_alpha = AM_BACKWARD;
-    timerman_add(mv->timers, (struct TimerDef) {
+    timerman_add(mv->timers, timer_def((TimerDef) {
         .duration = mv->tmr_block_time,
         .on_stop = tmr_cell_draw_stop,
         .on_update = tmr_cell_draw,
@@ -965,11 +1065,11 @@ static bool sum(
             .mv = mv,
             .e = cell_en,
         },
-    });
+    }, "tmr_cell_draw[%d]", tmr_cell_draw_cnt++));
 
     // neighbour_en увеличивается 
     neighbour_ef->anim_size = true;
-    timerman_add(mv->timers, (struct TimerDef) {
+    timerman_add(mv->timers, timer_def((TimerDef) {
         .duration = mv->tmr_block_time,
         .on_stop = tmr_cell_draw_stop,
         .on_update = tmr_cell_draw,
@@ -978,7 +1078,7 @@ static bool sum(
             .mv = mv,
             .e = neighbour_en,
         },
-    });
+    }, "tmr_cell_draw[%d]", tmr_cell_draw_cnt++));
 
     return has_sum;
 }
@@ -1652,7 +1752,7 @@ static void options_window(struct ModelView *mv) {
 
     mv->state = state;
 
-    if (IsKeyPressed(KEY_R) || igButton("restart", z)) {
+    if (igButton("restart", z)) {
         modelview_shutdown(mv);
 
         struct Setup setup = {};
@@ -1735,16 +1835,12 @@ static void gui(struct ModelView *mv) {
     // }}}
 }
 
-char *modelview_state2str(enum ModelViewState state) {
-    static char buf[32] = {0};
-    switch (state) {
-        case MVS_ANIMATION: strcpy(buf, "animation"); break;
-        case MVS_READY: strcpy(buf, "ready"); break;
-        case MVS_WIN: strcpy(buf, "win"); break;
-        case MVS_GAMEOVER: strcpy(buf, "gameover"); break;
-    }
-    return buf;
-}
+const char *modelview_state2str[] = {
+    [MVS_ANIMATION] = "MVS_ANIMATION",
+    [MVS_READY] = "MVS_READY",
+    [MVS_WIN] = "MVS_WIN",
+    [MVS_GAMEOVER] = "MVS_GAMEOVER",
+};
 
 static void destroy_dropped(struct ModelView *mv) {
     e_id destroy_arr[mv->field_size * mv->field_size];
@@ -1858,15 +1954,16 @@ static void make_ex(ModelView *mv, int x, int y) {
 
     if (exp) {
         exp->i = 1;
-
+        
+        static int tmr_bomb_update_cnt = 0;
         TimerData td = { .mv = mv, .e = e, };
-        timerman_add(mv->timers, (TimerDef) {
+        timerman_add(mv->timers, timer_def((TimerDef) {
             .data = &td,
             .duration = tmr_bomb_duration,
             .on_stop = tmr_bomb_stop,
             .on_update = tmr_bomb_update,
             .sz = sizeof(td),
-        });
+        }, "tmr_bomb_update[%d]", tmr_bomb_update_cnt++));
     }
 }
 
@@ -1989,6 +2086,7 @@ struct GameOverAnim {
 
 static const char *gameover_str = "GAMEOVER";
 static const int gameover_fnt_size = 400;
+static const int fnt_spacing = 10;
 
 // TODO: Добавить физическое тело и рисовать его. Прямоугольник с натянутой
 // текстурой "GAMEOVER".
@@ -2002,10 +2100,15 @@ static GameOverAnim *gameover_new() {
     ga->color = BLACK;
 
     Vector2 m = MeasureTextEx(
-        GetFontDefault(), gameover_str, gameover_fnt_size, 0.0f
+        GetFontDefault(), gameover_str, gameover_fnt_size, fnt_spacing
     );
     printf("gameover_new: m %s\n", Vector2_tostr(m));
     ga->rt = LoadRenderTexture(m.x, m.y);
+    printf(
+        "gameover_new: rt %dx%d\n",
+        ga->rt.texture.width,
+        ga->rt.texture.height
+    );
 
     b2WorldDef def = b2DefaultWorldDef();
     ga->world = b2CreateWorld(&def);
@@ -2033,6 +2136,39 @@ static GameOverAnim *gameover_new() {
     printf("gameover_new: mass %f\n", mass);
 
     return ga;
+}
+
+static void gameover_gui(GameOverAnim *ga) {
+    bool open = true;
+    igBegin("gameover", &open, ImGuiWindowFlags_AlwaysAutoResize);
+
+    ImVec2 z = {};
+    static float force[2] = { 0.f, 0.f },
+                 point[2] = { 0.f, 0.f };
+
+    const float force_max = 10E8;
+    igSliderFloat2("force", force, -force_max, force_max, "%f", 0);
+
+    igSliderFloat2("point", force, -force_max, force_max, "%f", 0);
+
+    if (igButton("reset velocities", z)) {
+        b2Body_SetAngularVelocity(ga->body, 0.f);
+        b2Body_SetLinearVelocity(ga->body, b2Vec2_zero);
+    }
+
+    if (igButton("force to center", z)) {
+        b2Vec2 t = { force[0], force[1] };
+        b2Body_ApplyForceToCenter(ga->body, t, true);
+    }
+
+    if (igButton("force to point", z)) {
+        b2Vec2 t_f = { force[0], force[1] },
+               t_p = { point[0], point[1] };
+        b2Body_ApplyForce(ga->body, t_f, t_p, true);
+    }
+
+
+    igEnd();
 }
 
 static void gameover_draw(GameOverAnim *ga) {
@@ -2068,7 +2204,16 @@ static void gameover_draw(GameOverAnim *ga) {
     render_v4_with_tex2(&r_opts);
 
     BeginTextureMode(ga->rt);
-    DrawText(gameover_str, 0., 0., gameover_fnt_size, c);
+    ClearBackground(BLANK);
+    //DrawText(gameover_str, 0., 0., gameover_fnt_size, c);
+    DrawTextEx(
+        GetFontDefault(),
+        gameover_str,
+        (Vector2) {0., 0.,}, 
+        gameover_fnt_size,
+        fnt_spacing,
+        c
+    );
     /*DrawText(gameover_str, ga->x, ga->y, gameover_fnt_size, c);*/
     EndTextureMode();
 
@@ -2117,6 +2262,8 @@ int modelview_draw(ModelView *mv) {
 
     if (!mv->inited)
         return 0;
+
+    automation_select(mv);
 
     gridanim_draw(mv->ga, mv);
 
@@ -2198,8 +2345,9 @@ int modelview_draw(ModelView *mv) {
         /*return 0;*/
     }
 
-    timersnum = timerman_num(mv->timers, NULL);
+    automation_draw(mv);
 
+    timersnum = timerman_num(mv->timers, NULL);
     return timersnum;
     // }}}
 }
@@ -2254,7 +2402,10 @@ void modelview_init(ModelView *mv, Setup setup) {
 
     const int gap = 300;
     mv->quad_width = (GetScreenHeight() - gap) / setup.field_size;
-    assert(mv->quad_width > 0);
+    if (mv->quad_width <= 0) {
+        printf("modeltest_init: quad_width %d\n", mv->quad_width);
+        exit(EXIT_FAILURE);
+    }
 
     const int field_width = mv->field_size * mv->quad_width;
     mv->pos = (Vector2){
@@ -2335,12 +2486,16 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->go = gameover_new();
     mv->inited = true;
 
+    automation_load(mv);
+
     // }}}
 }
 
 void modelview_shutdown(struct ModelView *mv) {
     // {{{
     assert(mv);
+
+    automation_unload(mv);
 
     if (mv->go) {
         gameover_free(mv->go);
@@ -2412,6 +2567,9 @@ void modelview_draw_gui(struct ModelView *mv) {
     assert(mv);
 
     if (mv->use_gui) {
+        if (mv->state == MVS_GAMEOVER)
+            gameover_gui(mv->go);
+
         gui(mv);
         history_gui(mv->history);
     }

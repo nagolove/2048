@@ -514,6 +514,8 @@ static void stage_test_init(Stage_Test *st) {
 }
 
 static void stage_test_update(Stage_Test *st) {
+    camera_process(&st->camera);
+
     if (test_view.inited)
         modelview_pause_set(&test_view, st->is_paused);
 }
