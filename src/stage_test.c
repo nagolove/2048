@@ -38,7 +38,9 @@ static const char *status2str[] = {
     [TS_FAILED] = "FAILED",
 };
 
+// Хранит один тест
 typedef struct Test {
+    char       *fname;
     lua_State  *l;
               // индекс в таблице теста
     int        index,
@@ -52,37 +54,40 @@ typedef struct Test {
     void       *udata;
 } Test;
 
+// Окошко с выбором вариантов
 typedef struct TestGui {
     // Флажки выбранного теста
     bool              selected[1024];
-    TestStatus        stats[1024];
-    char              *description[1024];
+    TestStatus        statuses[1024];
+    char              *descriptions[1024];
     int               *load_index;
     FilesSearchResult search;
 } TestGui;
+
+// TODO:
 
 typedef struct Stage_Test {
     Stage               parent;
     int                 timersnum;
     Camera2D            camera;
     bool                is_paused;
-    // Хранит один тест
     Test                t;
-    // Окошко с выбором вариантов
     TestGui             tg;
 } Stage_Test;
 
 static void test_init_ex(Test *t, const char *fname, ModelView *mv) {
     assert(t);
     assert(mv);
+    assert(fname);
+
     trace("test_init: fname '%s'\n", fname);
 
     memset(t, 0, sizeof(*t));
 
     t->mv = mv;
+    t->fname = strdup(fname);
     t->l = luaL_newstate();
     luaL_openlibs(t->l);
-
     int err = luaL_dofile(t->l, fname);
     if (err != LUA_OK) {
         trace(
@@ -150,6 +155,10 @@ static void test_init_ex(Test *t, const char *fname, ModelView *mv) {
 static void test_shutdown(Test *t) {
     trace("test_shutdown:\n");
     assert(t);
+    if (t->fname) {
+        free(t->fname);
+        t->fname = NULL;
+    }
     if (t->l) {
         lua_close(t->l);
         t->l = NULL;
@@ -263,10 +272,14 @@ static void test_id_function(Test *t) {
     printf("test_id_function\n");
 
     lua_State *l = t->l;
+    printf("test_id_function: --1 [%s]\n", L_stack_dump(l));
     int type = lua_rawgeti(l, -1, 1);
+    printf("test_id_function: 0 [%s]\n", L_stack_dump(l));
     assert(type == LUA_TFUNCTION);
 
+    printf("test_id_function: 1 [%s]\n", L_stack_dump(l));
     lua_call(l, 0, 0);
+    printf("test_id_function: 2 [%s]\n", L_stack_dump(l));
 }
 
 static void test_id_assert(Test *t) {
@@ -342,6 +355,8 @@ static void test_id_assert(Test *t) {
 
 }
 
+int __asan_addr_is_poisoned(void *addr);
+
 static void test_next_state_ex(Test *t) {
     assert(t);
 
@@ -355,6 +370,14 @@ static void test_next_state_ex(Test *t) {
 
     int type;
     lua_State *l = t->l;
+    assert(l);
+
+    /*
+    if (__asan_addr_is_poisoned(l)) {
+        printf("test_next_state_ex: lua vm is poisoned!\n");
+        exit(EXIT_FAILURE);
+    }
+    */
 
     if (t->index == t->len) {
         printf("test_next_state_ex: len %d, index %d\n", t->len, t->index);
@@ -374,14 +397,15 @@ static void test_next_state_ex(Test *t) {
 
     if (t->state == T_PROCESS) {
         type = lua_rawgeti(l, -1, t->index++);
-        if (type != LUA_TTABLE) {
+        if (type != LUA_TTABLE && type != LUA_TTHREAD) {
 
-            /*
-            printf("[%s]\n", L_stack_dump(l));
-            lua_getglobal(l, "_G");
+            printf("test_next_state_ex: [%s]\n", L_stack_dump(l));
             L_inspect(l, -1);
-            */
 
+            // XXX: Найти место в луа коде, в котором ошибка
+            // Что еще можно сделать для испекции ошибки?
+            
+            printf("test_next_state_ex: fname '%s'\n", t->fname);
             printf(
                 "test_next_state_ex: type is '%s'\n",
                 lua_typename(l, type)
@@ -443,7 +467,7 @@ static void test_next_state_ex(Test *t) {
 static void test_gui_init(TestGui *tg) {
 
     FilesSearchSetup setup = {
-        .path = "./",
+        .path = "./assets",
         .deep = 0,
         .regex_pattern = "t_\\d\\dex.lua",
     };
@@ -467,7 +491,7 @@ static void test_gui_init(TestGui *tg) {
         if (type == LUA_TSTRING) {
             const char *desc = lua_tostring(l, -1);
             assert(desc);
-            tg->description[i] = strdup(desc);
+            tg->descriptions[i] = strdup(desc);
         }
 
         lua_close(l);
@@ -476,11 +500,11 @@ static void test_gui_init(TestGui *tg) {
 
 static void test_gui_shutdown(TestGui *tg) {
     koh_search_files_shutdown(&tg->search);
-    int num = sizeof(tg->description) / sizeof(tg->description[0]);
+    int num = sizeof(tg->descriptions) / sizeof(tg->descriptions[0]);
     for (int i = 0; i < num; i++) {
-        if (tg->description[i]) {
-            free(tg->description[i]);
-            tg->description[i] = NULL;
+        if (tg->descriptions[i]) {
+            free(tg->descriptions[i]);
+            tg->descriptions[i] = NULL;
         }
     }
 }
@@ -525,7 +549,7 @@ static void on_finish_next(Test *t) {
 
     TestGui *tg = t->udata;
     if (tg->load_index)
-        tg->stats[*tg->load_index] = t->status;
+        tg->statuses[*tg->load_index] = t->status;
 
     if (tg->load_index && *tg->load_index + 1 < tg->search.num) {
         (*tg->load_index)++;
@@ -538,7 +562,7 @@ static void on_finish(Test *t) {
     printf("on_finish: %s\n", status2str[t->status]);
     TestGui *tg = t->udata;
     if (tg->load_index)
-        tg->stats[*tg->load_index] = t->status;
+        tg->statuses[*tg->load_index] = t->status;
 }
 
 static void test_gui(Test *t, TestGui *tg) {
@@ -552,7 +576,7 @@ static void test_gui(Test *t, TestGui *tg) {
 
     int selected_num = sizeof(tg->selected) / sizeof(tg->selected[0]);
     bool *selected = tg->selected;
-    TestStatus *stats = tg->stats;
+    TestStatus *stats = tg->statuses;
 
     assert(selected_num > tg->search.num);
 
@@ -593,9 +617,9 @@ static void test_gui(Test *t, TestGui *tg) {
                 break;
             }
 
-            if (tg->description[i]) {
+            if (tg->descriptions[i]) {
                 igSameLine(0., 10.f);
-                igText("|%s|", tg->description[i]);
+                igText("|%s|", tg->descriptions[i]);
             }
 
         }
@@ -614,7 +638,7 @@ static void test_gui(Test *t, TestGui *tg) {
     // Запуск нескольких примеров
     if (igButton("run all", z)) {
         memset(selected, 0, sizeof(tg->selected));
-        memset(stats, 0, sizeof(tg->stats));
+        memset(stats, 0, sizeof(tg->statuses));
 
         *tg->load_index = 0;
 
@@ -625,7 +649,7 @@ static void test_gui(Test *t, TestGui *tg) {
     igSameLine(0., 10.);
     if (igButton("reset bullets", z)) {
         memset(selected, 0, sizeof(tg->selected));
-        memset(stats, 0, sizeof(tg->stats));
+        memset(stats, 0, sizeof(tg->statuses));
     }
 
     igEnd();
