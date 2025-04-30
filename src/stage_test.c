@@ -62,20 +62,18 @@ typedef struct TestGui {
     char              *descriptions[1024];
     int               *load_index;
     FilesSearchResult search;
+    Test              t;
 } TestGui;
-
-// TODO:
 
 typedef struct Stage_Test {
     Stage               parent;
     int                 timersnum;
     Camera2D            camera;
     bool                is_paused;
-    Test                t;
     TestGui             tg;
 } Stage_Test;
 
-static void test_init_ex(Test *t, const char *fname, ModelView *mv) {
+static void test_init(Test *t, const char *fname, ModelView *mv) {
     assert(t);
     assert(mv);
     assert(fname);
@@ -153,8 +151,8 @@ static void test_init_ex(Test *t, const char *fname, ModelView *mv) {
 }
 
 static void test_shutdown(Test *t) {
-    trace("test_shutdown:\n");
     assert(t);
+    trace("test_shutdown: fname '%s'\n", t->fname);
     if (t->fname) {
         free(t->fname);
         t->fname = NULL;
@@ -355,9 +353,7 @@ static void test_id_assert(Test *t) {
 
 }
 
-int __asan_addr_is_poisoned(void *addr);
-
-static void test_next_state_ex(Test *t) {
+static void test_next_state(Test *t) {
     assert(t);
 
     if (!t->l) 
@@ -370,14 +366,6 @@ static void test_next_state_ex(Test *t) {
 
     int type;
     lua_State *l = t->l;
-    assert(l);
-
-    /*
-    if (__asan_addr_is_poisoned(l)) {
-        printf("test_next_state_ex: lua vm is poisoned!\n");
-        exit(EXIT_FAILURE);
-    }
-    */
 
     if (t->index == t->len) {
         printf("test_next_state_ex: len %d, index %d\n", t->len, t->index);
@@ -507,11 +495,10 @@ static void test_gui_shutdown(TestGui *tg) {
             tg->descriptions[i] = NULL;
         }
     }
+    test_shutdown(&tg->t);
 }
 
-static void test_reinit(
-    Test *t, TestGui *tg, void (*on_finish_func)(Test *tg)
-) {
+static void test_init_model(TestGui *tg, void (*on_finish_func)(Test *tg)) {
     const char *fname = tg->search.names[(*tg->load_index)];
     printf("on_finish_next: fname %s\n", fname);
     modelview_shutdown(&test_view);
@@ -519,12 +506,12 @@ static void test_reinit(
     // TODO: Добавить сюда применение поля size
     modelview_init(&test_view, modelview_setup);
     test_view.auto_put = false;
-    test_shutdown(t);
+    test_shutdown(&tg->t);
 
-    test_init_ex(t, fname, &test_view);
+    test_init(&tg->t, fname, &test_view);
 
-    t->udata = tg;
-    t->on_finish = on_finish_func;
+    tg->t.udata = tg;
+    tg->t.on_finish = on_finish_func;
 }
 
 static void stage_test_init(Stage_Test *st) {
@@ -533,7 +520,6 @@ static void stage_test_init(Stage_Test *st) {
     modelview_setup.cam = &st->camera;
     test_view.auto_put = false;
 
-    st->t = (Test){};
     test_gui_init(&st->tg);
 }
 
@@ -548,13 +534,14 @@ static void on_finish_next(Test *t) {
     printf("on_finish_next: %s\n", status2str[t->status]);
 
     TestGui *tg = t->udata;
+    // Установка статуса завершенного теста
     if (tg->load_index)
         tg->statuses[*tg->load_index] = t->status;
 
+    // Установка следующего теста
     if (tg->load_index && *tg->load_index + 1 < tg->search.num) {
         (*tg->load_index)++;
-
-        test_reinit(t, tg, on_finish_next);
+        test_init_model(tg, on_finish_next);
     }
 }
 
@@ -565,8 +552,7 @@ static void on_finish(Test *t) {
         tg->statuses[*tg->load_index] = t->status;
 }
 
-static void test_gui(Test *t, TestGui *tg) {
-    assert(t);
+static void test_gui(TestGui *tg) {
     assert(tg);
 
     bool wnd_open = true;
@@ -631,7 +617,7 @@ static void test_gui(Test *t, TestGui *tg) {
         const char *fname = tg->search.names[load_index];
         printf("test_gui: fname '%s'\n", fname);
 
-        test_reinit(t, tg, on_finish);
+        test_init_model(tg, on_finish);
     }
     igSameLine(0., 10.);
 
@@ -643,7 +629,7 @@ static void test_gui(Test *t, TestGui *tg) {
         *tg->load_index = 0;
 
         printf("test_gui: load_index %d\n", *tg->load_index);
-        test_reinit(t, tg, on_finish_next);
+        test_init_model(tg, on_finish_next);
     }
 
     igSameLine(0., 10.);
@@ -657,7 +643,7 @@ static void test_gui(Test *t, TestGui *tg) {
 
 static void stage_test_gui(Stage_Test *st) {
     modelview_draw_gui(&test_view);
-    test_gui(&st->t, &st->tg);
+    test_gui(&st->tg);
 }
 
 static void stage_test_draw(Stage_Test *st) {
@@ -672,7 +658,7 @@ static void stage_test_draw(Stage_Test *st) {
     st->timersnum = modelview_draw(&test_view);
 
     if (!st->timersnum)
-        test_next_state_ex(&st->t);
+        test_next_state(&st->tg.t);
 
     EndMode2D();
 }
@@ -680,7 +666,7 @@ static void stage_test_draw(Stage_Test *st) {
 static void stage_test_shutdown(Stage_Test *st) {
     trace("stage_test_shutdown:\n");
     modelview_shutdown(&test_view);
-    test_shutdown(&st->t);
+    /*test_shutdown(&st->t);*/
     test_gui_shutdown(&st->tg);
 }
 
