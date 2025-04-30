@@ -157,7 +157,6 @@ typedef struct ModelView {
                         // XXX: Позиция чего?
     Vector2             pos;
     ModelViewState      state;
-    bool                dropped;    //Флаг деинициализации структуры
                         // использовать какие-нибудь бонусы или только цифрв
     bool                use_bonus,
                         // можно сканировать на бомбы

@@ -2398,8 +2398,6 @@ void modelview_init(ModelView *mv, Setup setup) {
 
     /*SetTraceLogLevel(LOG_ERROR);*/
 
-    const int cells_num = mv->field_size * mv->field_size;
-
     const int gap = 300;
     mv->quad_width = (GetScreenHeight() - gap) / setup.field_size;
     if (mv->quad_width <= 0) {
@@ -2412,12 +2410,8 @@ void modelview_init(ModelView *mv, Setup setup) {
         .x = (GetScreenWidth() - field_width) / 2.,
         .y = (GetScreenHeight() - field_width) / 2.,
     };
-
     mv->timers = timerman_new(mv->field_size * mv->field_size * 3, "timers");
-
     mv->state = MVS_READY;
-    mv->dropped = false;
-
     mv->win_value = setup.win_value;
 
     mv->r = e_new(NULL);
@@ -2457,6 +2451,7 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->font = load_font_unicode(
         "assets/jetbrains_mono.ttf", dflt_draw_opts.fontsize
     );
+    const int cells_num = mv->field_size * mv->field_size;
     mv->sorted = calloc(cells_num, sizeof(mv->sorted[0]));
 
     mv->font_vector = fnt_vector_new(
@@ -2494,7 +2489,6 @@ void modelview_init(ModelView *mv, Setup setup) {
 void modelview_shutdown(struct ModelView *mv) {
     // {{{
     assert(mv);
-
     automation_unload(mv);
 
     if (mv->go) {
@@ -2533,16 +2527,18 @@ void modelview_shutdown(struct ModelView *mv) {
         fnt_vector_free(mv->font_vector);
         mv->font_vector = NULL;
     }
-
-    if (mv->dropped)
-        return;
+   
+    // */
 
     if (mv->timers) {
         timerman_free(mv->timers);
         mv->timers = NULL;
     }
 
-    UnloadFont(mv->font);
+    if (mv->font.glyphs) {
+        UnloadFont(mv->font);
+        memset(&mv->font, 0, sizeof(mv->font));
+    }
 
     if (mv->r) {
         e_free(mv->r);
@@ -2555,8 +2551,6 @@ void modelview_shutdown(struct ModelView *mv) {
         free(mv->sorted);
         mv->sorted = NULL;
     }
-    /*modeltest_shutdown(&model_checker);*/
-    mv->dropped = true;
 
     mv->inited = false;
     memset(mv, 0, sizeof(*mv));

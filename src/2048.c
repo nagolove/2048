@@ -21,6 +21,7 @@
 #include "koh_stage_sprite_loader2.h"
 #include "stage_main.h"
 #include "koh_common.h"
+#include "modelview.h"
 
 #if defined(PLATFORM_WEB)
 #include <emscripten.h>
@@ -124,20 +125,34 @@ int main(void) {
     logger_init();
     inotifier_init();
 
+    fnt_vector_init_freetype();
 
-    /*
-    for (int j = 0; j < 100; j++) {
-        Font f = load_font_unicode("assets/jetbrains_mono.ttf", 72);
+    for (int j = 0; j < 10; j++) {
+        //Font f = load_font_unicode("assets/jetbrains_mono.ttf", 72);
+
+        koh_term_color_set(KOH_TERM_GREEN);
+        printf("main: j %d\n", j);
+        koh_term_color_reset();
+
+        ModelView mv = {};
+        Camera2D cam = {};
+        cam.zoom = 1.f;
+        modelview_init(&mv, (Setup) {
+            .on_init_lua = NULL,
+            .tmr_put_time = 0.1,
+            .tmr_block_time = 0.1,
+            .use_bonus = false,
+            .use_fnt_vector = false,
+            .field_size = 7,
+            .cam = &cam,
+            .auto_put = true,
+            .win_value = 64,
+        });
+        modelview_shutdown(&mv);
     }
     printf("exit(1);\n");
     exit(1);
-    */
-
-    // TODO: Тесты сломаны
-    // TODO: Сделать несколько исполняемых файлов - для тестов и основной
-    //test_modelviews_multiple();
-
-    fnt_vector_init_freetype();
+    // */
 
     ss = stage_new(NULL);
     stage_add(ss, stage_main_new(NULL), "main");
@@ -152,7 +167,6 @@ int main(void) {
 
     SetExitKey(KEY_NULL);
 
-    //view_test = printing_test();
 #if defined(PLATFORM_WEB)
     trace("main: PLATFORM_WEB\n");
     emscripten_set_main_loop_arg(update, NULL, target_fps, 1);
