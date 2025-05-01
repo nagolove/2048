@@ -2111,6 +2111,8 @@ static GameOverAnim *gameover_new() {
     );
 
     b2WorldDef def = b2DefaultWorldDef();
+    def.gravity.x = 0.f;
+    def.gravity.y = 0.f;
     ga->world = b2CreateWorld(&def);
 
     b2BodyDef bdef = b2DefaultBodyDef();
@@ -2125,8 +2127,8 @@ static GameOverAnim *gameover_new() {
     ga->ddraw = b2_world_dbg_draw_create2();
     /*ga->ddraw = b2DefaultDebugDraw();*/
 
-    b2Vec2 force = { -10000.f, -10000.f };
-    b2Body_ApplyForceToCenter(ga->body, force, true);
+    //b2Vec2 force = { -10000.f, -10000.f };
+    //b2Body_ApplyForceToCenter(ga->body, force, true);
 
     b2MassData massdata = b2ComputePolygonMass(&box, 1.f);
     printf("gameover_new: massdata %s\n", b2MassData_tostr(massdata));
@@ -2146,10 +2148,9 @@ static void gameover_gui(GameOverAnim *ga) {
     static float force[2] = { 0.f, 0.f },
                  point[2] = { 0.f, 0.f };
 
-    const float force_max = 10E8;
+    const float force_max = 10E5;
     igSliderFloat2("force", force, -force_max, force_max, "%f", 0);
-
-    igSliderFloat2("point", force, -force_max, force_max, "%f", 0);
+    igSliderFloat2("point", point, -force_max, force_max, "%f", 0);
 
     if (igButton("reset velocities", z)) {
         b2Body_SetAngularVelocity(ga->body, 0.f);
@@ -2189,12 +2190,16 @@ static void gameover_draw(GameOverAnim *ga) {
     RenderTexOpts r_opts = {
         .texture = ga->rt.texture,
         .tint = WHITE,
+        // XXX: Поможет ли смещение вершин от перевернутой текстуры?
+        .vertex_disp = 1,
     };
 
-    for (int i = 0; i < p.count; i++) {
-        Vector2 v = b2Vec2_to_Vector2(p.vertices[i]);
+    b2Transform tr = b2Body_GetTransform(ga->body);
 
-        /*trace("stage_chassis_draw: v %s\n", Vector2_tostr(v));*/
+    for (int i = 0; i < p.count; i++) {
+        b2Vec2 p_l = p.vertices[i];
+        b2Vec2 p_w = b2TransformPoint(tr, p_l);
+        Vector2 v = b2Vec2_to_Vector2(p_w);
         r_opts.verts[i] = v;
     }
 
@@ -2214,6 +2219,7 @@ static void gameover_draw(GameOverAnim *ga) {
         fnt_spacing,
         c
     );
+
     /*DrawText(gameover_str, ga->x, ga->y, gameover_fnt_size, c);*/
     EndTextureMode();
 
