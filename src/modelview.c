@@ -489,7 +489,7 @@ static void automation_draw(ModelView *mv) {
     DrawText(buf, x, y += fnt_sz, fnt_sz, RED);
 
     sprintf(buf, "CTRL+SHIFT+r - record start/stop");
-    DrawText(buf, x, y += fnt_sz, fnt_sz, RED);
+    DrawText(buf, x, y, fnt_sz, RED);
 
     /*
     sprintf(buf, "loaded");
@@ -2380,13 +2380,34 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->e_2destroy_num = 0;
 
     /*SetTraceLogLevel(LOG_ALL);*/
-    Resource *reslist = &mv->reslist;
+    //Resource *reslist = &mv->reslist;
+    ResList *rl = mv->reslist = reslist_new();
+
+    mv->tex_bomb_black = reslist_load_texture(rl, "assets/bomb_black.png");
+    mv->tex_bomb_red = reslist_load_texture(rl, "assets/bomb_red.png");
+    mv->tex_aura = reslist_load_texture(rl, "assets/aura.png");
+    mv->tex_bomb = reslist_load_texture(rl, "assets/bomb.png");
+
+    mv->tex_ex_num = 3;
+    mv->tex_ex = calloc(mv->tex_ex_num, sizeof(mv->tex_ex[0]));
+
+    mv->tex_ex_index = 0;
+    mv->tex_ex[0] = reslist_load_texture(rl, "assets/explosion_02.png");
+    mv->tex_ex[1] = reslist_load_texture(rl, "assets/explosion_03.png");
+    mv->tex_ex[2] = reslist_load_texture(rl, "assets/explosion_04.png");
+    mv->tex_ex[3] = reslist_load_texture(rl, "assets/explosion_01.jpg");
+
+    /*mv->font = reslist_load_font_unicode(*/
+    mv->font = reslist_load_font(
+        rl, "assets/jetbrains_mono.ttf", dflt_draw_opts.fontsize
+    );
+
+    /*
     mv->tex_bomb_black = res_tex_load(reslist, "assets/bomb_black.png");
     mv->tex_bomb_red = res_tex_load(reslist, "assets/bomb_red.png");
     mv->tex_aura = res_tex_load(reslist, "assets/aura.png");
     mv->tex_bomb = res_tex_load(reslist, "assets/bomb.png");
 
-    /*mv->tex_ex_num = 4;*/
     mv->tex_ex_num = 3;
     mv->tex_ex = calloc(mv->tex_ex_num, sizeof(mv->tex_ex[0]));
 
@@ -2395,6 +2416,7 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->tex_ex[1] = res_tex_load(reslist, "assets/explosion_03.png");
     mv->tex_ex[2] = res_tex_load(reslist, "assets/explosion_04.png");
     mv->tex_ex[3] = res_tex_load(reslist, "assets/explosion_01.jpg");
+    */
 
     /*SetTraceLogLevel(LOG_ERROR);*/
 
@@ -2448,9 +2470,6 @@ void modelview_init(ModelView *mv, Setup setup) {
     mv->tmr_block_time = setup.tmr_block_time;
     mv->tmr_put_time = setup.tmr_put_time;
 
-    mv->font = load_font_unicode(
-        "assets/jetbrains_mono.ttf", dflt_draw_opts.fontsize
-    );
     const int cells_num = mv->field_size * mv->field_size;
     mv->sorted = calloc(cells_num, sizeof(mv->sorted[0]));
 
@@ -2506,7 +2525,11 @@ void modelview_shutdown(struct ModelView *mv) {
         mv->history = NULL;
     }
 
-    res_unload_all(&mv->reslist, true);
+    if (mv->reslist) {
+        // FIXME: падает 
+        /*reslist_free(mv->reslist);*/
+        mv->reslist = NULL;
+    }
 
     if (mv->field) {
         free(mv->field);
@@ -2533,11 +2556,6 @@ void modelview_shutdown(struct ModelView *mv) {
     if (mv->timers) {
         timerman_free(mv->timers);
         mv->timers = NULL;
-    }
-
-    if (mv->font.glyphs) {
-        UnloadFont(mv->font);
-        memset(&mv->font, 0, sizeof(mv->font));
     }
 
     if (mv->r) {

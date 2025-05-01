@@ -111,8 +111,8 @@ typedef struct ModelView {
     int                 e_2destroy_num;
 
     lua_State           *l;
-    Resource            reslist;
-
+    /*Resource            reslist;*/
+    ResList             *reslist;
 
                         // бомба
     Texture2D           tex_bomb,
