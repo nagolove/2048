@@ -81,6 +81,8 @@ static void em_setup_screen_size(int *_w, int *_h) {
 }
 
 int main(void) {
+    // TODO: Сократить код инициализации систем
+
     em_setup_screen_size(&screen_width, &screen_height);
 
     koh_hashers_init();
@@ -123,10 +125,12 @@ int main(void) {
     //rlImGuiSetup();
 
     logger_init();
+    koh_common_init();
     inotifier_init();
 
     fnt_vector_init_freetype();
 
+    /*
     for (int j = 0; j < 10; j++) {
         //Font f = load_font_unicode("assets/jetbrains_mono.ttf", 72);
 
@@ -187,6 +191,8 @@ int main(void) {
 
     inotifier_shutdown();
     fnt_vector_shutdown_freetype();
+
+    koh_common_shutdown();
 
     rlImGuiShutdown();
     CloseWindow();
