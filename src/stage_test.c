@@ -353,6 +353,17 @@ static void test_id_assert(Test *t) {
 
 }
 
+static const struct {
+    void (*foo)(Test *t);
+    const char *id;
+} ids[] = {
+    { test_id_initial, "initial" },
+    { test_id_input, "input" },
+    { test_id_assert, "assert" },
+    { test_id_function, "function" },
+    { NULL, NULL, },
+};
+
 static void test_next_state(Test *t) {
     assert(t);
 
@@ -375,25 +386,29 @@ static void test_next_state(Test *t) {
         koh_term_color_reset();
 
         t->state = T_READY_FINISH;
+
+        if (t->status == TS_UNKNOWN) {
+            t->status = TS_PASSED;
+        }
     }
 
     if (t->state == T_READY_FINISH) {
         t->state = T_FINISHED;
         if (t->on_finish)
             t->on_finish(t);
+        return;
     }
 
     if (t->state == T_PROCESS) {
         type = lua_rawgeti(l, -1, t->index++);
         if (type != LUA_TTABLE && type != LUA_TTHREAD) {
 
+            /*
             printf("test_next_state_ex: [%s]\n", L_stack_dump(l));
             L_inspect(l, -1);
-
-            // XXX: Найти место в луа коде, в котором ошибка
-            // Что еще можно сделать для испекции ошибки?
-            
             printf("test_next_state_ex: fname '%s'\n", t->fname);
+            */
+
             printf(
                 "test_next_state_ex: type is '%s'\n",
                 lua_typename(l, type)
@@ -408,25 +423,14 @@ static void test_next_state(Test *t) {
 
         printf("id '%s'\n", id);
 
-        const struct {
-            void (*foo)(Test *t);
-            const char *id;
-        } x[] = {
-            { test_id_initial, "initial" },
-            { test_id_input, "input" },
-            { test_id_assert, "assert" },
-            { test_id_function, "function" },
-            { NULL, NULL, },
-        };
+        bool search_done = false;
 
-        bool done = false;
-
-        for(int i = 0; x[i].foo; i++) {
-            if (strcmp(id, x[i].id) == 0) {
+        for(int i = 0; ids[i].foo; i++) {
+            if (strcmp(id, ids[i].id) == 0) {
                 // Нужная таблица лежит на вершине
                 // Скидывать таблицу в функции не нужно
                 int top1 = lua_gettop(l);
-                x[i].foo(t);
+                ids[i].foo(t);
                 int top2 = lua_gettop(l);
 
                 if (top1 != top2) {
@@ -437,12 +441,12 @@ static void test_next_state(Test *t) {
                     exit(EXIT_FAILURE);
                 }
 
-                done = true;
+                search_done = true;
                 break;
             }
         }
 
-        if (!done) {
+        if (!search_done) {
             koh_term_color_set(KOH_TERM_RED);
             printf("test_next_state_ex: bad id '%s'\n", id);
             koh_term_color_reset();
@@ -457,9 +461,10 @@ static void test_gui_init(TestGui *tg) {
     FilesSearchSetup setup = {
         .path = "./assets",
         .deep = 0,
-        .regex_pattern = "t_\\d\\dex.lua",
+        .regex_pattern = "t_\\d\\dex.lua$",
     };
 
+    koh_search_files_shutdown(&tg->search);
     tg->search = koh_search_files(&setup);
 
     for (int i = 0; i < tg->search.num; i++) {
