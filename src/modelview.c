@@ -169,7 +169,7 @@ typedef struct History {
     bool      first_run;
 } History;
 
-static History *history_new(ModelView *mv) {
+static History *history_new(ModelView *mv, bool devnull) {
     assert(mv);
     History *h = calloc(sizeof(*h), 1);
     h->lines = strbuf_init(NULL);
@@ -193,16 +193,20 @@ static History *history_new(ModelView *mv) {
 
     trace("history_new: [%s]\n", L_stack_dump(h->l));
 
-    const char *fname = koh_uniq_fname_str("modelview_history_", ".lua");
+    const char *fname = "/dev/null";
+    if (!devnull)
+        fname = koh_uniq_fname_str("modelview_history_", ".lua");
     trace("history_new: fname %s\n", fname);
 
     h->f = fopen(fname, "w");
     h->first_run = true;
+
     /*
     if (h->f) {
         fprintf(h->f, "return {\n");
     }
     */
+
     fflush(h->f);
     h->field = calloc(mv->field_size * mv->field_size, sizeof(h->field[0]));
     return h;
@@ -608,12 +612,12 @@ static e_id create_cell(ModelView *mv, int x, int y) {
     return en;
 }
 
-static void tmr_cell_draw_stop(Timer *t) {
+static bool tmr_cell_draw_stop(Timer *t) {
     TimerData *timer_data = t->data;
     ModelView *mv = timer_data->mv;
 
     if (!e_valid(mv->r, timer_data->e)) {
-        return;
+        return false;
     }
 
     /*struct Cell *cell = e_get(mv->r, timer_data->e, cmp_cell);*/
@@ -626,6 +630,8 @@ static void tmr_cell_draw_stop(Timer *t) {
         tr->anim_alpha = AM_NONE;
         tr->anim_size = false;
     }
+
+    return false;
 }
 
 // какой эффект рисует функция и для какой плитки?
@@ -663,15 +669,16 @@ static bool tmr_pulsation_update(struct Timer *t) {
     return false;
 }
 
-static void tmr_pulsation_stop(Timer *t) {
+static bool tmr_pulsation_stop(Timer *t) {
     TimerData *td = t->data;
     ecs_t *r = td->mv->r;
     e_id e = td->e;
 
     if (!e_valid(r, e))
-        return;
+        return false;
 
     /*trace("tmr_pulsation_stop:\n");*/
+    return false;
 }
 
 // TODO: Добавить анимацию при создании клетки. 
@@ -743,8 +750,11 @@ void modelview_put_cell(struct ModelView *mv, int x, int y, int value) {
     );
     */
 
-    timerman_add(mv->timers, timer_draw);
-    timerman_add(mv->timers, timer_pulsation);
+    int id;
+    id = timerman_add(mv->timers, timer_draw);
+    assert(id != -1);
+    id = timerman_add(mv->timers, timer_pulsation);
+    assert(id != -1);
 }
 
 // Возвращает количество бомб на поле
@@ -819,8 +829,8 @@ static void bomb_put(ModelView *mv, int x, int y) {
     static int tmr_cell_draw_cnt = 0;
     sprintf(tdef.uniq_name, "tmr_cell_draw[%d]", tmr_cell_draw_cnt++);
 
-    timerman_add(mv->timers, tdef);
-
+    timer_id_t id = timerman_add(mv->timers, tdef);
+    assert(id != -1);
 }
 
 static int gen_value(ModelView *mv) {
@@ -973,7 +983,7 @@ static bool move(ModelView *mv, e_id cell_en, int x, int y, bool *touched) {
 
     static int tmr_cell_draw_cnt = 0;
 
-    timerman_add(mv->timers, timer_def((TimerDef) {
+    int id = timerman_add(mv->timers, timer_def((TimerDef) {
         .duration = mv->tmr_block_time,
         .sz = sizeof(struct TimerData),
         .on_update = tmr_cell_draw,
@@ -983,6 +993,7 @@ static bool move(ModelView *mv, e_id cell_en, int x, int y, bool *touched) {
             .e = cell_en,
         },
     }, "tmr_cell_draw[%d]", tmr_cell_draw_cnt++));
+    assert(id != -1);
 
     return has_move;
 }
@@ -1056,7 +1067,9 @@ static bool sum(
     // cell_en уничтожается
     cell->dropped = true;
     ef->anim_alpha = AM_BACKWARD;
-    timerman_add(mv->timers, timer_def((TimerDef) {
+    int id;
+
+    id = timerman_add(mv->timers, timer_def((TimerDef) {
         .duration = mv->tmr_block_time,
         .on_stop = tmr_cell_draw_stop,
         .on_update = tmr_cell_draw,
@@ -1066,10 +1079,11 @@ static bool sum(
             .e = cell_en,
         },
     }, "tmr_cell_draw[%d]", tmr_cell_draw_cnt++));
+    assert(id != -1);
 
     // neighbour_en увеличивается 
     neighbour_ef->anim_size = true;
-    timerman_add(mv->timers, timer_def((TimerDef) {
+    id = timerman_add(mv->timers, timer_def((TimerDef) {
         .duration = mv->tmr_block_time,
         .on_stop = tmr_cell_draw_stop,
         .on_update = tmr_cell_draw,
@@ -1079,6 +1093,7 @@ static bool sum(
             .e = neighbour_en,
         },
     }, "tmr_cell_draw[%d]", tmr_cell_draw_cnt++));
+    assert(id != -1);
 
     return has_sum;
 }
@@ -1871,7 +1886,7 @@ static void destroy_dropped(struct ModelView *mv) {
 }
 
 // Происходит при остановке таймера бомбы
-static void tmr_bomb_stop(Timer *t) {
+static bool tmr_bomb_stop(Timer *t) {
     TimerData *td = t->data;
     ecs_t *r = td->mv->r;
     ModelView *mv = td->mv;
@@ -1894,6 +1909,7 @@ static void tmr_bomb_stop(Timer *t) {
     }
 
     mv->can_scan_bombs = true;
+    return false;
 }
 
 static bool tmr_bomb_update(Timer *t) {
@@ -1957,13 +1973,14 @@ static void make_ex(ModelView *mv, int x, int y) {
         
         static int tmr_bomb_update_cnt = 0;
         TimerData td = { .mv = mv, .e = e, };
-        timerman_add(mv->timers, timer_def((TimerDef) {
+        int id = timerman_add(mv->timers, timer_def((TimerDef) {
             .data = &td,
             .duration = tmr_bomb_duration,
             .on_stop = tmr_bomb_stop,
             .on_update = tmr_bomb_update,
             .sz = sizeof(td),
         }, "tmr_bomb_update[%d]", tmr_bomb_update_cnt++));
+        assert(id != -1);
     }
 }
 
@@ -2148,7 +2165,7 @@ static void gameover_gui(GameOverAnim *ga) {
     static float force[2] = { 0.f, 0.f },
                  point[2] = { 0.f, 0.f };
 
-    const float force_max = 10E5;
+    const float force_max = 10E7 * 2.f;
     igSliderFloat2("force", force, -force_max, force_max, "%f", 0);
     igSliderFloat2("point", point, -force_max, force_max, "%f", 0);
 
@@ -2161,13 +2178,23 @@ static void gameover_gui(GameOverAnim *ga) {
         b2Vec2 t = { force[0], force[1] };
         b2Body_ApplyForceToCenter(ga->body, t, true);
     }
-
+    igSameLine(0., 10.f);
     if (igButton("force to point", z)) {
         b2Vec2 t_f = { force[0], force[1] },
                t_p = { point[0], point[1] };
         b2Body_ApplyForce(ga->body, t_f, t_p, true);
     }
 
+    if (igButton("impulse to center", z)) {
+        b2Vec2 t = { force[0], force[1] };
+        b2Body_ApplyLinearImpulseToCenter(ga->body, t, true);
+    }
+    igSameLine(0., 10.f);
+    if (igButton("force to point", z)) {
+        b2Vec2 t_f = { force[0], force[1] },
+               t_p = { point[0], point[1] };
+        b2Body_ApplyLinearImpulse(ga->body, t_f, t_p, true);
+    }
 
     igEnd();
 }
@@ -2501,7 +2528,7 @@ void modelview_init(ModelView *mv, Setup setup) {
         mv->on_init_lua();
     }
 
-    mv->history = history_new(mv);
+    mv->history = history_new(mv, true);
     mv->ga = gridanim_new(mv);
     mv->go = gameover_new();
     mv->inited = true;
