@@ -1763,6 +1763,12 @@ static void options_window(struct ModelView *mv) {
     } else
         state = mv->state;
 
+    if (igButton("reset camera", z)) {
+        mv->camera->offset = Vector2Zero();
+        mv->camera->rotation = 0.f;
+        mv->camera->zoom = 1.f;
+    }
+
     // }}}
 
     mv->state = state;
@@ -2096,18 +2102,96 @@ struct GameOverAnim {
     float       y, x;
     Color       color;
     b2WorldId   world;
-    b2BodyId    body;
+    b2BodyId    b_caption, b_borders[4];
     b2DebugDraw ddraw;
     b2ShapeId   shape;
+    b2Mat22     vel_transformations[4];
 };
+
+typedef enum GameOverAnim_Categories {
+    GameOverAnim_Caption = 0b01,
+    GameOverAnim_Border =  0b10,
+} GameOverAnim_Categories;
 
 static const char *gameover_str = "GAMEOVER";
 static const int gameover_fnt_size = 400;
 static const int fnt_spacing = 10;
 
-// TODO: Добавить физическое тело и рисовать его. Прямоугольник с натянутой
-// текстурой "GAMEOVER".
-// Тело двигать приложением силы, а не импульса. Добавить легкое вращение.
+static void make_segments(GameOverAnim *ga) {
+    float space = 1000.f;
+    // Сегменты-сенсоры ограничивающие полет таблички
+    b2Segment segments[] = {
+        {
+            .point1 = { -space, -space, },
+            .point2 = { GetScreenWidth() + space, -space, },
+        },
+        {
+            .point1 = { GetScreenWidth() + space, -space, },
+            .point2 = { GetScreenWidth() + space, GetScreenHeight() + space, },
+        },
+        {
+            .point1 = { GetScreenWidth() + space, GetScreenHeight() + space, },
+            .point2 = { -space, GetScreenHeight() + space, },
+        },
+        {
+            .point1 = { -space, GetScreenHeight() + space, },
+            .point2 = { -space, -space},
+        },
+    };
+
+    for (int j = 0; j < 4; j++) {
+        b2BodyDef bdef = b2DefaultBodyDef();
+        b2ShapeDef sdef = b2DefaultShapeDef();
+        sdef.userData = &ga->vel_transformations[j];
+        //sdef.filter.categoryBits = GameOverAnim_Border;
+        //sdef.filter.maskBits = GameOverAnim_Caption;
+        sdef.isSensor = true;
+        bdef.type = b2_staticBody;
+        ga->b_borders[j] = b2CreateBody(ga->world, &bdef);
+        b2CreateSegmentShape(ga->b_borders[j], &sdef, &segments[j]);
+    }
+}
+
+static void make_caption(GameOverAnim *ga) {
+    Vector2 m = MeasureTextEx(
+        GetFontDefault(), gameover_str, gameover_fnt_size, fnt_spacing
+    );
+    printf("make_caption: m %s\n", Vector2_tostr(m));
+    ga->rt = LoadRenderTexture(m.x, m.y);
+    printf(
+        "gameover_new: rt %dx%d\n",
+        ga->rt.texture.width,
+        ga->rt.texture.height
+    );
+
+    b2BodyDef bdef = b2DefaultBodyDef();
+    bdef.type = b2_dynamicBody;
+    bdef.position = (b2Vec2) {
+        .x = (GetScreenWidth() - m.x) / 2. /* HACK: */ + 200. ,
+        .y = (GetScreenHeight() - m.y) / 2.,
+    };
+    ga->b_caption = b2CreateBody(ga->world, &bdef);
+
+    b2ShapeDef shapedef = b2DefaultShapeDef();
+    //shapedef.filter.categoryBits = GameOverAnim_Caption;
+    //shapedef.filter.maskBits = GameOverAnim_Border;
+
+    const float half_w = m.x / 2., half_h = m.y / 2.;
+    b2Polygon box = b2MakeBox(half_w, half_h);
+    ga->shape = b2CreatePolygonShape(ga->b_caption, &shapedef, &box);
+
+
+    b2MassData massdata = b2ComputePolygonMass(&box, 1.f);
+    printf("gameover_new: massdata %s\n", b2MassData_tostr(massdata));
+    b2Body_SetMassData(ga->b_caption, massdata);
+
+    float mass = b2Body_GetMass(ga->b_caption);
+    printf("gameover_new: mass %f\n", mass);
+}
+
+// TODO: 
+// Тело двигать приложением силы или импульса. 
+// Добавить легкое вращение.
 // Сделать границы экрана.
 static GameOverAnim *gameover_new() {
     printf("gameover_new:\n");
@@ -2116,44 +2200,37 @@ static GameOverAnim *gameover_new() {
     ga->y = ga->x = 0;
     ga->color = BLACK;
 
-    Vector2 m = MeasureTextEx(
-        GetFontDefault(), gameover_str, gameover_fnt_size, fnt_spacing
-    );
-    printf("gameover_new: m %s\n", Vector2_tostr(m));
-    ga->rt = LoadRenderTexture(m.x, m.y);
-    printf(
-        "gameover_new: rt %dx%d\n",
-        ga->rt.texture.width,
-        ga->rt.texture.height
-    );
-
     b2WorldDef def = b2DefaultWorldDef();
     def.gravity.x = 0.f;
     def.gravity.y = 0.f;
     ga->world = b2CreateWorld(&def);
 
-    b2BodyDef bdef = b2DefaultBodyDef();
-    bdef.type = b2_dynamicBody;
-    ga->body = b2CreateBody(ga->world, &bdef);
+    // {{{ матрицы преобразования скорости
+    ga->vel_transformations[0] = (b2Mat22) {
+        .cx = { 0.0f,  1.0f },
+        .cy = {-1.0f,  0.0f }
+    };
 
-    b2ShapeDef shapedef = b2DefaultShapeDef();
-    const float half_w = m.x / 2., half_h = m.y / 2.;
-    b2Polygon box = b2MakeBox(half_w, half_h);
-    ga->shape = b2CreatePolygonShape(ga->body, &shapedef, &box);
+    ga->vel_transformations[0] = (b2Mat22) {
+        .cx = { -1., 0.},
+        .cy = { 0., -1.}
+    };
+
+    ga->vel_transformations[0] = (b2Mat22) {
+        .cx = { 0., 1.},
+        .cy = { -1, 0}
+    };
+
+    ga->vel_transformations[0] = (b2Mat22) {
+        .cx = { 1., 0, },
+        .cy = { 0., 1}
+    };
+    // }}} 
+
+    make_segments(ga);
+    make_caption(ga);
 
     ga->ddraw = b2_world_dbg_draw_create2();
-    /*ga->ddraw = b2DefaultDebugDraw();*/
-
-    //b2Vec2 force = { -10000.f, -10000.f };
-    //b2Body_ApplyForceToCenter(ga->body, force, true);
-
-    b2MassData massdata = b2ComputePolygonMass(&box, 1.f);
-    printf("gameover_new: massdata %s\n", b2MassData_tostr(massdata));
-    b2Body_SetMassData(ga->body, massdata);
-
-    float mass = b2Body_GetMass(ga->body);
-    printf("gameover_new: mass %f\n", mass);
-
     return ga;
 }
 
@@ -2170,30 +2247,30 @@ static void gameover_gui(GameOverAnim *ga) {
     igSliderFloat2("point", point, -force_max, force_max, "%f", 0);
 
     if (igButton("reset velocities", z)) {
-        b2Body_SetAngularVelocity(ga->body, 0.f);
-        b2Body_SetLinearVelocity(ga->body, b2Vec2_zero);
+        b2Body_SetAngularVelocity(ga->b_caption, 0.f);
+        b2Body_SetLinearVelocity(ga->b_caption, b2Vec2_zero);
     }
 
     if (igButton("force to center", z)) {
         b2Vec2 t = { force[0], force[1] };
-        b2Body_ApplyForceToCenter(ga->body, t, true);
+        b2Body_ApplyForceToCenter(ga->b_caption, t, true);
     }
     igSameLine(0., 10.f);
     if (igButton("force to point", z)) {
         b2Vec2 t_f = { force[0], force[1] },
                t_p = { point[0], point[1] };
-        b2Body_ApplyForce(ga->body, t_f, t_p, true);
+        b2Body_ApplyForce(ga->b_caption, t_f, t_p, true);
     }
 
     if (igButton("impulse to center", z)) {
         b2Vec2 t = { force[0], force[1] };
-        b2Body_ApplyLinearImpulseToCenter(ga->body, t, true);
+        b2Body_ApplyLinearImpulseToCenter(ga->b_caption, t, true);
     }
     igSameLine(0., 10.f);
-    if (igButton("force to point", z)) {
+    if (igButton("impulse to point", z)) {
         b2Vec2 t_f = { force[0], force[1] },
                t_p = { point[0], point[1] };
-        b2Body_ApplyLinearImpulse(ga->body, t_f, t_p, true);
+        b2Body_ApplyLinearImpulse(ga->b_caption, t_f, t_p, true);
     }
 
     igEnd();
@@ -2202,14 +2279,61 @@ static void gameover_gui(GameOverAnim *ga) {
 static void gameover_draw(GameOverAnim *ga) {
     // XXX: Использоть GetFrameTime()?
     const float timestep = 1. / GetFPS();
-    b2World_Step(ga->world, timestep, 6);
+    b2WorldId world = ga->world;
 
-    b2World_Draw(ga->world, &ga->ddraw);
+    b2World_Step(world, timestep, 6);
+    b2World_Draw(world, &ga->ddraw);
+
+    b2ContactEvents cevents = b2World_GetContactEvents(ga->world);
+    for (int i = 0; i < cevents.beginCount; i++) {
+        //sevents.beginEvents[i].sensorShapeId;
+        //b2Shape_GetContactData();
+        b2ContactBeginTouchEvent e = cevents.beginEvents[i];
+        for (int j = 0; j < e.manifold.pointCount; j++) {
+            Vector2 point = b2Vec2_to_Vector2(e.manifold.points[j].point);
+            const float radius = 70.0f;
+            DrawCircleV(point, radius, RED);
+        }
+    }
+
+    b2SensorEvents sevents = b2World_GetSensorEvents(ga->world);
+    for (int i = 0; i < sevents.beginCount; i++) {
+        //sevents.beginEvents[i].sensorShapeId;
+        //b2Shape_GetContactData();
+
+        printf("gameover_draw: sensor event i %d\n", i);
+
+        b2ShapeId sensor = sevents.beginEvents[i].sensorShapeId;
+        b2ShapeId visitor = sevents.beginEvents[i].visitorShapeId;
+
+        void *ud = b2Shape_GetUserData(sensor);
+        assert(ud);
+
+        b2Mat22 mat = *(b2Mat22*)ud;
+
+        /*
+        b2Mat22 mat = {
+            .cx = { 0.0f,  1.0f },
+            .cy = {-1.0f,  0.0f }
+        };
+        */
+
+        b2BodyId bid = b2Shape_GetBody(visitor);
+        b2Vec2 vel = b2Body_GetLinearVelocity(bid);
+        printf("gameover_draw: vel %s\n", b2Vec2_to_str(vel));
+        //b2Vec2 new_vel = b2MulMV(*vel_tr, vel);
+        b2Vec2 new_vel = b2MulMV(mat, vel);
+
+        new_vel = b2MulSV(10E7, new_vel);
+        printf("gameover_draw: new_vel %s\n", b2Vec2_to_str(new_vel));
+        // XXX: Импульс слишком незначителен
+        b2Body_ApplyLinearImpulseToCenter(bid, new_vel, true);
+    }
 
     /*printf("gameover_draw:\n");*/
     /*int fnt_size = 600;*/
 
-    Texture2D t = ga->rt.texture;
+    //Texture2D t = ga->rt.texture;
     Color c = ga->color;
     static int colord = 1;
 
@@ -2221,7 +2345,7 @@ static void gameover_draw(GameOverAnim *ga) {
         .vertex_disp = 1,
     };
 
-    b2Transform tr = b2Body_GetTransform(ga->body);
+    b2Transform tr = b2Body_GetTransform(ga->b_caption);
 
     for (int i = 0; i < p.count; i++) {
         b2Vec2 p_l = p.vertices[i];
@@ -2250,6 +2374,7 @@ static void gameover_draw(GameOverAnim *ga) {
     /*DrawText(gameover_str, ga->x, ga->y, gameover_fnt_size, c);*/
     EndTextureMode();
 
+    /*
     DrawTexturePro(
         t, (Rectangle) { 0., 0., t.width, -t.height },
         (Rectangle) { ga->x, ga->y, t.width, t.height },
@@ -2257,6 +2382,7 @@ static void gameover_draw(GameOverAnim *ga) {
         0.f,
         WHITE
     );
+    */
 
     ga->color.r += colord;
     ga->color.g += colord;
@@ -2477,6 +2603,7 @@ void modelview_init(ModelView *mv, Setup setup) {
     e_register(mv->r, &cmp_exp);
 
     mv->camera = setup.cam;
+    assert(mv->camera);
     mv->use_gui = setup.use_gui;
     mv->auto_put = setup.auto_put;
     mv->use_bonus = setup.use_bonus;
