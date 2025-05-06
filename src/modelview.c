@@ -1069,6 +1069,7 @@ static bool sum(
     ef->anim_alpha = AM_BACKWARD;
     int id;
 
+    // XXX: Не создается таймер так как используется тоже самое имя.
     id = timerman_add(mv->timers, timer_def((TimerDef) {
         .duration = mv->tmr_block_time,
         .on_stop = tmr_cell_draw_stop,
@@ -1078,7 +1079,7 @@ static bool sum(
             .mv = mv,
             .e = cell_en,
         },
-    }, "tmr_cell_draw[%d]", tmr_cell_draw_cnt++));
+    }, "tmr_cell_draw[%d]", ++tmr_cell_draw_cnt));
     assert(id != -1);
 
     // neighbour_en увеличивается 
@@ -1092,7 +1093,7 @@ static bool sum(
             .mv = mv,
             .e = neighbour_en,
         },
-    }, "tmr_cell_draw[%d]", tmr_cell_draw_cnt++));
+    }, "tmr_cell_draw[%d]", ++tmr_cell_draw_cnt));
     assert(id != -1);
 
     return has_sum;
@@ -2105,7 +2106,7 @@ struct GameOverAnim {
     b2BodyId    b_caption, b_borders[4];
     b2DebugDraw ddraw;
     b2ShapeId   shape;
-    b2Mat22     vel_transformations[4];
+    bool        is_debug_draw;
 };
 
 typedef enum GameOverAnim_Categories {
@@ -2113,12 +2114,13 @@ typedef enum GameOverAnim_Categories {
     GameOverAnim_Border =  0b10,
 } GameOverAnim_Categories;
 
-static const char *gameover_str = "GAMEOVER";
+//static const char *gameover_str = "GAMEOVER";
+static const char *gameover_str = "You loose";
 static const int gameover_fnt_size = 400;
 static const int fnt_spacing = 10;
+static const float space = 100.f;
 
 static void make_segments(GameOverAnim *ga) {
-    float space = 1000.f;
     // Сегменты-сенсоры ограничивающие полет таблички
     b2Segment segments[] = {
         {
@@ -2142,7 +2144,7 @@ static void make_segments(GameOverAnim *ga) {
     for (int j = 0; j < 4; j++) {
         b2BodyDef bdef = b2DefaultBodyDef();
         b2ShapeDef sdef = b2DefaultShapeDef();
-        sdef.userData = &ga->vel_transformations[j];
+        //sdef.userData = &ga->vel_transformations[j];
         //sdef.filter.categoryBits = GameOverAnim_Border;
         //sdef.filter.maskBits = GameOverAnim_Caption;
         sdef.isSensor = true;
@@ -2197,6 +2199,7 @@ static GameOverAnim *gameover_new() {
     printf("gameover_new:\n");
 
     GameOverAnim *ga = calloc(1, sizeof(*ga));
+    ga->is_debug_draw = true;
     ga->y = ga->x = 0;
     ga->color = BLACK;
 
@@ -2205,32 +2208,15 @@ static GameOverAnim *gameover_new() {
     def.gravity.y = 0.f;
     ga->world = b2CreateWorld(&def);
 
-    // {{{ матрицы преобразования скорости
-    ga->vel_transformations[0] = (b2Mat22) {
-        .cx = { 0.0f,  1.0f },
-        .cy = {-1.0f,  0.0f }
-    };
-
-    ga->vel_transformations[0] = (b2Mat22) {
-        .cx = { -1., 0.},
-        .cy = { 0., -1.}
-    };
-
-    ga->vel_transformations[0] = (b2Mat22) {
-        .cx = { 0., 1.},
-        .cy = { -1, 0}
-    };
-
-    ga->vel_transformations[0] = (b2Mat22) {
-        .cx = { 1., 0, },
-        .cy = { 0., 1}
-    };
-    // }}} 
-
     make_segments(ga);
     make_caption(ga);
 
     ga->ddraw = b2_world_dbg_draw_create2();
+
+    float r1 = 0.5 + rand() / (float)RAND_MAX,
+          r2 = 0.5 + rand() / (float)RAND_MAX;
+    b2Vec2 imp = {1.000000e+08 * r1, -1.000000e+08 * r2};
+    b2Body_ApplyLinearImpulseToCenter(ga->b_caption, imp, true);
     return ga;
 }
 
@@ -2244,7 +2230,23 @@ static void gameover_gui(GameOverAnim *ga) {
 
     const float force_max = 10E7 * 2.f;
     igSliderFloat2("force", force, -force_max, force_max, "%f", 0);
+    igSameLine(0., 10.f);
+    if (igSmallButton("copy")) {
+        char buf[64] = {};
+        sprintf(buf, "{%e, %e}", force[0], force[1]);
+        SetClipboardText(buf);
+    }
+
     igSliderFloat2("point", point, -force_max, force_max, "%f", 0);
+    /*
+    if (igSmallButton("copy")) {
+        char buf[64] = {};
+        sprintf(buf, "{%f, %f}", force[0], force[1]);
+        SetClipboardText(buf);
+    }
+    */
+
+    igCheckbox("is_debug_draw", &ga->is_debug_draw);
 
     if (igButton("reset velocities", z)) {
         b2Body_SetAngularVelocity(ga->b_caption, 0.f);
@@ -2282,7 +2284,8 @@ static void gameover_draw(GameOverAnim *ga) {
     b2WorldId world = ga->world;
 
     b2World_Step(world, timestep, 6);
-    b2World_Draw(world, &ga->ddraw);
+    if (ga->is_debug_draw)
+        b2World_Draw(world, &ga->ddraw);
 
     b2ContactEvents cevents = b2World_GetContactEvents(ga->world);
     for (int i = 0; i < cevents.beginCount; i++) {
@@ -2301,31 +2304,29 @@ static void gameover_draw(GameOverAnim *ga) {
         //sevents.beginEvents[i].sensorShapeId;
         //b2Shape_GetContactData();
 
-        printf("gameover_draw: sensor event i %d\n", i);
+        //printf("gameover_draw: sensor event i %d\n", i);
 
         b2ShapeId sensor = sevents.beginEvents[i].sensorShapeId;
         b2ShapeId visitor = sevents.beginEvents[i].visitorShapeId;
 
+        /*
         void *ud = b2Shape_GetUserData(sensor);
         assert(ud);
+        */
 
-        b2Mat22 mat = *(b2Mat22*)ud;
-
-        /*
-        b2Mat22 mat = {
+        // Матрица поворота на четверть окружности
+        b2Mat22 mat_90deg_rot = {
             .cx = { 0.0f,  1.0f },
             .cy = {-1.0f,  0.0f }
         };
-        */
 
         b2BodyId bid = b2Shape_GetBody(visitor);
         b2Vec2 vel = b2Body_GetLinearVelocity(bid);
-        printf("gameover_draw: vel %s\n", b2Vec2_to_str(vel));
-        //b2Vec2 new_vel = b2MulMV(*vel_tr, vel);
-        b2Vec2 new_vel = b2MulMV(mat, vel);
+        //printf("gameover_draw: vel %s\n", b2Vec2_to_str(vel));
+        b2Vec2 new_vel = b2MulMV(mat_90deg_rot, vel);
 
         new_vel = b2MulSV(10E7, new_vel);
-        printf("gameover_draw: new_vel %s\n", b2Vec2_to_str(new_vel));
+        //printf("gameover_draw: new_vel %s\n", b2Vec2_to_str(new_vel));
         // XXX: Импульс слишком незначителен
         b2Body_ApplyLinearImpulseToCenter(bid, new_vel, true);
     }
@@ -2354,14 +2355,13 @@ static void gameover_draw(GameOverAnim *ga) {
         r_opts.verts[i] = v;
     }
 
-    set_uv1(r_opts.uv);
+    set_uv1_inv_y(r_opts.uv);
     /*printf("gameover_draw: r_opts.uv %s\n", Vector2_arr_tostr(r_opts.uv, 4));*/
 
     render_v4_with_tex2(&r_opts);
 
     BeginTextureMode(ga->rt);
     ClearBackground(BLANK);
-    //DrawText(gameover_str, 0., 0., gameover_fnt_size, c);
     DrawTextEx(
         GetFontDefault(),
         gameover_str,
@@ -2370,8 +2370,6 @@ static void gameover_draw(GameOverAnim *ga) {
         fnt_spacing,
         c
     );
-
-    /*DrawText(gameover_str, ga->x, ga->y, gameover_fnt_size, c);*/
     EndTextureMode();
 
     /*
