@@ -2304,7 +2304,9 @@ static void gameover_draw(GameOverAnim *ga) {
 
         //printf("gameover_draw: sensor event i %d\n", i);
 
+        /*
         b2ShapeId sensor = sevents.beginEvents[i].sensorShapeId;
+        */
         b2ShapeId visitor = sevents.beginEvents[i].visitorShapeId;
 
         /*
