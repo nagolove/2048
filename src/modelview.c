@@ -1099,9 +1099,7 @@ static bool sum(
     return has_sum;
 }
 
-typedef bool (*Action)(
-    struct ModelView *mv, e_id cell_en, int x, int y, bool *touched
-);
+typedef bool (*Action)(ModelView *mv, e_id cell, int x, int y, bool *touched);
 
 static bool do_action(struct ModelView *mv, Action action) {
     assert(mv);
