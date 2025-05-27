@@ -66,20 +66,6 @@ static void update() {
     EndDrawing();
 }
 
-static void em_setup_screen_size(int *_w, int *_h) {
-#ifdef __wasm__
-    assert(_w);
-    assert(_h);
-
-    double w = 0, h = 0;
-    // Получаем размер canvas в CSS-пикселях
-    emscripten_get_element_css_size("#canvas", &w, &h);
-
-    *_w = (int)w;
-    *_h = (int)h;
-#endif
-}
-
 int main(void) {
     // TODO: Сократить код инициализации систем
 
