@@ -2285,6 +2285,7 @@ static void gameover_draw(GameOverAnim *ga) {
     if (ga->is_debug_draw)
         b2World_Draw(world, &ga->ddraw);
 
+    /*
     b2ContactEvents cevents = b2World_GetContactEvents(ga->world);
     for (int i = 0; i < cevents.beginCount; i++) {
         //sevents.beginEvents[i].sensorShapeId;
@@ -2296,6 +2297,7 @@ static void gameover_draw(GameOverAnim *ga) {
             DrawCircleV(point, radius, RED);
         }
     }
+    */
 
     b2SensorEvents sevents = b2World_GetSensorEvents(ga->world);
     for (int i = 0; i < sevents.beginCount; i++) {

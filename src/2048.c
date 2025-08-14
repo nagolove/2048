@@ -83,7 +83,7 @@ int main(void) {
         GetScreenWidth(), GetScreenHeight()
     );
 
-    InitWindow(screen_width, screen_height, "2048");
+    InitWindow(screen_width, screen_height, "koh-2048");
 
     SetWindowMonitor(1);
 
