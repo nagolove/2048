@@ -3,6 +3,10 @@
 
 #include "stage_main.h"
 
+#define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
+#include "cimgui.h"
+#include "cimgui_impl.h"
+
 #include "common.h"
 #include "koh_inotifier.h"
 #include "modelview.h"
