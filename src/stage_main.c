@@ -209,25 +209,20 @@ static void stage_main_shutdown(Stage_Main *st) {
     modelview_shutdown(&main_view);
 }
 
-static void stage_main_enter(Stage_Main *st) {
-    trace("stage_main_enter:\n");
-}
-
-static void stage_main_leave(Stage_Main *st) {
-    trace("stage_main_leave:\n");
-}
-
 Stage *stage_main_new(HotkeyStorage *hk_store) {
     Stage_Main *st = calloc(1, sizeof(*st));
-    st->parent.data = hk_store;
-
-    st->parent.init = (Stage_callback)stage_main_init;
-    st->parent.enter = (Stage_callback)stage_main_enter;
-    st->parent.leave = (Stage_callback)stage_main_leave;
-
-    st->parent.update = (Stage_callback)stage_main_update;
-    st->parent.draw = (Stage_callback)stage_main_draw;
-    st->parent.gui = (Stage_callback)stage_main_gui;
-    st->parent.shutdown = (Stage_callback)stage_main_shutdown;
+    if (!st) {
+        printf("stage_main_new: bad allocation\n");
+        koh_fatal();
+    } else {
+        st->parent.data = hk_store;
+        st->parent.init = (Stage_callback)stage_main_init;
+        //st->parent.enter = (Stage_callback)stage_main_enter;
+        //st->parent.leave = (Stage_callback)stage_main_leave;
+        st->parent.update = (Stage_callback)stage_main_update;
+        st->parent.draw = (Stage_callback)stage_main_draw;
+        st->parent.gui = (Stage_callback)stage_main_gui;
+        st->parent.shutdown = (Stage_callback)stage_main_shutdown;
+    }
     return (Stage*)st;
 }

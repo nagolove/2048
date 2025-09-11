@@ -189,7 +189,7 @@ static void term_print_field_ecs(Test *t) {
     // печатать имеющееся поле
     for (int y = 0; y < field_size; y++) {
         for (int x = 0; x < field_size; x++) {
-            Cell *cell = modelview_search_cell(t->mv, x, y);
+            const Cell *cell = modelview_search_cell(t->mv, x, y);
             if (cell) {
                 printf("%-2d ", cell->value);
             } else {
@@ -220,7 +220,13 @@ static void test_id_initial(Test *t) {
     for (int i = 1; i <= len; i++) {
         lua_rawgeti(l, -1, i);
 
-        assert(lua_type(l, -1) == LUA_TSTRING);
+        if (lua_type(l, -1) != LUA_TSTRING) {
+            trace(
+                "test_id_initial: last argument should be a string, not %s",
+                lua_typename(l, lua_type(l, -1))
+            );
+        }
+
         const char *cmd = lua_tostring(l, -1);
         int val = -1;
 
@@ -319,7 +325,7 @@ static void test_id_assert(Test *t) {
         for (int x = 0; x < field_size; x++) {
             int v = field[index];
 
-            Cell *cell = modelview_search_cell(t->mv, x, y);
+            const Cell *cell = modelview_search_cell(t->mv, x, y);
             if (v != -1) {
                 if (!cell) {
                     t->state = T_READY_FINISH;
@@ -375,7 +381,6 @@ static void test_next_state(Test *t) {
 
     printf("test_next_state_ex: state %s\n", state2str[t->state]);
 
-    int type;
     lua_State *l = t->l;
 
     if (t->index == t->len) {
@@ -400,7 +405,7 @@ static void test_next_state(Test *t) {
     }
 
     if (t->state == T_PROCESS) {
-        type = lua_rawgeti(l, -1, t->index++);
+        int type = lua_rawgeti(l, -1, t->index++);
         if (type != LUA_TTABLE && type != LUA_TTHREAD) {
 
             /*
@@ -675,25 +680,22 @@ static void stage_test_shutdown(Stage_Test *st) {
     test_gui_shutdown(&st->tg);
 }
 
-static void stage_test_enter(Stage_Test *st) {
-    trace("stage_test_enter:\n");
-}
-
-static void stage_test_leave(Stage_Test *st) {
-    trace("stage_test_leave:\n");
-}
-
 Stage *stage_test_new(HotkeyStorage *hk_store) {
     Stage_Test *st = calloc(1, sizeof(*st));
-    st->parent.data = hk_store;
+    if (!st) {
+        printf("stage_test_new: could not allocate memory\n");
+        koh_fatal();
+    } else {
+        st->parent.data = hk_store;
 
-    st->parent.init = (Stage_callback)stage_test_init;
-    st->parent.enter = (Stage_callback)stage_test_enter;
-    st->parent.leave = (Stage_callback)stage_test_leave;
+        st->parent.init = (Stage_callback)stage_test_init;
+        //st->parent.enter = (Stage_callback)stage_test_enter;
+        //st->parent.leave = (Stage_callback)stage_test_leave;
 
-    st->parent.update = (Stage_callback)stage_test_update;
-    st->parent.draw = (Stage_callback)stage_test_draw;
-    st->parent.gui = (Stage_callback)stage_test_gui;
-    st->parent.shutdown = (Stage_callback)stage_test_shutdown;
+        st->parent.update = (Stage_callback)stage_test_update;
+        st->parent.draw = (Stage_callback)stage_test_draw;
+        st->parent.gui = (Stage_callback)stage_test_gui;
+        st->parent.shutdown = (Stage_callback)stage_test_shutdown;
+    }
     return (Stage*)st;
 }

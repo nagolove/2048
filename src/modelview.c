@@ -172,6 +172,12 @@ typedef struct History {
 static History *history_new(ModelView *mv, bool devnull) {
     assert(mv);
     History *h = calloc(sizeof(*h), 1);
+
+    if (!h) {
+        trace("history_new: bad calloc()\n");
+        koh_fatal();
+    }
+
     h->lines = strbuf_init(NULL);
     h->mv = mv;
     h->l = luaL_newstate();
@@ -183,7 +189,7 @@ static History *history_new(ModelView *mv, bool devnull) {
             "history_new: could not change package.path with '%s'\n",
             lua_tostring(h->l, -1)
         );
-        lua_pop(h->l, -1);
+        lua_pop(h->l, 1);
     }
 
     trace("history_new: [%s]\n", L_stack_dump(h->l));
@@ -253,7 +259,7 @@ static void history_write(History *h) {
     // Записать текущее состояние в массив int*
     for (int y = 0; y < mv->field_size; y++) {
         for (int x = 0; x < mv->field_size; x++) {
-            Cell *c = modelview_search_cell(mv, x, y);
+            const Cell *c = modelview_search_cell(mv, x, y);
             int val = -1;
             if (c) {
                 val = c->value;
@@ -278,7 +284,7 @@ static void history_write(History *h) {
     for (int y = 0; y < mv->field_size; y++) {
         buf_line_ptr += sprintf(buf_line_ptr, "{ ");
         for (int x = 0; x < mv->field_size; x++) {
-            Cell *c = modelview_search_cell(mv, x, y);
+            const Cell *c = modelview_search_cell(mv, x, y);
             int val = -1;
             if (c) {
                 val = c->value;
@@ -360,6 +366,11 @@ typedef struct GridAnim {
 
 static GridAnim *gridanim_new(const ModelView *mv) {
     GridAnim *ga = calloc(1, sizeof(*ga));
+
+    if (!ga) {
+        trace("gridanim_new:\n");
+        koh_fatal();
+    }
 
     const int field_size = mv->field_size;
     ga->anim = calloc(field_size * field_size, sizeof(ga->anim[0]));
@@ -539,7 +550,7 @@ e_id modelview_search_entity(ModelView *mv, int x, int y) {
     // TODO: Избавится от полного перебора
     for (e_view v = e_view_create_single(mv->r, cmp_position);
         e_view_valid(&v); e_view_next(&v)) {
-        Position *p = e_view_get(&v, cmp_position);
+        const Position *p = e_view_get(&v, cmp_position);
         if (p->x == x && p->y == y) {
             return e_view_entity(&v);
         }
@@ -662,7 +673,7 @@ static bool tmr_pulsation_update(struct Timer *t) {
     if (!e_valid(r, e))
         return true;
 
-    Transition *ef = e_get(r, e, cmp_transition);
+    const Transition *ef = e_get(r, e, cmp_transition);
     if (!ef)
         return false;
 
@@ -924,7 +935,7 @@ static bool move(ModelView *mv, e_id cell_en, int x, int y, bool *touched) {
     ecs_t *r = mv->r;
     bool has_move = false;
 
-    struct Cell *cell = e_get(mv->r, cell_en, cmp_cell);
+    const Cell *cell = e_get(mv->r, cell_en, cmp_cell);
     if (!cell)
         return false;
 
@@ -952,7 +963,7 @@ static bool move(ModelView *mv, e_id cell_en, int x, int y, bool *touched) {
         return has_move;
         */
 
-    Cell *neighbour_cell = e_get(r, neighbour_e, cmp_cell);
+    const Cell *neighbour_cell = e_get(r, neighbour_e, cmp_cell);
 
     if (neighbour_cell) 
         return has_move;
@@ -1011,7 +1022,7 @@ static bool sum(
     /*assert(cell);*/
 
     /*Position *pos = e_get(mv->r, cell_en, cmp_position);*/
-    Bomb *b = e_get(mv->r, cell_en, cmp_bomb);
+    const Bomb *b = e_get(mv->r, cell_en, cmp_bomb);
 
     if (b) {
         return false;
@@ -1039,11 +1050,11 @@ static bool sum(
         return has_sum;
 
     /*if (cell && neighbour_cell->dropped) */
-    if (neighbour_cell && neighbour_cell->dropped) 
+    if (neighbour_cell->dropped) 
         return has_sum;
 
     // Если соседом оказался бонус - выход
-    Bomb *neighbour_bonus = e_get(mv->r, neighbour_en, cmp_bomb);
+    const Bomb *neighbour_bonus = e_get(mv->r, neighbour_en, cmp_bomb);
     if (neighbour_bonus)
         return has_sum;
 
@@ -1052,11 +1063,12 @@ static bool sum(
     assert(cell_en.id != e_null.id);
     assert(neighbour_en.id != e_null.id);
 
-    if (cell && neighbour_cell && cell->value != neighbour_cell->value)
+    if (cell && cell->value != neighbour_cell->value)
         return has_sum;
 
     has_sum = true;
     *touched = true;
+    assert(cell);
     neighbour_cell->value += cell->value;
     mv->scores += cell->value;
 
@@ -1117,7 +1129,7 @@ static bool do_action(struct ModelView *mv, Action action) {
                 if (cell_en.id == e_null.id)
                     continue;
 
-                Cell *cell = e_get(mv->r, cell_en, cmp_cell);
+                const Cell *cell = e_get(mv->r, cell_en, cmp_cell);
                 if (!cell) 
                     continue;
 
@@ -1154,7 +1166,7 @@ static void sort_numbers(struct ModelView *mv) {
     for (int y = 0; y < mv->field_size; y++)
         for (int x = 0; x < mv->field_size; x++) {
             e_id e = modelview_search_entity(mv, x, y);
-            Cell *cell = e_get(mv->r, e, cmp_cell);
+            const Cell *cell = e_get(mv->r, e, cmp_cell);
             if (cell)
                 tmp[idx++].value = cell->value;
         }
@@ -1282,7 +1294,7 @@ static Vector2 calc_base_pos(ModelView *mv, e_id en, DrawOpts opts) {
     Position *pos = e_get(mv->r, en, cmp_position);
     assert(pos);
 
-    Transition *ef = e_get(mv->r, en, cmp_transition);
+    const Transition *ef = e_get(mv->r, en, cmp_transition);
     /*assert(ef);*/
 
     Vector2 base_pos = { pos->x, pos->y, };
@@ -1375,10 +1387,10 @@ static void bomb_draw(
 static void cell_draw(
     ModelView *mv, e_id cell_en, Vector2 base_pos, DrawOpts opts
 ) {
-    Cell *cell = e_get(mv->r, cell_en, cmp_cell);
+    const Cell *cell = e_get(mv->r, cell_en, cmp_cell);
 
     // Если бомба, то выхожу
-    Bomb *b = e_get(mv->r, cell_en, cmp_bomb);
+    const Bomb *b = e_get(mv->r, cell_en, cmp_bomb);
     if (b)
         return;
     // */
@@ -1461,8 +1473,7 @@ static void exp_draw(
     /*assert(0.01 < scale);*/
     /*assert(1. >= scale);*/
 
-    float new_width = mv->quad_width * scale,
-          new_height = mv->quad_width * scale;
+    float new_size = mv->quad_width * scale;
 
     Rectangle src = {
         .x = 0, .y = 0,
@@ -1472,10 +1483,10 @@ static void exp_draw(
         // Точка в центре спрайта. 
         // При scale == 1. - целиком рисуется
         // При scale == 0.1 - целиком рисуется, но сильно уменьшенная картинка
-        .x = pos.x + (mv->quad_width - new_width) / 2.,
-        .y = pos.y + (mv->quad_width - new_height) / 2.,
-        .width = mv->quad_width * scale,
-        .height = mv->quad_width * scale,
+        .x = pos.x + (mv->quad_width - new_size) / 2.,
+        .y = pos.y + (mv->quad_width - new_size) / 2.,
+        .width = new_size,
+        .height = new_size,
     };
 
     /*DrawTexturePro(tex, src, dst, Vector2Zero(), 0.f, WHITE);*/
@@ -1487,17 +1498,17 @@ static void exp_draw(
 static void tile_draw(ModelView *mv, e_id cell_en, DrawOpts opts) {
     assert(mv);
 
-    struct Cell *cell = e_get(mv->r, cell_en, cmp_cell);
+    const Cell *cell = e_get(mv->r, cell_en, cmp_cell);
     if (!cell)
         return;
 
     Vector2 base_pos = calc_base_pos(mv, cell_en, opts);
 
-    Explosition *exp = e_get(mv->r, cell_en, cmp_exp);
+    const Explosition *exp = e_get(mv->r, cell_en, cmp_exp);
     if (exp) {
         exp_draw(mv, cell_en, base_pos, opts);
     } else {
-        Bomb *bomb = e_get(mv->r, cell_en, cmp_bomb);
+        const Bomb *bomb = e_get(mv->r, cell_en, cmp_bomb);
         if (bomb) {
             bomb_draw(mv, cell_en, base_pos, opts);
         } else {
@@ -1515,14 +1526,14 @@ static void draw_numbers(ModelView *mv) {
     for (int y = 0; y < mv->field_size; y++) {
         for (int x = 0; x < mv->field_size; x++) {
             e_id en = modelview_search_entity(mv, x, y);
-            Cell *cell = e_get(mv->r, en, cmp_cell);
+            const Cell *cell = e_get(mv->r, en, cmp_cell);
 
             if (!cell) continue;
             if (cell->dropped) continue;
             if (cell->value == 0) continue;
 
             assert(en.id != e_null.id);
-            Transition *ef = e_get(mv->r, en, cmp_transition);
+            const Transition *ef = e_get(mv->r, en, cmp_transition);
             if (!ef) continue;
             /*assert(ef);*/
 
@@ -1775,7 +1786,7 @@ static void options_window(struct ModelView *mv) {
     if (igButton("restart", z)) {
         modelview_shutdown(mv);
 
-        struct Setup setup = {};
+        struct Setup setup;
 
         // XXX: Коряво, при нажатии 'restart' обнуляется время таймеров
         // Возможная причина - ??
@@ -1951,7 +1962,7 @@ static void make_ex(ModelView *mv, int x, int y) {
     e_id *e_2destroy = mv->e_2destroy;
 
     e_id e = modelview_search_entity(mv, x, y);
-    Cell *c = e_get(mv->r, e, cmp_cell);
+    const Cell *c = e_get(mv->r, e, cmp_cell);
 
     if (e.id == e_null.id)
         e = e_create(mv->r);
@@ -1993,7 +2004,7 @@ static void make_ex(ModelView *mv, int x, int y) {
 void modelview_cross_remove2(ModelView *mv, e_id e) {
     assert(mv->field_size > 0);
 
-    Position *c = e_get(mv->r, e, cmp_position);
+    const Position *c = e_get(mv->r, e, cmp_position);
     int x = c->x, y = c->y;
     mv->e_2destroy_num = 0;
 
@@ -2035,7 +2046,7 @@ static void bomb_scan(ModelView *mv) {
 
     e_view v = e_view_create_single(mv->r, cmp_bomb);
     for (; e_view_valid(&v); e_view_next(&v)) {
-        Bomb *b = e_view_get(&v, cmp_bomb);
+        const Bomb *b = e_view_get(&v, cmp_bomb);
         // Нашел бомбу которую нужно взрывать
         if (b->moves_cnt < 1) {
             e_id e = e_view_entity(&v);
@@ -2116,26 +2127,28 @@ typedef enum GameOverAnim_Categories {
 static const char *gameover_str = "You loose";
 static const int gameover_fnt_size = 400;
 static const int fnt_spacing = 10;
-static const float space = 100.f;
+static const float screen_space = 100.f;
 
 static void make_segments(GameOverAnim *ga) {
+    assert(ga);
+
     // Сегменты-сенсоры ограничивающие полет таблички
     b2Segment segments[] = {
         {
-            .point1 = { -space, -space, },
-            .point2 = { GetScreenWidth() + space, -space, },
+            .point1 = { -screen_space, -screen_space, },
+            .point2 = { GetScreenWidth() + screen_space, -screen_space, },
         },
         {
-            .point1 = { GetScreenWidth() + space, -space, },
-            .point2 = { GetScreenWidth() + space, GetScreenHeight() + space, },
+            .point1 = { GetScreenWidth() + screen_space, -screen_space, },
+            .point2 = { GetScreenWidth() + screen_space, GetScreenHeight() + screen_space, },
         },
         {
-            .point1 = { GetScreenWidth() + space, GetScreenHeight() + space, },
-            .point2 = { -space, GetScreenHeight() + space, },
+            .point1 = { GetScreenWidth() + screen_space, GetScreenHeight() + screen_space, },
+            .point2 = { -screen_space, GetScreenHeight() + screen_space, },
         },
         {
-            .point1 = { -space, GetScreenHeight() + space, },
-            .point2 = { -space, -space},
+            .point1 = { -screen_space, GetScreenHeight() + screen_space, },
+            .point2 = { -screen_space, -screen_space},
         },
     };
 
@@ -2197,6 +2210,11 @@ static GameOverAnim *gameover_new() {
     printf("gameover_new:\n");
 
     GameOverAnim *ga = calloc(1, sizeof(*ga));
+    if (!ga) {
+        trace("gameover_new: bad allocation\n");
+        koh_fatal();
+    }
+
     ga->is_debug_draw = true;
     ga->y = ga->x = 0;
     ga->color = BLACK;

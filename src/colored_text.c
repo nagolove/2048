@@ -86,7 +86,7 @@ void colored_text_print(
 
     Font f = *opts.font_bitmap;
     Vector2 pos = text->pos;
-    int base_font_size = text->base_font_size;
+    float base_font_size = text->base_font_size;
     if (!opts.use_fnt_vector) {
         Vector2 measures[text_num];
         // считать размеры каждого куска теста при печати
@@ -95,7 +95,6 @@ void colored_text_print(
             assert(text[i].scale < 100.);
             const char *t = text[i].text;
             float scale = text[i].scale;
-            float base_font_size = text->base_font_size;
             measures[i] = MeasureTextEx(f, t, base_font_size * scale, 0.);
         }
 
@@ -110,7 +109,7 @@ void colored_text_print(
         float phase = 0.f;
 
         if (e_valid(r, cell_en)) {
-            Cell *ef = e_get(r, cell_en, cmp_cell);
+            const Cell *ef = e_get(r, cell_en, cmp_cell);
 
             if (ef) {
                 phase = ef->phase;
